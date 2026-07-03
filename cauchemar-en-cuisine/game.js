@@ -730,17 +730,29 @@ addEventListener('resize', () => {
   if (isTouch && innerHeight > innerWidth && state === 'play') state = 'pause';
 });
 
-// plein écran + verrouillage paysage (Android ; sans effet sur iOS, l'overlay #rotate prend le relais)
+// plein écran + verrouillage paysage. Safari iOS (16.4+) n'expose parfois que la
+// version préfixée webkit ; en dessous, seul l'ajout à l'écran d'accueil masque la barre.
 function tryLockLandscape() {
   if (!isTouch) return;
   try {
     const el = document.documentElement;
-    const fs = !document.fullscreenElement && el.requestFullscreen
-      ? el.requestFullscreen({ navigationUI: 'hide' }) : Promise.resolve();
+    const inFs = document.fullscreenElement || document.webkitFullscreenElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    const fs = !inFs && req ? req.call(el, { navigationUI: 'hide' }) : null;
     Promise.resolve(fs)
       .then(() => screen.orientation && screen.orientation.lock ? screen.orientation.lock('landscape') : null)
       .catch(() => {});
   } catch (_) { /* non supporté */ }
+}
+
+// astuce iOS : hors mode standalone, la barre de Safari ne peut pas toujours être masquée ;
+// proposer l'ajout à l'écran d'accueil (lancement sans interface navigateur)
+{
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = navigator.standalone === true
+    || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches;
+  if (isIOS && !standalone) document.getElementById('iosTip').classList.remove('hidden');
 }
 
 // visée : rayon caméra -> plan du sol

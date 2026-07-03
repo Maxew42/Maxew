@@ -30,6 +30,8 @@ python3 -m http.server 8000
 
 Le jeu se joue en paysage : en portrait, un écran invite à tourner l'appareil (sur Android, le jeu passe en plein écran et verrouille l'orientation au lancement).
 
+Sur iOS, Safari ne permet pas toujours de masquer sa barre d'outils (API plein écran disponible seulement à partir d'iOS 16.4). La solution fiable : **Partager → « Sur l'écran d'accueil »**, puis lancer le jeu depuis l'icône — il s'ouvre alors sans aucune interface navigateur (manifeste PWA + icônes fournis). Une astuce s'affiche automatiquement sur l'écran titre des iPhone/iPad.
+
 | Geste | Action |
 |---|---|
 | Pouce gauche (moitié gauche) | Joystick virtuel pour se déplacer |

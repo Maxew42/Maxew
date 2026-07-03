@@ -8,6 +8,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Cauchemar en Cuisine</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍳</text></svg>">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -71,6 +73,13 @@
   .best { margin-top: 18px; font-size: 16px; color: #cbb896; }
   .best b { color: #ffd700; }
 
+  #iosTip {
+    margin-top: 14px; max-width: 440px; font-size: 13px; line-height: 1.5;
+    color: #cbb896; background: rgba(42, 32, 25, 0.8); border: 1px solid #5a4630;
+    border-radius: 10px; padding: 10px 14px;
+  }
+  #iosTip b { color: #ffb347; }
+
   #levelup h2 { font-size: 38px; color: #ffd700; text-shadow: 0 3px 0 #7a5a12; }
   #levelup .lvsub { color: #cbb896; margin: 6px 0 4px; }
   #cards { display: flex; gap: 18px; margin-top: 24px; flex-wrap: wrap; justify-content: center; }
@@ -103,6 +112,7 @@
     .controls { padding: 10px 18px; margin-bottom: 14px; font-size: 13px; gap: 4px 14px; }
     button { font-size: 18px; padding: 10px 30px; }
     .best { margin-top: 10px; font-size: 14px; }
+    #iosTip { margin-top: 8px; font-size: 12px; padding: 7px 12px; }
     #levelup h2 { font-size: 26px; }
     #cards { gap: 10px; margin-top: 12px; }
     .card { width: 190px; padding: 12px 10px 12px; }
@@ -135,6 +145,7 @@
   </div>
   <button id="btnStart">Commencer le service</button>
   <div class="best">🏆 Record : <b id="bestStart">—</b></div>
+  <p id="iosTip" class="hidden">📲 Plein écran sans la barre Safari : touchez <b>Partager</b> puis <b>« Sur l'écran d'accueil »</b>, et lancez le jeu depuis l'icône.</p>
 </div>
 
 <div id="levelup" class="overlay hidden">

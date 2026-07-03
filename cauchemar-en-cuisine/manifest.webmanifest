@@ -1,0 +1,14 @@
+{
+  "name": "Cauchemar en Cuisine",
+  "short_name": "Cauchemar",
+  "description": "Bullet hell de survie dans une cuisine de restaurant.",
+  "start_url": ".",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#14100c",
+  "theme_color": "#14100c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
