@@ -38,6 +38,11 @@
   body.touch .kb-only { display: none !important; }
   body:not(.touch) .touch-only { display: none !important; }
 
+  /* manette détectée : ses contrôles remplacent les autres */
+  .pad-only { display: none !important; }
+  body.pad .pad-only { display: grid !important; }
+  body.pad .kb-only, body.pad .touch-only { display: none !important; }
+
   /* invite à passer en mode paysage (tactile + portrait uniquement) */
   #rotate { display: none; z-index: 60; background: #14100c; font-size: 20px; color: #f5e9d0; }
   #rotate .phone { font-size: 64px; margin-bottom: 18px; animation: turn 1.8s ease-in-out infinite; }
@@ -89,7 +94,7 @@
     transition: transform .1s, border-color .1s, background .1s;
     touch-action: manipulation;
   }
-  .card:hover { transform: translateY(-6px) scale(1.03); border-color: #ffb347; background: #3a2c20; }
+  .card:hover, .card.selected { transform: translateY(-6px) scale(1.03); border-color: #ffb347; background: #3a2c20; }
   .card .ic { font-size: 46px; display: block; }
   .card h3 { color: #ffb347; margin: 12px 0 8px; font-size: 17px; }
   .card p { font-size: 13px; color: #cbb896; line-height: 1.4; }
@@ -142,6 +147,12 @@
     <b>Pouce gauche</b><span>joystick pour se déplacer</span>
     <b>Pouce droit</b><span>joystick pour viser (sinon visée auto)</span>
     <b>⏸ / 🔊</b><span>pause et son, en haut à droite</span>
+  </div>
+  <div class="controls pad-only">
+    <b>Stick gauche / croix</b><span>se déplacer</span>
+    <b>Stick droit</b><span>viser (sinon visée auto)</span>
+    <b>A</b><span>commencer / choisir une carte</span>
+    <b>Start / Select</b><span>pause / couper le son</span>
   </div>
   <button id="btnStart">Commencer le service</button>
   <div class="best">🏆 Record : <b id="bestStart">—</b></div>

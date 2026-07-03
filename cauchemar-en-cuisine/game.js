@@ -632,6 +632,8 @@ const mouse = { x: VW / 2, y: VH / 2 };
 addEventListener('keydown', e => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   keys.add(e.code);
+  // touches de déplacement : le joueur repasse au clavier, la visée revient à la souris
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) padMode = false;
   if (e.code === 'KeyM') muted = !muted;
   if ((e.code === 'KeyP' || e.code === 'Escape') && (state === 'play' || state === 'pause')) {
     state = state === 'play' ? 'pause' : 'play';
@@ -644,7 +646,10 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
 addEventListener('mousemove', e => {
   mouse.x = e.clientX; mouse.y = e.clientY;
   // souris réellement utilisée (pas un événement synthétique post-tap) : retour au mode clavier/souris
-  if (isTouch && performance.now() - lastTouchAt > 800) setTouchMode(false);
+  if (performance.now() - lastTouchAt > 800) {
+    if (isTouch) setTouchMode(false);
+    padMode = false;
+  }
 });
 
 // =================== TACTILE (MOBILE) ===================
@@ -678,6 +683,7 @@ glCanvas.addEventListener('touchstart', e => {
   e.preventDefault();
   lastTouchAt = performance.now();
   if (!isTouch) setTouchMode(true);
+  padMode = false;
   for (const t of e.changedTouches) {
     if (state === 'play' || state === 'pause') {
       if (inTouchBtn(t, touchBtnPause())) { state = state === 'play' ? 'pause' : 'play'; continue; }
@@ -755,6 +761,103 @@ function tryLockLandscape() {
   if (isIOS && !standalone) document.getElementById('iosTip').classList.remove('hidden');
 }
 
+// =================== MANETTE (GAMEPAD) ===================
+// Stick gauche / croix : se déplacer · stick droit : viser (sinon visée auto) ·
+// A : commencer / choisir une carte · Start : pause · Select : couper le son.
+// Mappage « standard » du Gamepad API (Xbox, PlayStation, Backbone, Kishi…).
+const PAD_DEAD = 0.22;
+let padMode = false, padSeen = false, padSel = -1, padPrevPushX = 0;
+const padMove = { x: 0, y: 0 };
+const padAim = { x: 0, y: 0 };
+const padPrev = [];
+
+// zone morte radiale, magnitude relissée sur [0,1]
+function padDeadzone(x, y, out) {
+  const m = Math.hypot(x, y);
+  if (m < PAD_DEAD) { out.x = 0; out.y = 0; return; }
+  const k = Math.min(1, (m - PAD_DEAD) / (1 - PAD_DEAD)) / m;
+  out.x = x * k; out.y = y * k;
+}
+
+function pollGamepad() {
+  let gp = null;
+  try {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) { if (p && p.connected) { gp = p; break; } }
+  } catch (_) { /* API indisponible */ }
+  if (!gp) {
+    padMove.x = padMove.y = padAim.x = padAim.y = 0;
+    padMode = false;
+    return;
+  }
+  if (!padSeen) { padSeen = true; document.body.classList.add('pad'); }
+
+  padDeadzone(gp.axes[0] || 0, gp.axes[1] || 0, padMove);
+  padDeadzone(gp.axes[2] || 0, gp.axes[3] || 0, padAim);
+
+  const pressed = i => !!(gp.buttons[i] && gp.buttons[i].pressed);
+  const justPressed = i => pressed(i) && !padPrev[i];
+
+  // poussée horizontale du stick seul (front montant, pour naviguer entre les cartes)
+  const pushX = padMove.x > 0.5 ? 1 : padMove.x < -0.5 ? -1 : 0;
+
+  // croix directionnelle = déplacement aussi
+  if (pressed(14)) padMove.x = -1;
+  if (pressed(15)) padMove.x = 1;
+  if (pressed(12)) padMove.y = -1;
+  if (pressed(13)) padMove.y = 1;
+
+  let anyInput = !!(padMove.x || padMove.y || padAim.x || padAim.y);
+  for (let i = 0; i < gp.buttons.length && !anyInput; i++) anyInput = pressed(i);
+  if (anyInput) padMode = true;
+
+  if (justPressed(9) && (state === 'play' || state === 'pause')) state = state === 'play' ? 'pause' : 'play';
+  if (justPressed(8)) muted = !muted;
+
+  // A : commencer / reprendre / valider la carte sélectionnée
+  if (justPressed(0)) {
+    if (state === 'start' || state === 'over' || state === 'victory') startGame();
+    else if (state === 'pause') state = 'play';
+    else if (state === 'levelup') {
+      const cards = elCards.children;
+      if (cards.length) cards[Math.max(0, padSel)].click();
+    }
+  }
+
+  // navigation entre les cartes d'amélioration (croix ou stick gauche)
+  if (state === 'levelup') {
+    const dir = justPressed(15) || (pushX === 1 && padPrevPushX !== 1) ? 1
+      : justPressed(14) || (pushX === -1 && padPrevPushX !== -1) ? -1 : 0;
+    if (dir) {
+      const cards = elCards.children;
+      if (cards.length) {
+        padSel = padSel < 0 ? (dir > 0 ? 0 : cards.length - 1) : (padSel + dir + cards.length) % cards.length;
+        for (let i = 0; i < cards.length; i++) cards[i].classList.toggle('selected', i === padSel);
+      }
+    }
+  }
+
+  padPrevPushX = pushX;
+  for (let i = 0; i < gp.buttons.length; i++) padPrev[i] = gp.buttons[i].pressed;
+}
+
+addEventListener('gamepadconnected', () => {
+  padSeen = true;
+  document.body.classList.add('pad');
+  if (state === 'play') announcements.push({ txt: '🎮 Manette connectée', ttl: 3 });
+});
+addEventListener('gamepaddisconnected', () => {
+  let any = false;
+  try {
+    for (const p of navigator.getGamepads()) if (p && p.connected) any = true;
+  } catch (_) {}
+  if (!any) {
+    if (padMode && state === 'play') state = 'pause'; // manette débranchée en pleine partie
+    padMode = false; padSeen = false;
+    document.body.classList.remove('pad');
+  }
+});
+
 // visée : rayon caméra -> plan du sol
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -763,24 +866,30 @@ const rayHit = new THREE.Vector3();
 function updateCameraAndAim() {
   camera.position.set(player.x, CAM_H, player.y + CAM_ZOFF);
   camera.lookAt(player.x, 0, player.y);
-  if (isTouch) {
-    // écran droit = monde +x, écran bas = monde +y : le stick donne directement l'angle
-    if (aimStick.id !== null && (aimStick.dx || aimStick.dy)) {
-      player.aim = Math.atan2(aimStick.dy, aimStick.dx);
-      aimWorld.x = player.x + Math.cos(player.aim) * AIM_DIST;
-      aimWorld.y = player.y + Math.sin(player.aim) * AIM_DIST;
-    } else {
-      // visée automatique : la vermine vivante la plus proche
-      let tgt = null, bd = Infinity;
-      for (const e of enemies) {
-        if (e.dead) continue;
-        const d = dist2(e.x, e.y, player.x, player.y);
-        if (d < bd) { bd = d; tgt = e; }
-      }
-      if (tgt) {
-        aimWorld.x = tgt.x; aimWorld.y = tgt.y;
-        player.aim = Math.atan2(aimWorld.y - player.y, aimWorld.x - player.x);
-      }
+  // écran droit = monde +x, écran bas = monde +y : les sticks donnent directement l'angle
+  if (padMode && (padAim.x || padAim.y)) {
+    player.aim = Math.atan2(padAim.y, padAim.x);
+    aimWorld.x = player.x + Math.cos(player.aim) * AIM_DIST;
+    aimWorld.y = player.y + Math.sin(player.aim) * AIM_DIST;
+    return;
+  }
+  if (isTouch && aimStick.id !== null && (aimStick.dx || aimStick.dy)) {
+    player.aim = Math.atan2(aimStick.dy, aimStick.dx);
+    aimWorld.x = player.x + Math.cos(player.aim) * AIM_DIST;
+    aimWorld.y = player.y + Math.sin(player.aim) * AIM_DIST;
+    return;
+  }
+  if (isTouch || padMode) {
+    // visée automatique : la vermine vivante la plus proche
+    let tgt = null, bd = Infinity;
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const d = dist2(e.x, e.y, player.x, player.y);
+      if (d < bd) { bd = d; tgt = e; }
+    }
+    if (tgt) {
+      aimWorld.x = tgt.x; aimWorld.y = tgt.y;
+      player.aim = Math.atan2(aimWorld.y - player.y, aimWorld.x - player.x);
     }
     return;
   }
@@ -1153,6 +1262,9 @@ function openLevelUp() {
     });
     elCards.appendChild(card);
   }
+  // à la manette : première carte présélectionnée, navigation stick/croix + A
+  padSel = padMode ? 0 : -1;
+  if (padSel === 0) elCards.firstChild.classList.add('selected');
   elLevelup.classList.remove('hidden');
 }
 
@@ -1327,6 +1439,7 @@ function update(dt) {
   if (keys.has('ArrowUp') || keys.has('KeyW')) my -= 1;
   if (keys.has('ArrowDown') || keys.has('KeyS')) my += 1;
   if (moveStick.id !== null) { mx = moveStick.dx; my = moveStick.dy; }
+  if (padMode && (padMove.x || padMove.y)) { mx = padMove.x; my = padMove.y; }
   player.moving = !!(mx || my);
   if (player.moving) {
     const n = Math.hypot(mx, my);
@@ -2072,7 +2185,7 @@ function drawHUD() {
   }
 
   // réticule de visée souris (bien visible même au milieu de la horde)
-  if ((state === 'play' || state === 'pause') && !isTouch) {
+  if ((state === 'play' || state === 'pause') && !isTouch && !padMode) {
     const mx = mouse.x, my = mouse.y;
     const R = 14;
     hctx.save();
@@ -2107,24 +2220,30 @@ function drawHUD() {
     hctx.textAlign = 'center';
     hctx.fillText('⏸️ PAUSE', VW / 2, VH / 2 - 20);
     hctx.font = '18px system-ui';
-    hctx.fillText(isTouch ? "Touchez l'écran pour reprendre" : 'Appuyez sur Échap ou P pour reprendre', VW / 2, VH / 2 + 30);
+    hctx.fillText(
+      padMode ? 'Appuyez sur Start ou A pour reprendre'
+        : isTouch ? "Touchez l'écran pour reprendre"
+          : 'Appuyez sur Échap ou P pour reprendre', VW / 2, VH / 2 + 30);
   }
 
-  // interface tactile : réticule sur la cible, joysticks, boutons pause/son
+  // réticule projeté sur la cible (stick droit, manette ou visée auto)
+  if ((isTouch || padMode) && state === 'play') {
+    const [ax, ay] = proj(aimWorld.x, 0, aimWorld.y);
+    const manual = aimStick.id !== null || (padMode && (padAim.x || padAim.y));
+    hctx.save();
+    hctx.globalAlpha = manual ? 0.95 : 0.55;
+    hctx.lineCap = 'round';
+    for (const [lw, col] of [[4.5, 'rgba(0,0,0,0.75)'], [2.2, '#ffcf40']]) {
+      hctx.strokeStyle = col;
+      hctx.lineWidth = lw;
+      hctx.beginPath(); hctx.arc(ax, ay, 14, 0, TAU); hctx.stroke();
+    }
+    hctx.restore();
+  }
+
+  // interface tactile : joysticks, boutons pause/son
   if (isTouch && (state === 'play' || state === 'pause')) {
     if (state === 'play') {
-      // réticule projeté sur la cible (stick droit ou visée auto)
-      const [ax, ay] = proj(aimWorld.x, 0, aimWorld.y);
-      hctx.save();
-      hctx.globalAlpha = aimStick.id !== null ? 0.95 : 0.55;
-      hctx.lineCap = 'round';
-      for (const [lw, col] of [[4.5, 'rgba(0,0,0,0.75)'], [2.2, '#ffcf40']]) {
-        hctx.strokeStyle = col;
-        hctx.lineWidth = lw;
-        hctx.beginPath(); hctx.arc(ax, ay, 14, 0, TAU); hctx.stroke();
-      }
-      hctx.restore();
-
       // joysticks
       for (const s of [moveStick, aimStick]) {
         if (s.id === null) continue;
@@ -2233,6 +2352,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
+  pollGamepad();
   if (state === 'play') update(dt);
   render3d();
   requestAnimationFrame(frame);
