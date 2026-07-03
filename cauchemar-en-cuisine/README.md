@@ -17,12 +17,25 @@ python3 -m http.server 8000
 
 ## Contrôles
 
+### Clavier / souris
+
 | Touche | Action |
 |---|---|
 | Flèches / WASD | Se déplacer |
 | Souris | Viser (les armes tirent automatiquement) |
 | Échap / P | Pause |
 | M | Couper le son |
+
+### Mobile (tactile, mode paysage)
+
+Le jeu se joue en paysage : en portrait, un écran invite à tourner l'appareil (sur Android, le jeu passe en plein écran et verrouille l'orientation au lancement).
+
+| Geste | Action |
+|---|---|
+| Pouce gauche (moitié gauche) | Joystick virtuel pour se déplacer |
+| Pouce droit (moitié droite) | Joystick virtuel pour viser — sans lui, visée automatique sur l'ennemi le plus proche |
+| ⏸ / 🔊 (en haut à droite) | Pause et son |
+| Toucher l'écran en pause | Reprendre |
 
 ## Armes
 

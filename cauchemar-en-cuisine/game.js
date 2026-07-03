@@ -640,7 +640,108 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => keys.delete(e.code));
 addEventListener('blur', () => { if (state === 'play') state = 'pause'; });
-addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play') state = 'pause'; });
+addEventListener('mousemove', e => {
+  mouse.x = e.clientX; mouse.y = e.clientY;
+  // souris réellement utilisée (pas un événement synthétique post-tap) : retour au mode clavier/souris
+  if (isTouch && performance.now() - lastTouchAt > 800) setTouchMode(false);
+});
+
+// =================== TACTILE (MOBILE) ===================
+// joysticks virtuels dynamiques : gauche = déplacement, droit = visée.
+// Sans stick droit, visée automatique sur l'ennemi le plus proche.
+const STICK_R = 60;        // course maximale du joystick (px)
+const AIM_DIST = 460;      // portée de visée avec le stick droit (unités monde)
+const moveStick = { id: null, cx: 0, cy: 0, dx: 0, dy: 0 };
+const aimStick = { id: null, cx: 0, cy: 0, dx: 0, dy: 0 };
+let isTouch = matchMedia('(pointer: coarse)').matches;
+let lastTouchAt = -1e9;
+
+function setTouchMode(on) {
+  isTouch = on;
+  document.body.classList.toggle('touch', on);
+  if (!on) releaseSticks();
+}
+function releaseSticks() {
+  moveStick.id = aimStick.id = null;
+  moveStick.dx = moveStick.dy = aimStick.dx = aimStick.dy = 0;
+}
+if (isTouch) document.body.classList.add('touch');
+
+// boutons du HUD tactile (pause / son), en haut à droite sous la barre d'XP
+const TBTN_R = 24;
+const touchBtnPause = () => ({ x: VW - 38, y: 52 });
+const touchBtnMute = () => ({ x: VW - 96, y: 52 });
+const inTouchBtn = (t, b) => dist2(t.clientX, t.clientY, b.x, b.y) < (TBTN_R + 14) * (TBTN_R + 14);
+
+glCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  lastTouchAt = performance.now();
+  if (!isTouch) setTouchMode(true);
+  for (const t of e.changedTouches) {
+    if (state === 'play' || state === 'pause') {
+      if (inTouchBtn(t, touchBtnPause())) { state = state === 'play' ? 'pause' : 'play'; continue; }
+      if (inTouchBtn(t, touchBtnMute())) { muted = !muted; continue; }
+    }
+    if (state === 'pause') { state = 'play'; continue; }
+    if (state !== 'play') continue;
+    const stick = t.clientX < VW / 2 ? moveStick : aimStick;
+    if (stick.id === null) {
+      stick.id = t.identifier;
+      stick.cx = t.clientX; stick.cy = t.clientY;
+      stick.dx = 0; stick.dy = 0;
+    }
+  }
+}, { passive: false });
+
+glCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    for (const s of [moveStick, aimStick]) {
+      if (s.id !== t.identifier) continue;
+      let dx = t.clientX - s.cx, dy = t.clientY - s.cy;
+      const d = Math.hypot(dx, dy);
+      if (d > STICK_R) {
+        // au-delà de la course : le centre suit le doigt (changements de direction plus souples)
+        s.cx = t.clientX - dx / d * STICK_R;
+        s.cy = t.clientY - dy / d * STICK_R;
+        dx = dx / d * STICK_R; dy = dy / d * STICK_R;
+      }
+      s.dx = dx / STICK_R; s.dy = dy / STICK_R;
+    }
+  }
+}, { passive: false });
+
+function touchRelease(e) {
+  e.preventDefault();
+  lastTouchAt = performance.now();
+  for (const t of e.changedTouches) {
+    for (const s of [moveStick, aimStick]) {
+      if (s.id === t.identifier) { s.id = null; s.dx = s.dy = 0; }
+    }
+  }
+}
+glCanvas.addEventListener('touchend', touchRelease, { passive: false });
+glCanvas.addEventListener('touchcancel', touchRelease, { passive: false });
+glCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// en portrait sur tactile, l'overlay #rotate masque le jeu : on met en pause
+addEventListener('resize', () => {
+  if (isTouch && innerHeight > innerWidth && state === 'play') state = 'pause';
+});
+
+// plein écran + verrouillage paysage (Android ; sans effet sur iOS, l'overlay #rotate prend le relais)
+function tryLockLandscape() {
+  if (!isTouch) return;
+  try {
+    const el = document.documentElement;
+    const fs = !document.fullscreenElement && el.requestFullscreen
+      ? el.requestFullscreen({ navigationUI: 'hide' }) : Promise.resolve();
+    Promise.resolve(fs)
+      .then(() => screen.orientation && screen.orientation.lock ? screen.orientation.lock('landscape') : null)
+      .catch(() => {});
+  } catch (_) { /* non supporté */ }
+}
 
 // visée : rayon caméra -> plan du sol
 const raycaster = new THREE.Raycaster();
@@ -650,6 +751,27 @@ const rayHit = new THREE.Vector3();
 function updateCameraAndAim() {
   camera.position.set(player.x, CAM_H, player.y + CAM_ZOFF);
   camera.lookAt(player.x, 0, player.y);
+  if (isTouch) {
+    // écran droit = monde +x, écran bas = monde +y : le stick donne directement l'angle
+    if (aimStick.id !== null && (aimStick.dx || aimStick.dy)) {
+      player.aim = Math.atan2(aimStick.dy, aimStick.dx);
+      aimWorld.x = player.x + Math.cos(player.aim) * AIM_DIST;
+      aimWorld.y = player.y + Math.sin(player.aim) * AIM_DIST;
+    } else {
+      // visée automatique : la vermine vivante la plus proche
+      let tgt = null, bd = Infinity;
+      for (const e of enemies) {
+        if (e.dead) continue;
+        const d = dist2(e.x, e.y, player.x, player.y);
+        if (d < bd) { bd = d; tgt = e; }
+      }
+      if (tgt) {
+        aimWorld.x = tgt.x; aimWorld.y = tgt.y;
+        player.aim = Math.atan2(aimWorld.y - player.y, aimWorld.x - player.x);
+      }
+    }
+    return;
+  }
   ndc.set((mouse.x / VW) * 2 - 1, -((mouse.y / VH) * 2 - 1));
   raycaster.setFromCamera(ndc, camera);
   if (raycaster.ray.intersectPlane(floorPlane, rayHit)) {
@@ -1192,11 +1314,13 @@ function update(dt) {
   if (keys.has('ArrowRight') || keys.has('KeyD')) mx += 1;
   if (keys.has('ArrowUp') || keys.has('KeyW')) my -= 1;
   if (keys.has('ArrowDown') || keys.has('KeyS')) my += 1;
+  if (moveStick.id !== null) { mx = moveStick.dx; my = moveStick.dy; }
   player.moving = !!(mx || my);
   if (player.moving) {
     const n = Math.hypot(mx, my);
-    player.x += (mx / n) * player.speed * dt;
-    player.y += (my / n) * player.speed * dt;
+    const sp = player.speed * Math.min(1, n); // joystick analogique : vitesse proportionnelle
+    player.x += (mx / n) * sp * dt;
+    player.y += (my / n) * sp * dt;
   }
   player.x = clamp(player.x, WALL + player.r, WORLD_W - WALL - player.r);
   player.y = clamp(player.y, WALL + player.r, WORLD_H - WALL - player.r);
@@ -1870,19 +1994,20 @@ function drawHUD() {
     hctx.strokeRect(bx - 2, by - 2, bw + 4, 18);
   }
 
-  // stats à droite
+  // stats à droite (décalées en tactile pour laisser la place aux boutons pause/son)
   hctx.textAlign = 'right';
   hctx.font = 'bold 16px system-ui';
   hctx.lineWidth = 3;
+  const statsX = isTouch ? VW - 132 : VW - 14;
   const rightLines = [`💀 ${kills}`, `🏆 ${best > 0 ? fmtTime(best) : '—'}`];
   rightLines.forEach((txt, i) => {
-    hctx.strokeText(txt, VW - 14, 40 + i * 26);
+    hctx.strokeText(txt, statsX, 40 + i * 26);
     hctx.fillStyle = '#f5e9d0';
-    hctx.fillText(txt, VW - 14, 40 + i * 26);
+    hctx.fillText(txt, statsX, 40 + i * 26);
   });
 
-  // PV en bas à gauche
-  const hbw = 220, hbx = 14, hby = VH - 34;
+  // PV en bas (centrés en tactile pour ne pas passer sous le pouce gauche)
+  const hbw = 220, hbx = isTouch ? (VW - hbw) / 2 : 14, hby = VH - 34;
   hctx.fillStyle = 'rgba(0,0,0,0.6)';
   hctx.fillRect(hbx, hby, hbw, 20);
   hctx.fillStyle = player.hp / player.maxHp > 0.35 ? '#66bb6a' : '#e53935';
@@ -1934,8 +2059,8 @@ function drawHUD() {
     hctx.fillRect(0, 0, VW, VH);
   }
 
-  // réticule de visée (bien visible même au milieu de la horde)
-  if (state === 'play' || state === 'pause') {
+  // réticule de visée souris (bien visible même au milieu de la horde)
+  if ((state === 'play' || state === 'pause') && !isTouch) {
     const mx = mouse.x, my = mouse.y;
     const R = 14;
     hctx.save();
@@ -1970,7 +2095,50 @@ function drawHUD() {
     hctx.textAlign = 'center';
     hctx.fillText('⏸️ PAUSE', VW / 2, VH / 2 - 20);
     hctx.font = '18px system-ui';
-    hctx.fillText('Appuyez sur Échap ou P pour reprendre', VW / 2, VH / 2 + 30);
+    hctx.fillText(isTouch ? "Touchez l'écran pour reprendre" : 'Appuyez sur Échap ou P pour reprendre', VW / 2, VH / 2 + 30);
+  }
+
+  // interface tactile : réticule sur la cible, joysticks, boutons pause/son
+  if (isTouch && (state === 'play' || state === 'pause')) {
+    if (state === 'play') {
+      // réticule projeté sur la cible (stick droit ou visée auto)
+      const [ax, ay] = proj(aimWorld.x, 0, aimWorld.y);
+      hctx.save();
+      hctx.globalAlpha = aimStick.id !== null ? 0.95 : 0.55;
+      hctx.lineCap = 'round';
+      for (const [lw, col] of [[4.5, 'rgba(0,0,0,0.75)'], [2.2, '#ffcf40']]) {
+        hctx.strokeStyle = col;
+        hctx.lineWidth = lw;
+        hctx.beginPath(); hctx.arc(ax, ay, 14, 0, TAU); hctx.stroke();
+      }
+      hctx.restore();
+
+      // joysticks
+      for (const s of [moveStick, aimStick]) {
+        if (s.id === null) continue;
+        hctx.fillStyle = 'rgba(255,255,255,0.12)';
+        hctx.beginPath(); hctx.arc(s.cx, s.cy, STICK_R, 0, TAU); hctx.fill();
+        hctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        hctx.lineWidth = 2;
+        hctx.beginPath(); hctx.arc(s.cx, s.cy, STICK_R, 0, TAU); hctx.stroke();
+        hctx.fillStyle = s === aimStick ? 'rgba(255,207,64,0.8)' : 'rgba(245,233,208,0.8)';
+        hctx.beginPath(); hctx.arc(s.cx + s.dx * STICK_R, s.cy + s.dy * STICK_R, 22, 0, TAU); hctx.fill();
+      }
+    }
+
+    // boutons pause + son
+    const btns = [[touchBtnPause(), state === 'pause' ? '▶' : '⏸'], [touchBtnMute(), muted ? '🔇' : '🔊']];
+    for (const [b, icon] of btns) {
+      hctx.fillStyle = 'rgba(0,0,0,0.45)';
+      hctx.beginPath(); hctx.arc(b.x, b.y, TBTN_R, 0, TAU); hctx.fill();
+      hctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      hctx.lineWidth = 1.5;
+      hctx.beginPath(); hctx.arc(b.x, b.y, TBTN_R, 0, TAU); hctx.stroke();
+      hctx.font = '22px system-ui';
+      hctx.textAlign = 'center';
+      hctx.fillStyle = '#f5e9d0';
+      hctx.fillText(icon, b.x, b.y + 1);
+    }
   }
 }
 
@@ -1981,6 +2149,8 @@ const elNewRecord = document.getElementById('newrecord');
 
 function startGame() {
   initGame();
+  releaseSticks();
+  tryLockLandscape();
   state = 'play';
   elStart.classList.add('hidden');
   elGameover.classList.add('hidden');
