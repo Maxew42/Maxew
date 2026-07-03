@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Warp</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #03050b;
+    color: #edf7ff;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    touch-action: none;
+    overscroll-behavior: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hidden { display: none !important; }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12;
+    overflow: auto;
+    padding: calc(14px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right))
+             calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+    background: rgba(3, 5, 11, 0.82);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .app-shell {
+    min-height: 100%;
+    display: grid;
+    grid-template-columns: minmax(280px, 0.9fr) minmax(310px, 1.1fr) minmax(320px, 1.25fr);
+    gap: 12px;
+    align-items: stretch;
+    max-width: 1320px;
+    margin: 0 auto;
+  }
+  .pane {
+    border: 1px solid rgba(124, 226, 253, 0.22);
+    background: rgba(7, 12, 23, 0.78);
+    box-shadow: 0 16px 38px rgba(0, 0, 0, 0.34);
+    border-radius: 8px;
+    padding: 14px;
+    min-height: 0;
+  }
+  .brand-pane { display: grid; grid-template-rows: auto minmax(150px, 1fr) auto; gap: 12px; }
+  h1 {
+    color: #f8fbff;
+    font-size: clamp(42px, 8vw, 86px);
+    line-height: 0.9;
+    letter-spacing: 0;
+    font-weight: 900;
+  }
+  h2, h3 {
+    font-size: 13px;
+    color: #8ee7ff;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .ship-preview-wrap {
+    min-height: 190px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 8px;
+    background:
+      linear-gradient(rgba(104, 225, 253, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(104, 225, 253, 0.06) 1px, transparent 1px),
+      rgba(0, 0, 0, 0.18);
+    background-size: 26px 26px;
+  }
+  #ship-preview { width: min(100%, 360px); height: auto; max-height: 260px; }
+  #ship-name {
+    font-size: 24px;
+    font-weight: 800;
+    color: #f7b955;
+    min-height: 32px;
+  }
+  #ship-tagline { color: #aeb8c7; font-size: 13px; line-height: 1.4; min-height: 36px; }
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .stat {
+    min-width: 0;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.035);
+  }
+  .stat span { display: block; color: #8895a7; font-size: 11px; text-transform: uppercase; }
+  .stat b { display: block; color: #edf7ff; font-size: 17px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .premades { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button, input {
+    font: inherit;
+  }
+  button {
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 7px;
+    color: #081019;
+    background: #68e1fd;
+    padding: 11px 13px;
+    font-weight: 800;
+    cursor: pointer;
+    min-height: 42px;
+    transition: transform 0.08s, border-color 0.12s, filter 0.12s, background 0.12s;
+  }
+  button:hover { filter: brightness(1.08); border-color: rgba(255,255,255,0.28); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: 0.45; cursor: default; filter: grayscale(0.55); }
+  button.ghost {
+    color: #edf7ff;
+    background: rgba(255, 255, 255, 0.055);
+  }
+  button.warn { background: #f7b955; color: #171008; }
+  button.danger { background: #ff6b78; color: #18080d; }
+  button.selected {
+    color: #041018;
+    background: #f7b955;
+    border-color: #ffe2a0;
+  }
+  .ship-choice {
+    min-height: 44px;
+    padding: 8px;
+    color: #edf7ff;
+    background: rgba(255, 255, 255, 0.055);
+    text-align: left;
+  }
+  .ship-choice.selected { color: #081019; background: #f7b955; }
+  .ops-pane { display: grid; grid-template-rows: auto auto 1fr; gap: 12px; }
+  .field { display: grid; gap: 6px; }
+  label { font-size: 12px; color: #9fb0c3; text-transform: uppercase; }
+  input {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 7px;
+    background: rgba(0,0,0,0.34);
+    color: #edf7ff;
+    outline: none;
+    padding: 10px 12px;
+    font-weight: 700;
+  }
+  input:focus { border-color: #68e1fd; }
+  input.code { text-align: center; text-transform: uppercase; letter-spacing: 5px; font-size: 20px; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .actions .wide { grid-column: 1 / -1; }
+  .status-line {
+    color: #ffb4bd;
+    min-height: 20px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .editor-pane {
+    display: grid;
+    grid-template-rows: auto auto minmax(240px, 1fr) auto;
+    gap: 10px;
+  }
+  .editor-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: start;
+  }
+  .budget {
+    color: #edf7ff;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .budget.good { color: #78e08f; }
+  .budget.bad { color: #ff6b78; }
+  .segmented {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .segmented button { padding: 8px; min-height: 36px; }
+  .palette {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    gap: 6px;
+  }
+  .tool {
+    min-width: 0;
+    min-height: 74px;
+    padding: 7px;
+    color: #edf7ff;
+    background: rgba(255,255,255,0.055);
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    grid-template-rows: 1fr auto;
+    column-gap: 7px;
+    row-gap: 2px;
+    align-items: center;
+    text-align: left;
+  }
+  .tool-icon {
+    grid-row: 1 / 3;
+    width: 34px;
+    height: 34px;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.24);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .tool-name {
+    min-width: 0;
+    color: #edf7ff;
+    font-size: 11px;
+    line-height: 1.15;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+  }
+  .tool-meta {
+    color: #9fb0c3;
+    font-size: 10px;
+    line-height: 1.1;
+  }
+  .tool.selected .tool-meta { color: rgba(4, 16, 24, 0.72); }
+  .tool.selected .tool-name { color: #041018; }
+  .editor-grid-wrap {
+    min-height: 240px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: rgba(0,0,0,0.22);
+  }
+  #editor-grid {
+    width: min(100%, 420px);
+    height: auto;
+    touch-action: none;
+  }
+  .editor-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+  #hud {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    pointer-events: none;
+  }
+  .hud-bars {
+    position: absolute;
+    left: calc(12px + env(safe-area-inset-left));
+    top: calc(12px + env(safe-area-inset-top));
+    width: min(300px, calc(100vw - 24px));
+    display: grid;
+    gap: 7px;
+  }
+  .meter {
+    height: 18px;
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 5px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.38);
+  }
+  .meter i {
+    display: block;
+    height: 100%;
+    width: 50%;
+    background: #78e08f;
+  }
+  #energy-bar i { background: #68e1fd; }
+  .hud-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: #edf7ff;
+    font-size: 12px;
+    font-weight: 800;
+    text-shadow: 0 2px 4px #000;
+    font-variant-numeric: tabular-nums;
+  }
+  .cockpit-panel {
+    position: absolute;
+    left: 50%;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    width: min(560px, calc(100vw - 116px));
+    transform: translateX(-50%);
+    padding: 12px 14px 14px;
+    border: 1px solid rgba(104,225,253,0.28);
+    clip-path: polygon(18px 0, calc(100% - 18px) 0, 100% 18px, 100% calc(100% - 18px), calc(100% - 18px) 100%, 18px 100%, 0 calc(100% - 18px), 0 18px);
+    background:
+      linear-gradient(110deg, rgba(104,225,253,0.15), transparent 28%, rgba(247,185,85,0.08) 70%, rgba(255,107,120,0.1)),
+      rgba(5, 10, 19, 0.76);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4) inset, 0 16px 38px rgba(0,0,0,0.42);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .cockpit-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    color: #8ee7ff;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+  .command-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .cmd {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px;
+    align-items: center;
+    min-height: 34px;
+    padding: 5px 7px;
+    border: 1px solid rgba(237,247,255,0.12);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.055);
+    color: #d7e6f3;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .cmd kbd {
+    min-width: 34px;
+    padding: 3px 5px;
+    border-radius: 5px;
+    background: rgba(0,0,0,0.38);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #f7b955;
+    text-align: center;
+    font: inherit;
+    font-size: 10px;
+  }
+  .cmd span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cmd.on {
+    border-color: rgba(104,225,253,0.72);
+    background: rgba(104,225,253,0.18);
+    box-shadow: 0 0 16px rgba(104,225,253,0.18) inset;
+    color: #ffffff;
+  }
+  .cmd.on kbd {
+    background: #68e1fd;
+    color: #041018;
+  }
+  .pad-note {
+    color: #9fb0c3;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: none;
+  }
+  #radar {
+    position: absolute;
+    right: calc(12px + env(safe-area-inset-right));
+    top: calc(12px + env(safe-area-inset-top));
+    width: clamp(112px, 18vw, 168px);
+    height: clamp(112px, 18vw, 168px);
+    border: 1px solid rgba(104,225,253,0.24);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.28);
+  }
+  #btn-quit {
+    pointer-events: auto;
+    position: absolute;
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    min-width: 48px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    color: #edf7ff;
+    background: rgba(0,0,0,0.48);
+  }
+  #touch {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 7;
+    pointer-events: none;
+  }
+  body.touch.racing #touch { display: block; }
+  .tbtn {
+    position: absolute;
+    pointer-events: auto;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    border: 2px solid rgba(237,247,255,0.22);
+    background: rgba(7,12,23,0.58);
+    color: #edf7ff;
+    font-size: 12px;
+    font-weight: 900;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .tbtn.on, .tbtn:active { background: rgba(104,225,253,0.42); border-color: #68e1fd; }
+  #t-left { left: calc(14px + env(safe-area-inset-left)); bottom: calc(88px + env(safe-area-inset-bottom)); width: 78px; height: 78px; font-size: 28px; }
+  #t-right { left: calc(106px + env(safe-area-inset-left)); bottom: calc(88px + env(safe-area-inset-bottom)); width: 78px; height: 78px; font-size: 28px; }
+  #t-thrust { right: calc(16px + env(safe-area-inset-right)); bottom: calc(78px + env(safe-area-inset-bottom)); width: 92px; height: 92px; }
+  #t-primary { right: calc(124px + env(safe-area-inset-right)); bottom: calc(112px + env(safe-area-inset-bottom)); width: 74px; height: 74px; }
+  #t-secondary { right: calc(206px + env(safe-area-inset-right)); bottom: calc(126px + env(safe-area-inset-bottom)); width: 64px; height: 64px; }
+  #t-boost { right: calc(122px + env(safe-area-inset-right)); bottom: calc(36px + env(safe-area-inset-bottom)); width: 64px; height: 64px; }
+  #t-brake { left: calc(64px + env(safe-area-inset-left)); bottom: calc(24px + env(safe-area-inset-bottom)); width: 70px; height: 54px; border-radius: 8px; }
+  #t-utility { right: calc(28px + env(safe-area-inset-right)); bottom: calc(184px + env(safe-area-inset-bottom)); width: 58px; height: 58px; }
+
+  .center-panel {
+    width: min(620px, 100%);
+    min-height: 100%;
+    margin: 0 auto;
+    display: grid;
+    place-items: center;
+  }
+  .modal-pane {
+    width: min(520px, 100%);
+    border: 1px solid rgba(124, 226, 253, 0.22);
+    background: rgba(7, 12, 23, 0.88);
+    border-radius: 8px;
+    padding: 18px;
+    box-shadow: 0 18px 44px rgba(0,0,0,0.38);
+  }
+  #lobby-code {
+    font-size: clamp(42px, 11vw, 74px);
+    color: #f7b955;
+    font-weight: 900;
+    letter-spacing: 10px;
+    text-align: center;
+    cursor: pointer;
+  }
+  #lobby-players { display: grid; gap: 8px; margin: 14px 0; }
+  .lobby-player {
+    display: grid;
+    grid-template-columns: 12px 1fr auto;
+    gap: 9px;
+    align-items: center;
+    padding: 9px 10px;
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 7px;
+    background: rgba(255,255,255,0.045);
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--dot); }
+  .lobby-player b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lobby-player span { color: #9fb0c3; font-size: 12px; }
+  .modal-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+  #result-title { color: #f7b955; font-size: clamp(32px, 7vw, 54px); margin-bottom: 8px; }
+  #result-detail { color: #c5ceda; min-height: 24px; margin-bottom: 16px; }
+
+  @media (max-width: 1050px) {
+    .overlay { overflow: auto; }
+    .app-shell { grid-template-columns: 1fr 1fr; }
+    .editor-pane { grid-column: 1 / -1; }
+  }
+  @media (max-width: 720px) {
+    .overlay { padding: 10px; }
+    .app-shell {
+      grid-template-columns: 1fr;
+      align-content: start;
+    }
+    .brand-pane { grid-template-rows: auto auto auto; }
+    .ship-preview-wrap { min-height: 150px; }
+    .premades { grid-template-columns: 1fr 1fr; }
+    .palette { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .editor-actions, .actions, .modal-actions { grid-template-columns: 1fr; }
+    .actions .wide { grid-column: auto; }
+    h1 { font-size: 48px; }
+    .hud-bars { width: min(236px, calc(100vw - 24px)); }
+    #radar { width: 108px; height: 108px; }
+    .cockpit-panel { display: none; }
+    body.racing #touch { display: block; }
+    #t-thrust { right: calc(16px + env(safe-area-inset-right)); bottom: calc(76px + env(safe-area-inset-bottom)); }
+    #t-primary { right: calc(122px + env(safe-area-inset-right)); bottom: calc(104px + env(safe-area-inset-bottom)); }
+    #t-secondary { right: calc(108px + env(safe-area-inset-right)); bottom: calc(190px + env(safe-area-inset-bottom)); }
+    #t-boost { right: calc(116px + env(safe-area-inset-right)); bottom: calc(20px + env(safe-area-inset-bottom)); }
+    #t-utility { right: calc(16px + env(safe-area-inset-right)); bottom: calc(190px + env(safe-area-inset-bottom)); }
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="hud-bars">
+    <div class="hud-row"><span>Hull</span><span id="hp-text">0/0</span></div>
+    <div class="meter" id="hp-bar"><i></i></div>
+    <div class="hud-row"><span>Energy</span><span id="energy-text">0/0</span></div>
+    <div class="meter" id="energy-bar"><i></i></div>
+    <div class="hud-row"><span id="speed-text">0 m/s</span><span id="enemy-text">0 targets</span></div>
+  </div>
+  <div class="cockpit-panel" aria-label="Cockpit command panel">
+    <div class="cockpit-title"><span>Command</span><span class="pad-note">Pad: stick / RT / X-Y / A-B</span></div>
+    <div class="command-grid">
+      <div class="cmd" data-cmd="turn"><kbd>A D</kbd><span>Turn</span></div>
+      <div class="cmd" data-cmd="thrust"><kbd>W</kbd><span>Thrust</span></div>
+      <div class="cmd" data-cmd="brake"><kbd>S</kbd><span>Brake</span></div>
+      <div class="cmd" data-cmd="primary"><kbd>J</kbd><span>Fire</span></div>
+      <div class="cmd" data-cmd="secondary"><kbd>K</kbd><span>Ordnance</span></div>
+      <div class="cmd" data-cmd="boost"><kbd>Space</kbd><span>Boost</span></div>
+      <div class="cmd" data-cmd="utility"><kbd>F</kbd><span>Flares</span></div>
+      <div class="cmd" data-cmd="quit"><kbd>Esc</kbd><span>Exit</span></div>
+    </div>
+  </div>
+  <canvas id="radar" width="180" height="180"></canvas>
+  <button id="btn-quit" title="Leave battle">x</button>
+</div>
+
+<div id="touch">
+  <div class="tbtn" id="t-left">&lt;</div>
+  <div class="tbtn" id="t-right">&gt;</div>
+  <div class="tbtn" id="t-brake">BRAKE</div>
+  <div class="tbtn" id="t-thrust">THRUST</div>
+  <div class="tbtn" id="t-primary">FIRE</div>
+  <div class="tbtn" id="t-secondary">ORD</div>
+  <div class="tbtn" id="t-boost">BOOST</div>
+  <div class="tbtn" id="t-utility">FLR</div>
+</div>
+
+<div id="screen-home" class="overlay">
+  <main class="app-shell">
+    <section class="pane brand-pane">
+      <div>
+        <h1>Warp</h1>
+        <div id="ship-name"></div>
+        <p id="ship-tagline"></p>
+      </div>
+      <div class="ship-preview-wrap">
+        <canvas id="ship-preview" width="520" height="340"></canvas>
+      </div>
+      <div>
+        <h2>Premade Ships</h2>
+        <div class="premades" id="premade-list"></div>
+      </div>
+    </section>
+
+    <section class="pane ops-pane">
+      <div>
+        <h2>Pilot</h2>
+        <div class="field">
+          <label for="pilot-name">Callsign</label>
+          <input id="pilot-name" maxlength="16" autocomplete="nickname" placeholder="Nova">
+        </div>
+      </div>
+      <div>
+        <h2>Battle</h2>
+        <div class="actions">
+          <button id="btn-solo" class="wide">Solo Skirmish</button>
+          <button id="btn-create" class="ghost">Create Room</button>
+          <button id="btn-join" class="ghost">Join Room</button>
+          <input id="room-code" class="code wide" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off">
+        </div>
+      </div>
+      <div>
+        <h2>Ship Stats</h2>
+        <div class="stats">
+          <div class="stat"><span>Budget</span><b id="stat-budget">0/0</b></div>
+          <div class="stat"><span>Hull</span><b id="stat-hp">0</b></div>
+          <div class="stat"><span>Mass</span><b id="stat-mass">0</b></div>
+          <div class="stat"><span>Energy</span><b id="stat-energy">0</b></div>
+          <div class="stat"><span>Speed</span><b id="stat-speed">0</b></div>
+          <div class="stat"><span>Agility</span><b id="stat-agility">0</b></div>
+        </div>
+        <div class="status-line" id="home-status"></div>
+      </div>
+    </section>
+
+    <section class="pane editor-pane">
+      <div class="editor-head">
+        <div>
+          <h2>Shipyard</h2>
+          <div class="segmented" id="layer-tabs"></div>
+        </div>
+        <div class="budget" id="editor-budget">0/0</div>
+      </div>
+      <div class="palette" id="palette"></div>
+      <div class="editor-grid-wrap">
+        <canvas id="editor-grid" width="460" height="460"></canvas>
+      </div>
+      <div class="editor-actions">
+        <button id="btn-flip" class="ghost">Flip Decks</button>
+        <button id="btn-eraser" class="ghost">Erase</button>
+        <button id="btn-clear" class="danger">Clear</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="screen-lobby" class="overlay hidden">
+  <div class="center-panel">
+    <section class="modal-pane">
+      <h2>Room</h2>
+      <div id="lobby-code" title="Copy room code">----</div>
+      <div id="lobby-players"></div>
+      <div class="status-line" id="lobby-status"></div>
+      <div class="modal-actions">
+        <button id="btn-leave" class="ghost">Leave</button>
+        <button id="btn-ready" class="warn">Ready</button>
+        <button id="btn-start">Start</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div id="screen-results" class="overlay hidden">
+  <div class="center-panel">
+    <section class="modal-pane">
+      <h1 id="result-title">Result</h1>
+      <p id="result-detail"></p>
+      <div class="modal-actions">
+        <button id="btn-result-home" class="ghost">Hangar</button>
+        <button id="btn-result-lobby" class="warn">Lobby</button>
+        <button id="btn-result-again">Again</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "trystero": "./lib/trystero-nostr.min.js"
+  }
+}
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
