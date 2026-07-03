@@ -39,7 +39,7 @@ export const PARTS = {
   beam: { name: 'Energy beam', kind: 'weapon', deck: 'ends', shape: 'beam', cost: 130, mass: 1.5, hp: 45, color: '#e05ce0',
     weapon: { type: 'beam', dps: 85, range: 420, energyPerSec: 24 } },
   missile: { name: 'Missile rack', kind: 'weapon', deck: 'ends', shape: 'missile', cost: 110, mass: 1.5, hp: 45, color: '#d94f4f',
-    weapon: { type: 'missile', dmg: 55, radius: 45, rate: 0.45, speed: 300, turn: 2.6, life: 5 } },
+    weapon: { type: 'missile', dmg: 55, radius: 45, rate: 0.225, speed: 300, turn: 2.6, life: 5 } },
   rocket: { name: 'Rocket pod', kind: 'weapon', deck: 'ends', shape: 'rocket', cost: 70, mass: 1.2, hp: 40, color: '#d98a4f',
     weapon: { type: 'rocket', dmg: 45, radius: 38, rate: 0.7, speed: 480 } },
   turret: { name: 'Auto turret', kind: 'weapon', deck: 'ends', shape: 'turret', cost: 150, mass: 2.0, hp: 55, color: '#cbd34f',

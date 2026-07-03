@@ -713,8 +713,26 @@ export class Game {
     ctx.fillStyle = '#dfe8f2';
     ctx.fillText(`ENERGY ${Math.round(me.energy)}`, x + 4 * dpr, y + bh * 2 + 3 * dpr);
 
+    // Missile reload bar — fills with red as the launcher reloads, bright red when armed.
+    let bottom = y + bh * 2 + 6 * dpr;
+    const missileParts = me.parts.filter(p => p.alive && p.def.kind === 'weapon' && p.def.weapon.type === 'missile');
+    if (missileParts.length) {
+      const my = bottom + 6 * dpr;
+      // Least-ready rack drives the bar: full only once every launcher has reloaded.
+      let frac = 1;
+      for (const p of missileParts) frac = Math.min(frac, 1 - clamp(p.cooldown * p.def.weapon.rate, 0, 1));
+      const ready = frac >= 1;
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(x, my, bw, bh);
+      ctx.fillStyle = ready ? '#ff5a5a' : '#d94f4f';
+      ctx.fillRect(x, my, bw * frac, bh);
+      ctx.fillStyle = '#dfe8f2';
+      ctx.fillText(ready ? 'MISSILE READY' : 'MISSILE', x + 4 * dpr, my + bh - 3 * dpr);
+      bottom = my + bh;
+    }
+
     // Scoreboard.
-    let sy = y + bh * 2 + 24 * dpr;
+    let sy = bottom + 18 * dpr;
     ctx.font = `bold ${9 * dpr}px system-ui, sans-serif`;
     ctx.fillStyle = 'rgba(159, 220, 255, 0.6)';
     ctx.fillText(`DEATHMATCH — FIRST TO ${KILL_TARGET}`, x, sy);
