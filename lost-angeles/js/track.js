@@ -1,7 +1,7 @@
 // Piste procédurale en boucle fermée + décor post-apocalyptique.
 // Même seed → même piste sur toutes les machines (multijoueur).
 import * as THREE from 'three';
-import { mulberry32, clamp, lerp } from './util.js';
+import { mulberry32, clamp, lerp, angleDelta } from './util.js';
 
 const ROAD_HALF = 7;      // demi-largeur du bitume
 const WALL_DIST = 16;     // murs infranchissables (zone hors-piste entre les deux)
@@ -174,33 +174,30 @@ export class Track {
     this.wallDist = WALL_DIST;
     this.group = new THREE.Group();
 
-    // ——— tracé : points de contrôle autour d'un cercle déformé ———
-    const nc = 13;
-    const radii = [];
-    let r = 190 + rng() * 60;
-    for (let i = 0; i < nc; i++) {
-      r = clamp(r + (rng() - .5) * 110, 130, 290);
-      radii.push(r);
+    // ——— tracé : boucle fermée volontairement biscornue ———
+    // On tente plusieurs formes (déterministe par seed) et on garde la première
+    // dont le couloir ne se recoupe pas lui-même.
+    let raw = null;
+    for (let att = 0; att < 14 && !raw; att++) {
+      raw = this._genLoop(mulberry32(seed + att * 7919), att === 13);
     }
-    // garantit UN grand virage soutenu (~110°) à rayon constant, parfait pour drifter :
-    // 4 points consécutifs au même rayon serré, encadrés par deux points bien plus larges
-    const sweepAt = Math.floor(rng() * nc);
-    const sweepR = 145 + rng() * 25;
-    for (let k = 0; k < 4; k++) radii[(sweepAt + k) % nc] = sweepR;
-    radii[(sweepAt + nc - 1) % nc] = clamp(sweepR + 105, 130, 290);
-    radii[(sweepAt + 4) % nc] = clamp(sweepR + 105, 130, 290);
-
-    const ctrl = [];
-    for (let i = 0; i < nc; i++) {
-      const inSweep = ((i - sweepAt + nc) % nc) < 4;
-      const a = (i / nc) * Math.PI * 2 + (inSweep ? 0 : (rng() - .5) * .22);
-      ctrl.push(new THREE.Vector3(Math.cos(a) * radii[i], 0, Math.sin(a) * radii[i]));
-    }
-    const curve = new THREE.CatmullRomCurve3(ctrl, true, 'catmullrom', .6);
-    const raw = curve.getSpacedPoints(SAMPLES);
-    raw.pop(); // dernier == premier
-    this.pts = raw;
     this.N = raw.length;
+
+    // place la ligne de départ (index 0) sur la portion la plus rectiligne
+    const N = this.N;
+    const hs = raw.map((p, i) => {
+      const q = raw[(i + 1) % N];
+      return Math.atan2(q.x - p.x, q.z - p.z);
+    });
+    let bestI = 0, bestC = 1e9;
+    for (let i = 0; i < N; i += 2) {
+      let c = 0;
+      for (let k = -12; k < 12; k++) {
+        c += Math.abs(angleDelta(hs[((i + k) % N + N) % N], hs[((i + k + 1) % N + N) % N]));
+      }
+      if (c < bestC) { bestC = c; bestI = i; }
+    }
+    this.pts = raw.slice(bestI).concat(raw.slice(0, bestI));
 
     // tangentes / vecteurs "gauche"
     this.tan = []; this.left = [];
@@ -222,6 +219,84 @@ export class Track {
 
     // minimap
     this.minimapPts = this.pts.map(p => [p.x, p.z]);
+  }
+
+  // Génère une boucle candidate : secteurs angulaires irréguliers, marche
+  // aléatoire du rayon, lobes globaux (cacahuète/trèfle), épingle éventuelle,
+  // axes écrasés. Renvoie null si le couloir se rapproche trop de lui-même.
+  _genLoop(rng, forceAccept = false) {
+    const nc = 12 + Math.floor(rng() * 5); // 12..16 points de contrôle
+    const sweepAt = Math.floor(rng() * nc);
+    const inSweep = i => ((i - sweepAt + nc) % nc) < 4;
+
+    // secteurs de tailles très inégales (réguliers dans la zone du grand virage)
+    const weights = [];
+    let wsum = 0;
+    for (let i = 0; i < nc; i++) {
+      const w = inSweep(i) ? 1 : .5 + rng() * 1.2;
+      weights.push(w); wsum += w;
+    }
+    const angles = [];
+    let acc = 0;
+    for (let i = 0; i < nc; i++) { acc += weights[i] / wsum * Math.PI * 2; angles.push(acc); }
+
+    // rayons : marche aléatoire à grands écarts
+    const radii = [];
+    let r = 150 + rng() * 100;
+    for (let i = 0; i < nc; i++) {
+      r = clamp(r + (rng() - .5) * 140, 110, 300);
+      radii.push(r);
+    }
+    // une épingle bien marquée (creux serré entre deux points larges), hors du grand virage
+    if (rng() < .65) {
+      let h = Math.floor(rng() * nc);
+      for (let tries = 0; tries < nc && (((h - sweepAt + nc) % nc) < 5 || ((sweepAt - h + nc) % nc) < 2); tries++) h = (h + 1) % nc;
+      radii[h] = 92 + rng() * 25;
+      radii[(h + 1) % nc] = clamp(radii[(h + 1) % nc], 175, 260);
+      radii[(h - 1 + nc) % nc] = clamp(radii[(h - 1 + nc) % nc], 175, 260);
+    }
+    // garantit UN grand virage soutenu (~110°) à rayon constant, parfait pour drifter
+    const sweepR = 145 + rng() * 25;
+    for (let k = 0; k < 4; k++) radii[(sweepAt + k) % nc] = sweepR;
+    radii[(sweepAt + nc - 1) % nc] = clamp(sweepR + 105, 130, 300);
+    radii[(sweepAt + 4) % nc] = clamp(sweepR + 105, 130, 300);
+
+    // lobes globaux (gelés dans la zone du grand virage pour garder son rayon constant)
+    const lobes = 2 + Math.floor(rng() * 2);
+    const lobeAmp = 18 + rng() * 38;
+    const lobePhase = rng() * Math.PI * 2;
+    const lobeAt = a => Math.sin(a * lobes + lobePhase) * lobeAmp;
+    // écrasement doux des axes (l'ovale casse le côté "cercle")
+    const sx = .8 + rng() * .4, sz = .8 + rng() * .4;
+
+    const ctrl = [];
+    for (let i = 0; i < nc; i++) {
+      const a = angles[i];
+      const rr = clamp(radii[i] + lobeAt(inSweep(i) ? angles[sweepAt] : a), 88, 330);
+      ctrl.push(new THREE.Vector3(Math.cos(a) * rr * sx, 0, Math.sin(a) * rr * sz));
+    }
+    const curve = new THREE.CatmullRomCurve3(ctrl, true, 'catmullrom', .6);
+    const pts = curve.getSpacedPoints(SAMPLES);
+    pts.pop(); // dernier == premier
+
+    if (!forceAccept && this._selfTooClose(pts)) return null;
+    return pts;
+  }
+
+  // deux portions éloignées sur le ruban mais proches dans l'espace → couloirs
+  // (route + murs, ~32 u de large) qui se chevauchent : forme rejetée
+  _selfTooClose(pts) {
+    const N = pts.length;
+    const MIN_D2 = 36 * 36, RING_GAP = 26;
+    for (let i = 0; i < N; i += 2) {
+      const p = pts[i];
+      for (let j = i + RING_GAP; j < N; j += 2) {
+        if (i + N - j < RING_GAP) continue; // voisins en passant par la fermeture
+        const dx = p.x - pts[j].x, dz = p.z - pts[j].z;
+        if (dx * dx + dz * dz < MIN_D2) return true;
+      }
+    }
+    return false;
   }
 
   // ——— géométrie de la route, murs, ligne de départ ———

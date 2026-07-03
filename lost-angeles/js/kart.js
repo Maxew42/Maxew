@@ -233,7 +233,7 @@ export class Kart {
       const grip = clamp(Math.abs(this.speed) / 7, 0, 1) * (1 - .40 * clamp(Math.abs(this.speed) / this.vmax, 0, 1));
       if (this.driftDir !== 0) {
         const align = clamp(input.steer * this.driftDir, -0.4, 1); // module le rayon du drift
-        yaw = this.driftDir * this.turnRate * grip * (1.05 + .55 * align);
+        yaw = this.driftDir * this.turnRate * grip * (0.9 + .45 * align);
         this.driftCharge += dt * (0.85 + .45 * Math.max(0, align));
       } else {
         yaw = input.steer * this.turnRate * grip;
