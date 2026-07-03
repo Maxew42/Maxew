@@ -161,13 +161,27 @@ export class ItemWorld {
         return remote ? null : data;
       }
       case 'grap': {
+        const RANGE = 38; // portée du grappin (ligne droite devant le kart)
         if (!remote) {
-          let target = null;
-          for (const k of this.h.allKarts()) if (k.rank === kart.rank - 1) target = k;
-          if (!target) { kart.startBoost(1.2, 1.3); this.h.sfx('boost'); return { k: 'nitro', s: kart.slot }; }
-          const evt = { k: 'grap', s: kart.slot, t: target.slot };
-          this._grapVfx(kart, target);
-          // téléportation juste derrière la cible
+          // tir tout droit : accroche le kart le plus proche dans l'axe, sinon raté
+          const dx = kart.dirX(), dz = kart.dirZ();
+          let target = null, bestAlong = Infinity;
+          for (const k of this.h.allKarts()) {
+            if (k === kart || k.finished) continue;
+            const rx = k.x - kart.x, rz = k.z - kart.z;
+            const along = rx * dx + rz * dz;          // distance le long du tir
+            if (along < 2 || along > RANGE) continue;
+            const perp = Math.abs(rx * dz - rz * dx); // écart latéral au fil
+            if (perp < 3 && along < bestAlong) { target = k; bestAlong = along; }
+          }
+          if (!target) {
+            // le crochet part dans le vide et revient
+            this._grapVfx(kart.x, kart.z, kart.x + dx * RANGE, kart.z + dz * RANGE);
+            this.h.sfx('drop');
+            return { k: 'grap', s: kart.slot, t: -1 };
+          }
+          this._grapVfx(kart.x, kart.z, target.x, target.z);
+          // téléportation juste derrière la cible accrochée
           kart.x = target.x - target.dirX() * (target.radius + kart.radius + 1.2);
           kart.z = target.z - target.dirZ() * (target.radius + kart.radius + 1.2);
           kart.heading = target.heading;
@@ -178,11 +192,16 @@ export class ItemWorld {
           kart.totalProgress = target.totalProgress - (target.radius + kart.radius + 1.2) / this.track.segLen;
           kart.startBoost(.8, 1.25);
           this.h.sfx('grap');
-          return evt;
+          return { k: 'grap', s: kart.slot, t: target.slot };
         }
-        const a = this.h.kartBySlot(remote.s), b = this.h.kartBySlot(remote.t);
-        if (a && b) this._grapVfx(a, b);
-        this.h.sfx('grap');
+        const a = this.h.kartBySlot(remote.s);
+        if (a) {
+          const b = remote.t >= 0 ? this.h.kartBySlot(remote.t) : null;
+          const ex = b ? b.x : a.x + a.dirX() * RANGE;
+          const ez = b ? b.z : a.z + a.dirZ() * RANGE;
+          this._grapVfx(a.x, a.z, ex, ez);
+        }
+        this.h.sfx(remote.t >= 0 ? 'grap' : 'drop');
         return null;
       }
       case 'poop': {
@@ -211,12 +230,17 @@ export class ItemWorld {
     }
   }
 
-  _grapVfx(a, b) {
+  _grapVfx(x1, z1, x2, z2) {
+    const g = new THREE.Group();
     const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(a.x, 1.2, a.z), new THREE.Vector3(b.x, 1.2, b.z)]);
-    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffd28a }));
-    this.scene.add(line);
-    this.fx.push({ kind: 'line', mesh: line, life: .35, maxLife: .35 });
+      new THREE.Vector3(x1, 1.2, z1), new THREE.Vector3(x2, 1.2, z2)]);
+    g.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffd28a, transparent: true })));
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(.3, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xd0d6dc, transparent: true }));
+    tip.position.set(x2, 1.2, z2);
+    g.add(tip);
+    this.scene.add(g);
+    this.fx.push({ kind: 'line', mesh: g, life: .4, maxLife: .4 });
   }
 
   _spawnProjectile(kind, data) {
@@ -352,8 +376,7 @@ export class ItemWorld {
           p.rotation.y += p.userData.rot.y * dt;
         }
       } else if (f.kind === 'line') {
-        f.mesh.material.opacity = 1 - t;
-        f.mesh.material.transparent = true;
+        for (const c of f.mesh.children) c.material.opacity = 1 - t;
       }
       if (f.life <= 0) this.scene.remove(f.mesh);
     }

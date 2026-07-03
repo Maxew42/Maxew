@@ -176,12 +176,25 @@ export class Track {
 
     // ——— tracé : points de contrôle autour d'un cercle déformé ———
     const nc = 13;
-    const ctrl = [];
+    const radii = [];
     let r = 190 + rng() * 60;
     for (let i = 0; i < nc; i++) {
-      const a = (i / nc) * Math.PI * 2 + (rng() - .5) * .22;
       r = clamp(r + (rng() - .5) * 110, 130, 290);
-      ctrl.push(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r));
+      radii.push(r);
+    }
+    // garantit UN grand virage soutenu (~110°) à rayon constant, parfait pour drifter :
+    // 4 points consécutifs au même rayon serré, encadrés par deux points bien plus larges
+    const sweepAt = Math.floor(rng() * nc);
+    const sweepR = 145 + rng() * 25;
+    for (let k = 0; k < 4; k++) radii[(sweepAt + k) % nc] = sweepR;
+    radii[(sweepAt + nc - 1) % nc] = clamp(sweepR + 105, 130, 290);
+    radii[(sweepAt + 4) % nc] = clamp(sweepR + 105, 130, 290);
+
+    const ctrl = [];
+    for (let i = 0; i < nc; i++) {
+      const inSweep = ((i - sweepAt + nc) % nc) < 4;
+      const a = (i / nc) * Math.PI * 2 + (inSweep ? 0 : (rng() - .5) * .22);
+      ctrl.push(new THREE.Vector3(Math.cos(a) * radii[i], 0, Math.sin(a) * radii[i]));
     }
     const curve = new THREE.CatmullRomCurve3(ctrl, true, 'catmullrom', .6);
     const raw = curve.getSpacedPoints(SAMPLES);
@@ -283,8 +296,9 @@ export class Track {
       }
     }, 1, 1);
     const line = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_HALF * 2, 3), new THREE.MeshBasicMaterial({ map: checker }));
+    line.rotation.order = 'YXZ'; // plat au sol PUIS orienté selon la piste
+    line.rotation.y = Math.atan2(t0.x, t0.z);
     line.rotation.x = -Math.PI / 2;
-    line.rotation.z = -Math.atan2(t0.x, t0.z);
     line.position.set(p0.x, 0.06, p0.z);
     this.group.add(line);
 
@@ -302,7 +316,7 @@ export class Track {
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_HALF * 2 + 3, 2.2),
       new THREE.MeshBasicMaterial({ map: bannerTex, side: THREE.DoubleSide }));
     banner.position.set(p0.x, 7.6, p0.z);
-    banner.rotation.y = Math.atan2(t0.x, t0.z);
+    banner.rotation.y = Math.atan2(t0.x, t0.z) + Math.PI; // lisible en arrivant sur la ligne
     this.group.add(banner);
   }
 

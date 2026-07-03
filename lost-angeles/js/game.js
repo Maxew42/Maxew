@@ -212,6 +212,7 @@ export class Race {
     const inRace = this.phase === 'race';
     const rawInput = this.input.read();
     if (rawInput.pause) { this._quit(); return; }
+    this.lookBack = rawInput.look && !!this.local && !this.local._autopilot;
 
     // ——— kart local ———
     if (this.local && !this.local._autopilot) {
@@ -467,8 +468,9 @@ export class Race {
     const k = this.local || this.karts[0];
     if (!k) return;
     const back = 8.2, up = 3.6;
-    // la caméra suit le cap "lissé", pas le tête-à-queue
-    const h = k.heading;
+    // la caméra suit le cap "lissé", pas le tête-à-queue ; rétroviseur = cap inversé
+    if (this.lookBack !== this._prevLook) { snap = true; this._prevLook = this.lookBack; }
+    const h = k.heading + (this.lookBack ? Math.PI : 0);
     const tx = k.x - Math.sin(h) * back;
     const tz = k.z - Math.cos(h) * back;
     const ty = up + k.y * .5;

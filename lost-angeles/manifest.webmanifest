@@ -4,7 +4,7 @@
   "description": "Course de karts post-apocalyptique multijoueur — 8 pilotes, zéro pitié.",
   "start_url": ".",
   "display": "fullscreen",
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#14100c",
   "theme_color": "#14100c",
   "icons": [

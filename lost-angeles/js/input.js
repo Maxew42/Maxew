@@ -5,7 +5,7 @@ import { clamp } from './util.js';
 export class Input {
   constructor() {
     this.keys = new Set();
-    this.touch = { left: false, right: false, drift: false, item: false, brake: false };
+    this.touch = { left: false, right: false, drift: false, item: false, brake: false, look: false };
     this.touchMode = false;
     this._itemEdge = false;
     this._pauseEdge = false;
@@ -47,6 +47,7 @@ export class Input {
     };
     bind('t-left', 'left'); bind('t-right', 'right');
     bind('t-drift', 'drift'); bind('t-item', 'item'); bind('t-brake', 'brake');
+    bind('t-look', 'look');
     // toucher la case objet du HUD déclenche aussi l'objet
     document.getElementById('hud-item').addEventListener('pointerdown', e => {
       e.preventDefault(); this._itemEdge = true;
@@ -71,7 +72,7 @@ export class Input {
 
   read() {
     const k = this.keys, t = this.touch;
-    let steer = 0, throttle = 0, brake = 0, drift = false;
+    let steer = 0, throttle = 0, brake = 0, drift = false, look = false;
 
     // clavier
     if (k.has('ArrowLeft') || k.has('KeyA')) steer -= 1;
@@ -79,12 +80,14 @@ export class Input {
     if (k.has('ArrowUp') || k.has('KeyW')) throttle = 1;
     if (k.has('ArrowDown') || k.has('KeyS')) brake = 1;
     if (k.has('Space') || k.has('ShiftLeft') || k.has('ShiftRight')) drift = true;
+    if (k.has('KeyC')) look = true; // rétroviseur
 
     // tactile (accélération auto : on freine avec le bouton FREIN)
     if (this.touchMode) {
       if (t.left) steer -= 1;
       if (t.right) steer += 1;
       if (t.drift) drift = true;
+      if (t.look) look = true;
       if (t.brake) brake = 1; else throttle = Math.max(throttle, 1);
     }
 
@@ -100,6 +103,8 @@ export class Input {
       throttle = Math.max(throttle, v(7), b(0) ? 1 : 0);
       brake = Math.max(brake, v(6), b(1) ? 1 : 0);
       if (b(4) || b(5)) drift = true;
+      // rétroviseur : stick droit tiré vers le bas (ou clic d'un stick)
+      if ((g.axes[3] || 0) > .55 || b(10) || b(11)) look = true;
       // fronts montants objet / pause
       const pressed = i => b(i) && !this._prevPadButtons[i];
       if (pressed(2) || pressed(3)) this._itemEdge = true;
@@ -109,7 +114,9 @@ export class Input {
 
     const item = this._itemEdge; this._itemEdge = false;
     const pause = this._pauseEdge; this._pauseEdge = false;
-    return { steer: clamp(steer, -1, 1), throttle: clamp(throttle, 0, 1), brake: clamp(brake, 0, 1), drift, item, pause };
+    // convention interne : steer positif = cap qui augmente = virage à GAUCHE à l'écran,
+    // donc on inverse ici la somme clavier/tactile/manette (droite pressée → steer négatif)
+    return { steer: clamp(-steer, -1, 1), throttle: clamp(throttle, 0, 1), brake: clamp(brake, 0, 1), drift, item, pause, look };
   }
 
   clearEdges() { this._itemEdge = false; this._pauseEdge = false; }

@@ -139,13 +139,15 @@ const builders = {
       const pR = pL.clone(); pR.position.x = 1.19;
       g.add(pL, pR);
     }
-    const plow = new THREE.Mesh(new THREE.CylinderGeometry(.2, 1.4, 1.1, 4, 1), mat(0x50565e));
-    plow.rotation.set(Math.PI, Math.PI / 4, 0);
-    plow.scale.set(1.9, 1, .8);
-    plow.position.set(0, .8, 3.3);
+    // chasse-pierres en V (deux plaques d'acier)
+    const plowL = box(1.6, 1.15, .16, 0x50565e, -.62, .75, 3.25);
+    plowL.rotation.y = -.62;
+    const plowR = box(1.6, 1.15, .16, 0x50565e, .62, .75, 3.25);
+    plowR.rotation.y = .62;
+    const plowBar = box(2.35, .18, .2, 0x3c4148, 0, 1.45, 3.05);
     const chimney = new THREE.Mesh(new THREE.CylinderGeometry(.16, .2, 1.2, 6), mat(0x2a2a2a));
     chimney.position.set(.8, 3.2, -2.2);
-    g.add(body, roofJunk, winF, plow, chimney);
+    g.add(body, roofJunk, winF, plowL, plowR, plowBar, chimney);
     addWheels(g, .58, .45, 1.15, 2.0, -2.0);
     return g;
   },
@@ -190,10 +192,10 @@ const builders = {
   shark(c) {
     const g = new THREE.Group();
     const body = box(1.8, .7, 4.0, c, 0, .72, 0);
-    const noseCone = new THREE.Mesh(new THREE.ConeGeometry(.85, 1.3, 4), mat(c));
-    noseCone.rotation.set(Math.PI / 2, 0, Math.PI / 4);
-    noseCone.scale.set(1.25, 1, .8);
-    noseCone.position.set(0, .72, 2.5);
+    // capot plongeant + lame avant (à la place de l'ancien cône difforme)
+    const hood = box(1.6, .48, 1.5, c, 0, .58, 2.55);
+    hood.rotation.x = .2;
+    const splitter = box(1.9, .12, .55, DARK, 0, .28, 3.0);
     const cabin = box(1.5, .55, 1.5, c, 0, 1.32, -0.3);
     const win = box(1.35, .4, .1, GLASS, 0, 1.35, .5);
     win.rotation.x = .35;
@@ -207,7 +209,7 @@ const builders = {
     const gill2 = gill1.clone(); gill2.position.z = .55;
     const gill1R = gill1.clone(); gill1R.position.x = .91;
     const gill2R = gill2.clone(); gill2R.position.x = .91;
-    g.add(body, noseCone, cabin, win, fin, gill1, gill2, gill1R, gill2R);
+    g.add(body, hood, splitter, cabin, win, fin, gill1, gill2, gill1R, gill2R);
     addWheels(g, .44, .34, .95, 1.35, -1.35);
     return g;
   },

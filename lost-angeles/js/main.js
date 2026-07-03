@@ -64,6 +64,7 @@ function setChar(i) {
   localStorage.setItem('la-char', c.id);
   $('char-name').textContent = c.name;
   $('char-tag').textContent = c.tag;
+  $('lobby-char-name').textContent = c.name;
   $('st-speed').style.width = c.stats.speed * 100 + '%';
   $('st-accel').style.width = c.stats.accel * 100 + '%';
   $('st-turn').style.width = c.stats.turn * 100 + '%';
@@ -75,6 +76,9 @@ function setChar(i) {
 }
 $('btn-char-prev').onclick = () => { setChar(charIdx - 1); audio.play('roll'); };
 $('btn-char-next').onclick = () => { setChar(charIdx + 1); audio.play('roll'); };
+// on peut encore changer de véhicule dans le lobby
+$('lobby-char-prev').onclick = () => { setChar(charIdx - 1); audio.play('roll'); };
+$('lobby-char-next').onclick = () => { setChar(charIdx + 1); audio.play('roll'); };
 
 (function spinPreview() {
   requestAnimationFrame(spinPreview);
@@ -83,11 +87,20 @@ $('btn-char-next').onclick = () => { setChar(charIdx + 1); audio.play('roll'); }
   prevRenderer.render(prevScene, prevCam);
 })();
 
-// ——— nom du pilote ———
+// ——— nom du pilote (modifiable depuis l'accueil ET le lobby) ———
 const nameInput = $('inp-name');
+const lobbyNameInput = $('lobby-name');
 nameInput.value = localStorage.getItem('la-name') || '';
-nameInput.addEventListener('input', () => localStorage.setItem('la-name', nameInput.value));
 function myName() { return nameInput.value.trim().substring(0, 14) || 'Pilote'; }
+
+let nameSendTimer = null;
+nameInput.addEventListener('input', () => localStorage.setItem('la-name', nameInput.value));
+lobbyNameInput.addEventListener('input', () => {
+  nameInput.value = lobbyNameInput.value;
+  localStorage.setItem('la-name', nameInput.value);
+  clearTimeout(nameSendTimer);
+  nameSendTimer = setTimeout(() => sendMyProfile(), 300); // évite un message par frappe
+});
 
 // ——— construction des slots de course ———
 function altTint(color, n) {
@@ -199,6 +212,8 @@ function enterRoom(code) {
   raceStartedFromLobby = false;
   $('home-err').textContent = '';
   $('lobby-code').textContent = code;
+  $('lobby-copy').textContent = '👆 touche le code pour le copier';
+  lobbyNameInput.value = nameInput.value;
   wireLobbyNet();
   net.join(code);
   sendMyProfile();
@@ -223,6 +238,24 @@ roomInput.addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-join'
 $('btn-leave').onclick = () => {
   net.leave();
   showScreen('home');
+};
+
+// code copiable d'un clic (avec repli si l'API clipboard est indisponible)
+$('lobby-code').onclick = async () => {
+  if (!currentCode) return;
+  let ok = false;
+  try { await navigator.clipboard.writeText(currentCode); ok = true; } catch (e) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = currentCode;
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    } catch (e2) {}
+  }
+  $('lobby-copy').textContent = ok ? '✅ Code copié !' : '⚠️ Copie impossible — note-le à la main';
+  setTimeout(() => { $('lobby-copy').textContent = '👆 touche le code pour le copier'; }, 2500);
 };
 
 $('btn-ready').onclick = () => {
