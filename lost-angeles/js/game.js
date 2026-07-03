@@ -116,7 +116,10 @@ export class Race {
         if (k) k.pushSnapshot(s, t);
       }
     };
-    this.net.onEvent = evt => this.items.onRemote(evt);
+    this.net.onEvent = evt => {
+      if (evt.k === 'forfeit') this._removeKartBySlot(evt.s, '🏳️ %s a quitté la course');
+      else this.items.onRemote(evt);
+    };
     this.net.onFinish = f => this._recordFinish(f.slot, f.time);
     this.net.onHostChange = () => {
       if (this.net.isHost) {
@@ -128,16 +131,21 @@ export class Race {
       // un joueur est parti en pleine course
       for (const [pid, slot] of this.peerSlot) {
         if (!this.net.peers.has(pid)) {
-          const i = this.karts.findIndex(k => k.slot === slot);
-          if (i >= 0) {
-            this.hud.toast(`🏳️ ${this.karts[i].name} a quitté la course`);
-            this.scene.remove(this.karts[i].group);
-            this.karts.splice(i, 1);
-          }
+          this._removeKartBySlot(slot, '🏳️ %s a quitté la course');
           this.peerSlot.delete(pid);
         }
       }
     };
+  }
+
+  _removeKartBySlot(slot, msg) {
+    const i = this.karts.findIndex(k => k.slot === slot);
+    if (i < 0) return;
+    const k = this.karts[i];
+    if (k === this.local) return;
+    if (msg) this.hud.toast(msg.replace('%s', k.name));
+    this.scene.remove(k.group);
+    this.karts.splice(i, 1);
   }
 
   start() {
@@ -406,7 +414,17 @@ export class Race {
     this.hud.showResults(this._resultRows());
   }
 
-  _quit() { this.onExit(); }
+  _quit() {
+    if (this.net && this.local) this.net.sendEvent({ k: 'forfeit', s: this.local.slot });
+    this.onExit();
+  }
+
+  // pour les tests : l'IA prend le volant du joueur
+  debugAutopilot() {
+    if (!this.local) return;
+    this.local._autopilot = true;
+    this.drivers.set(this.local.slot, new AIDriver(this.local, this.track, mulberry32(42)));
+  }
 
   // ——— rendu ———
   _render(dt) {

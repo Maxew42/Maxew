@@ -35,48 +35,49 @@ export class Net {
     this.leave();
     this.room = joinRoom({ appId: APP_ID }, 'salon-' + code);
 
-    const [sendProf, onProf] = this.room.makeAction('prof');
-    const [sendStart, onStart] = this.room.makeAction('start');
-    const [sendState, onState] = this.room.makeAction('st');
-    const [sendAi, onAi] = this.room.makeAction('ai');
-    const [sendEvt, onEvt] = this.room.makeAction('evt');
-    const [sendFin, onFin] = this.room.makeAction('fin');
-    this._sendProf = sendProf; this._sendStart = sendStart; this._sendState = sendState;
-    this._sendAi = sendAi; this._sendEvt = sendEvt; this._sendFin = sendFin;
+    // trystero ≥0.25 : makeAction renvoie {send, onMessage} ; onMessage/onPeerJoin
+    // sont des propriétés à assigner, et le 2ᵉ argument des handlers est {peerId}.
+    const act = name => this.room.makeAction(name);
+    const prof = act('prof'), start = act('start'), state = act('st');
+    const ai = act('ai'), evt = act('evt'), fin = act('fin');
+    this._sendProf = prof.send; this._sendStart = start.send; this._sendState = state.send;
+    this._sendAi = ai.send; this._sendEvt = evt.send; this._sendFin = fin.send;
 
-    onProf((p, id) => { this.profiles.set(id, p); this.onPeers(); });
-    onStart(cfg => this.onStart(cfg));
-    onState((s, id) => this.onState(s, id));
-    onAi(arr => this.onAiState(arr));
-    onEvt((e, id) => this.onEvent(e, id));
-    onFin((f, id) => this.onFinish(f, id));
+    prof.onMessage = (p, m) => { this.profiles.set(m.peerId, p); this.onPeers(); };
+    start.onMessage = cfg => this.onStart(cfg);
+    state.onMessage = (s, m) => this.onState(s, m.peerId);
+    ai.onMessage = arr => this.onAiState(arr);
+    evt.onMessage = (e, m) => this.onEvent(e, m.peerId);
+    fin.onMessage = (f, m) => this.onFinish(f, m.peerId);
 
-    this.room.onPeerJoin(id => {
+    this.room.onPeerJoin = id => {
       const wasHost = this.isHost;
       this.peers.add(id);
-      if (this.myProfile) sendProf(this.myProfile, id); // se présenter au nouveau
+      if (this.myProfile) prof.send(this.myProfile, { target: id }).catch(() => {}); // se présenter au nouveau
       this.onPeers();
       if (wasHost !== this.isHost) this.onHostChange();
-    });
-    this.room.onPeerLeave(id => {
+    };
+    this.room.onPeerLeave = id => {
       const wasHost = this.isHost;
       this.peers.delete(id);
       this.profiles.delete(id);
       this.onPeers();
       if (wasHost !== this.isHost) this.onHostChange();
-    });
+    };
   }
+
+  _safe(fn, data) { if (fn && this.room) fn(data).catch(() => {}); }
 
   setProfile(p) {
     this.myProfile = p;
-    if (this._sendProf && this.peers.size) this._sendProf(p);
+    if (this.peers.size) this._safe(this._sendProf, p);
   }
 
-  start(cfg) { this._sendStart && this._sendStart(cfg); }
-  sendState(s) { this._sendState && this._sendState(s); }
-  sendAi(arr) { this._sendAi && this._sendAi(arr); }
-  sendEvent(e) { this._sendEvt && this._sendEvt(e); }
-  sendFinish(f) { this._sendFin && this._sendFin(f); }
+  start(cfg) { this._safe(this._sendStart, cfg); }
+  sendState(s) { this._safe(this._sendState, s); }
+  sendAi(arr) { this._safe(this._sendAi, arr); }
+  sendEvent(e) { this._safe(this._sendEvt, e); }
+  sendFinish(f) { this._safe(this._sendFin, f); }
 
   leave() {
     if (this.room) { try { this.room.leave(); } catch (e) {} }

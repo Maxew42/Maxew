@@ -19,8 +19,11 @@ function nameSprite(text, color = '#ffd28a') {
   g.fillText(text, 128, 28);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false }));
-  s.scale.set(4.6, 1.0, 1);
+  // taille constante à l'écran (sizeAttenuation:false) pour rester lisible sans envahir
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: t, transparent: true, depthWrite: false, sizeAttenuation: false, opacity: .92,
+  }));
+  s.scale.set(.09, .0197, 1);
   return s;
 }
 
@@ -324,7 +327,7 @@ export class Kart {
       h = a.h + angleDelta(a.h, b.h) * f;
     } else {
       // extrapolation courte si les paquets tardent
-      const over = Math.min(rt - b.t, .25);
+      const over = Math.max(0, Math.min(rt - b.t, .25));
       x = b.x + Math.sin(b.h) * b.v * over;
       z = b.z + Math.cos(b.h) * b.v * over;
       y = b.y; h = b.h;
@@ -340,9 +343,11 @@ export class Kart {
     this.sawT = fl & FL_SAW ? .2 : 0;
     this.finished = !!(fl & FL_FIN);
     if (fl & (FL_SPIN | FL_STUN)) this.spinAngle += .19; else this.spinAngle = 0;
-    // pour les collisions locales
+    // pour les collisions locales et le guidage des projectiles
     const proj = this.track.project(this.x, this.z, this.hintIdx);
     this.hintIdx = proj.idx;
+    this.lastF = proj.f;
+    this.lat = proj.lat;
     this.syncVisual();
   }
 

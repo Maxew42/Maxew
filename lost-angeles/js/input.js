@@ -112,6 +112,8 @@ export class Input {
     return { steer: clamp(steer, -1, 1), throttle: clamp(throttle, 0, 1), brake: clamp(brake, 0, 1), drift, item, pause };
   }
 
+  clearEdges() { this._itemEdge = false; this._pauseEdge = false; }
+
   rumble(ms = 120, mag = .7) {
     if (navigator.vibrate) navigator.vibrate(ms);
     const g = this._pad();

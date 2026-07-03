@@ -30,6 +30,9 @@ addEventListener('pointerdown', () => audio.ensure(), { capture: true });
 const hud = new Hud();
 const net = new Net();
 
+let race = null;
+let mode = 'solo'; // 'solo' | 'mp'
+
 const renderer = new THREE.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
 function sizeRenderer() {
@@ -38,10 +41,6 @@ function sizeRenderer() {
 }
 addEventListener('resize', sizeRenderer);
 sizeRenderer();
-
-let race = null;
-let mode = 'solo'; // 'solo' | 'mp'
-let lastSoloCfg = null;
 
 // ——— sélection du personnage (aperçu 3D tournant) ———
 let charIdx = Math.max(0, CHARACTERS.findIndex(c => c.id === (localStorage.getItem('la-char') || 'shoe')));
@@ -125,6 +124,7 @@ function startRace(cfg) {
   showScreen(null);
   hud.hideResults();
   audio.ensure();
+  input.clearEdges();
   if (race) { race.stop(); race = null; }
   race = new Race({
     renderer, input, hud, audio,
@@ -134,6 +134,7 @@ function startRace(cfg) {
   });
   race.resize(innerWidth, innerHeight);
   race.start();
+  window.__race = race; // pratique pour le debug
 }
 
 function exitRace() {
@@ -142,6 +143,8 @@ function exitRace() {
   renderer.clear();
   if (mode === 'mp' && net.connected) {
     myReady = false;
+    raceStartedFromLobby = false;
+    wireLobbyNet(); // la course a détourné les callbacks réseau
     sendMyProfile();
     showScreen('lobby');
     renderLobby();
@@ -150,13 +153,19 @@ function exitRace() {
   }
 }
 
-$('btn-quit').onclick = exitRace;
-$('btn-res-home').onclick = exitRace;
+// quitter proprement (prévient les autres joueurs en multi)
+function quitRace() {
+  if (race) race._quit();
+  else exitRace();
+}
+
+$('btn-quit').onclick = quitRace;
+$('btn-res-home').onclick = quitRace;
 $('btn-res-again').onclick = () => {
   if (mode === 'solo') {
     startRace(makeSoloCfg());
   } else {
-    exitRace(); // retour lobby, l'hôte relance
+    quitRace(); // retour lobby, l'hôte relance
   }
 };
 
@@ -190,6 +199,7 @@ function enterRoom(code) {
   raceStartedFromLobby = false;
   $('home-err').textContent = '';
   $('lobby-code').textContent = code;
+  wireLobbyNet();
   net.join(code);
   sendMyProfile();
   showScreen('lobby');
@@ -290,9 +300,12 @@ function launchMpRace(cfg) {
   startRace(cfg);
 }
 
-net.onPeers = () => renderLobby();
-net.onHostChange = () => renderLobby();
-net.onStart = cfg => launchMpRace(cfg);
+function wireLobbyNet() {
+  net.onPeers = () => renderLobby();
+  net.onHostChange = () => renderLobby();
+  net.onStart = cfg => launchMpRace(cfg);
+}
+wireLobbyNet();
 
 // manette : bouton A pour se déclarer prêt dans le lobby
 setInterval(() => {

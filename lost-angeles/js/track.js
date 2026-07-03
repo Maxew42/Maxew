@@ -121,7 +121,7 @@ function skyTex() {
 // ————— fusion de géométries (même matériau → 1 draw call) —————
 function mergeGeoms(geoms, withColor = false) {
   let nv = 0, ni = 0;
-  for (const g of geoms) { nv += g.attributes.position.count; ni += g.index.count; }
+  for (const g of geoms) { nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
   const pos = new Float32Array(nv * 3), nor = new Float32Array(nv * 3), uv = new Float32Array(nv * 2);
   const col = withColor ? new Float32Array(nv * 3) : null;
   const idx = new Uint32Array(ni);
@@ -135,8 +135,9 @@ function mergeGeoms(geoms, withColor = false) {
       if (c) col.set(c.array, vo * 3);
       else col.fill(1, vo * 3, (vo + p.count) * 3);
     }
-    for (let i = 0; i < g.index.count; i++) idx[io + i] = g.index.array[i] + vo;
-    vo += p.count; io += g.index.count;
+    const nIdx = g.index ? g.index.count : p.count; // géométries non indexées (ex: Dodecahedron)
+    for (let i = 0; i < nIdx; i++) idx[io + i] = (g.index ? g.index.array[i] : i) + vo;
+    vo += p.count; io += nIdx;
   }
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -225,7 +226,7 @@ export class Track {
       }
       for (let i = 0; i < N; i++) {
         const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
-        idx.set([a, c, b, b, c, d], i * 6);
+        idx.set([a, b, c, b, d, c], i * 6); // CCW vu du dessus
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
