@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "coup-de-feu",
+      "runtimeExecutable": "/usr/bin/python3",
+      "runtimeArgs": ["-c", "import os; os.chdir('/private/tmp/claude-501/-Users-Novatix-Documents-projects-games/0e09b471-2b9e-43f9-ba24-1275b6c5fb7e/scratchpad/serve'); from http.server import HTTPServer, SimpleHTTPRequestHandler; HTTPServer(('127.0.0.1', 8137), SimpleHTTPRequestHandler).serve_forever()"],
+      "port": 8137
+    }
+  ]
+}

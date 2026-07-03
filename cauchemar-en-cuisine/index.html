@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cauchemar en Cuisine</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍳</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #14100c; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; position: fixed; inset: 0; }
+  #game { cursor: none; } /* réticule personnalisé dessiné sur le HUD */
+  #hud { pointer-events: none; z-index: 5; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(16, 11, 8, 0.86); color: #f5e9d0; text-align: center;
+    padding: 20px;
+  }
+  .hidden { display: none !important; }
+
+  h1 {
+    font-size: clamp(40px, 8vw, 72px); letter-spacing: 3px; color: #ffb347;
+    text-shadow: 0 4px 0 #7a3b12, 0 8px 24px rgba(0,0,0,.6);
+  }
+  .subtitle { font-size: 18px; color: #cbb896; margin: 10px 0 26px; }
+
+  .controls {
+    display: grid; grid-template-columns: auto auto; gap: 8px 16px;
+    background: rgba(42, 32, 25, 0.8); border: 1px solid #5a4630; border-radius: 12px;
+    padding: 18px 26px; margin-bottom: 26px; font-size: 15px; text-align: left;
+  }
+  .controls b { color: #ffb347; }
+
+  button {
+    font-size: 22px; font-weight: 700; padding: 14px 38px; border-radius: 12px;
+    border: none; cursor: pointer; color: #2a1505;
+    background: linear-gradient(#ffc95e, #f59a23);
+    box-shadow: 0 5px 0 #9c5a10, 0 8px 20px rgba(0,0,0,.5);
+    transition: transform .08s;
+  }
+  button:hover { transform: translateY(-2px); }
+  button:active { transform: translateY(2px); box-shadow: 0 2px 0 #9c5a10; }
+
+  .best { margin-top: 18px; font-size: 16px; color: #cbb896; }
+  .best b { color: #ffd700; }
+
+  #levelup h2 { font-size: 38px; color: #ffd700; text-shadow: 0 3px 0 #7a5a12; }
+  #levelup .lvsub { color: #cbb896; margin: 6px 0 4px; }
+  #cards { display: flex; gap: 18px; margin-top: 24px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    width: 220px; padding: 24px 16px 20px; border-radius: 14px; cursor: pointer;
+    background: #2a2019; border: 2px solid #8d6e4a;
+    transition: transform .1s, border-color .1s, background .1s;
+  }
+  .card:hover { transform: translateY(-6px) scale(1.03); border-color: #ffb347; background: #3a2c20; }
+  .card .ic { font-size: 46px; display: block; }
+  .card h3 { color: #ffb347; margin: 12px 0 8px; font-size: 17px; }
+  .card p { font-size: 13px; color: #cbb896; line-height: 1.4; }
+  .card .tag { display: inline-block; margin-top: 10px; font-size: 11px; padding: 3px 10px;
+    border-radius: 20px; background: #4a3524; color: #e0c9a0; letter-spacing: 1px; }
+
+  #gameover h1 { color: #ff6b5e; text-shadow: 0 4px 0 #6b1410, 0 8px 24px rgba(0,0,0,.6); }
+  .stats { font-size: 20px; margin: 18px 0 26px; line-height: 2; }
+  .stats b { color: #ffb347; }
+  #newrecord { font-size: 24px; color: #ffd700; margin-bottom: 14px; animation: pulse 1s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.1); } }
+
+  .weapons-preview { display: flex; gap: 14px; font-size: 30px; margin-bottom: 24px; opacity: .9; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<canvas id="hud"></canvas>
+
+<div id="start" class="overlay">
+  <h1>🍳 CAUCHEMAR EN CUISINE</h1>
+  <p class="subtitle">La vermine envahit la cuisine. Survivez 10 minutes… et le Chef ultime viendra juger votre service.</p>
+  <div class="weapons-preview">🍳 🔪 🪓 🔥 ⚡ 🌶️ 🍾</div>
+  <div class="controls">
+    <b>Flèches / WASD</b><span>se déplacer</span>
+    <b>Souris</b><span>viser (attaque automatique)</span>
+    <b>Échap / P</b><span>pause</span>
+    <b>M</b><span>couper le son</span>
+  </div>
+  <button id="btnStart">Commencer le service</button>
+  <div class="best">🏆 Record : <b id="bestStart">—</b></div>
+</div>
+
+<div id="levelup" class="overlay hidden">
+  <h2>⭐ NIVEAU SUPÉRIEUR !</h2>
+  <p class="lvsub">Choisissez une amélioration</p>
+  <div id="cards"></div>
+</div>
+
+<div id="victory" class="overlay hidden">
+  <h1>🏆 SERVICE VALIDÉ !</h1>
+  <p class="subtitle">Philippe ChuileBest s'incline. La cuisine est à vous, Chef !</p>
+  <div id="newrecord2" class="hidden" style="font-size:24px;color:#ffd700;margin-bottom:14px;">🏆 NOUVEAU RECORD !</div>
+  <div class="stats">
+    Temps du service : <b id="vTime">0:00</b><br>
+    Vermine éliminée : <b id="vKills">0</b><br>
+    Niveau atteint : <b id="vLevel">1</b>
+  </div>
+  <button id="btnRestart2">Nouvelle partie</button>
+</div>
+
+<div id="gameover" class="overlay hidden">
+  <h1>💀 SERVICE TERMINÉ</h1>
+  <div id="newrecord" class="hidden">🏆 NOUVEAU RECORD !</div>
+  <div class="stats">
+    Temps survécu : <b id="goTime">0:00</b><br>
+    Vermine éliminée : <b id="goKills">0</b><br>
+    Niveau atteint : <b id="goLevel">1</b><br>
+    Record : <b id="goBest">0:00</b>
+  </div>
+  <button id="btnRestart">Nouvelle partie</button>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

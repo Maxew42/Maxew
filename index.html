@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeux</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    min-height: 100%;
+    background: #14100c;
+    color: #f5e9d0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: clamp(32px, 6vw, 64px) 20px 48px;
+  }
+
+  header { text-align: center; margin-bottom: clamp(32px, 5vw, 48px); }
+
+  h1 {
+    font-size: clamp(36px, 7vw, 56px);
+    letter-spacing: 3px;
+    color: #ffb347;
+    text-shadow: 0 4px 0 #7a3b12, 0 8px 24px rgba(0,0,0,.6);
+  }
+
+  .tagline {
+    margin-top: 10px;
+    font-size: 17px;
+    color: #cbb896;
+  }
+
+  .games {
+    display: grid;
+    gap: 20px;
+    width: min(560px, 100%);
+  }
+
+  .game-card {
+    display: block;
+    padding: 22px 24px;
+    border-radius: 14px;
+    border: 1px solid #5a4630;
+    background: rgba(42, 32, 25, 0.85);
+    color: inherit;
+    text-decoration: none;
+    transition: transform .12s, border-color .12s, box-shadow .12s;
+    box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  .game-card:hover {
+    transform: translateY(-3px);
+    border-color: #ffb347;
+    box-shadow: 0 10px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,179,71,.15);
+  }
+
+  .game-card:active { transform: translateY(-1px); }
+
+  .game-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #ffb347;
+    margin-bottom: 8px;
+  }
+
+  .game-title span:first-child { font-size: 28px; line-height: 1; }
+
+  .game-desc {
+    font-size: 15px;
+    line-height: 1.5;
+    color: #cbb896;
+  }
+
+  footer {
+    margin-top: auto;
+    padding-top: 48px;
+    font-size: 14px;
+    color: #7a6a58;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Jeux</h1>
+  <p class="tagline">Petits jeux statiques, jouables dans le navigateur.</p>
+</header>
+
+<main class="games">
+  <a class="game-card" href="cauchemar-en-cuisine/">
+    <div class="game-title"><span>🍳</span> Cauchemar en Cuisine</div>
+    <p class="game-desc">Bullet hell de survie dans une cuisine de restaurant. Survivez 10 minutes aux vagues de vermine, puis affrontez Philippe ChuileBest.</p>
+  </a>
+</main>
+
+<footer>HTML + JavaScript vanilla — aucun build requis.</footer>
+
+</body>
+</html>
