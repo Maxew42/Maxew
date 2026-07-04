@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>The Apprentice</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚔️</text></svg>">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%; overflow: hidden; background: #0a0d14;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    color: #dce8f5;
+  }
+  canvas { display: block; }
+  #game { position: fixed; inset: 0; touch-action: none; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: safe center; overflow-y: auto;
+    background: rgba(7, 10, 17, 0.9); color: #dce8f5; text-align: center;
+    padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+             calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  }
+  .hidden { display: none !important; }
+
+  h1 {
+    font-size: clamp(30px, 6.5vw, 58px); letter-spacing: 7px; color: #6fc3ff;
+    text-shadow: 0 0 18px rgba(80, 160, 255, .8), 0 0 50px rgba(80, 160, 255, .35);
+    font-weight: 900;
+  }
+  .subtitle { font-size: 15px; color: #8fa8c4; margin: 6px 0 18px; }
+
+  button {
+    font: inherit; cursor: pointer; border: none; border-radius: 12px;
+    color: #061018; background: linear-gradient(#8fd0ff, #3d8fdd);
+    font-weight: 800; letter-spacing: 1px; padding: 13px 26px; font-size: 17px;
+    box-shadow: 0 4px 0 #14476e, 0 0 18px rgba(80,160,255,.35);
+    transition: transform .08s, filter .12s;
+  }
+  button:active { transform: translateY(2px); box-shadow: 0 2px 0 #14476e; }
+  button:disabled { filter: grayscale(.8) brightness(.6); cursor: default; }
+  button.ghost {
+    background: rgba(25,36,52,.75); color: #dce8f5; box-shadow: 0 4px 0 #0b1420;
+    border: 1px solid #35507a;
+  }
+  button.small { padding: 8px 16px; font-size: 14px; border-radius: 9px; }
+  button.danger { background: linear-gradient(#ff9c8f, #d84a3d); box-shadow: 0 4px 0 #6e1c14; }
+
+  input[type=text] {
+    font: inherit; font-size: 17px; text-align: center; color: #dce8f5;
+    background: rgba(14,20,30,.92); border: 1px solid #35507a; border-radius: 10px;
+    padding: 11px 12px; outline: none; width: 100%;
+  }
+  input[type=text]:focus { border-color: #6fc3ff; }
+  input.code { letter-spacing: 8px; font-weight: 800; text-transform: uppercase; font-size: 22px; }
+
+  .row { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
+  .col { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+
+  /* ------- accueil ------- */
+  #home-box { display: flex; gap: clamp(14px, 3vw, 40px); align-items: stretch; flex-wrap: wrap; justify-content: center; }
+  .panel {
+    background: rgba(15, 23, 36, .85); border: 1px solid #2b4265; border-radius: 16px;
+    padding: 18px; min-width: 270px; max-width: 340px; flex: 1 1 280px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  }
+  .panel h3 { color: #6fc3ff; letter-spacing: 2px; margin-bottom: 12px; font-size: 15px; text-transform: uppercase; }
+
+  #char-prev { width: 240px; height: 190px; margin: 0 auto; display: block; }
+  #char-name { font-size: 19px; font-weight: 800; color: #aee0ff; min-height: 24px; margin-bottom: 8px; }
+  .charnav { font-size: 24px; padding: 6px 16px; }
+
+  .err { color: #ff8f7b; font-size: 14px; min-height: 18px; margin-top: 8px; }
+  .hint { color: #7189a8; font-size: 13px; margin-top: 10px; line-height: 1.5; }
+
+  .kb-help { font-size: 12.5px; color: #7189a8; line-height: 1.8; }
+  .kb-help b { color: #a8c4dd; background: #101a28; border: 1px solid #2b4265; border-radius: 5px; padding: 1px 7px; font-weight: 600; }
+  body.touch .kb-only { display: none !important; }
+
+  /* ------- lobby ------- */
+  #lobby-code {
+    font-size: clamp(34px, 6vw, 52px); letter-spacing: 14px; font-weight: 900;
+    color: #6fc3ff; text-shadow: 0 0 16px rgba(80,160,255,.7);
+    cursor: pointer; -webkit-user-select: text; user-select: text;
+  }
+  #lobby-copy { font-size: 13px; color: #7189a8; min-height: 18px; }
+  #lobby-me { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+  #lobby-name { width: 170px; padding: 8px 10px; font-size: 15px; }
+  #lobby-char-name { font-weight: 700; color: #aee0ff; min-width: 150px; font-size: 15px; text-align: center; }
+  #lobby-players { display: flex; flex-direction: column; gap: 8px; width: min(420px, 92vw); margin: 16px 0; }
+  .lobby-p {
+    display: flex; align-items: center; gap: 10px; text-align: left;
+    background: rgba(15,23,36,.9); border: 1px solid #2b4265; border-radius: 10px; padding: 9px 14px;
+  }
+  .lobby-p .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: 0 0 8px currentColor; }
+  .lobby-p .nm { font-weight: 700; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lobby-p .ch { color: #8fa8c4; font-size: 13px; }
+  .lobby-p .st { font-size: 13px; font-weight: 800; color: #7de08a; }
+  .lobby-p .st.off { color: #7189a8; font-weight: 400; }
+
+  /* ------- HUD ------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #hud-bars {
+    position: absolute; left: calc(16px + env(safe-area-inset-left)); bottom: calc(44px + env(safe-area-inset-bottom));
+    width: min(230px, 30vw);
+  }
+  .bar { height: 14px; border-radius: 7px; background: rgba(8,12,20,.75); border: 1px solid #2b4265; overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; border-radius: 7px; transition: width .15s; }
+  #hud-hp { background: linear-gradient(90deg, #d84a3d, #ff8f6b); width: 100%; }
+  #hud-hp.low { animation: pulse .7s infinite; }
+  #hud-force { background: linear-gradient(90deg, #2f6fd0, #6fc3ff); width: 100%; opacity: .55; }
+  #hud-force.ready { opacity: 1; }
+  @keyframes pulse { 50% { filter: brightness(1.7); } }
+  .bar-label { font-size: 10px; letter-spacing: 2px; color: #c4d6ea; text-transform: uppercase; text-align: left; margin-top: 6px; text-shadow: 0 1px 3px rgba(0,0,0,.9); }
+
+  #hud-obj {
+    position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    font-size: clamp(14px, 2.6vh, 19px); font-weight: 800; color: #aee0ff; text-shadow: 0 2px 8px rgba(0,0,0,.8);
+    white-space: nowrap;
+  }
+  #hud-scores {
+    position: absolute; top: calc(12px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right));
+    display: flex; flex-direction: column; gap: 3px; min-width: 130px;
+  }
+  .score { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 600;
+    background: rgba(8,12,20,.6); border-radius: 6px; padding: 3px 9px; color: #a8c4dd; }
+  .score.me { color: #ffe08a; border: 1px solid rgba(255,224,138,.35); }
+  .score.dead { opacity: .45; }
+  .score .sv { font-weight: 800; }
+
+  #hud-cross {
+    position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; border-radius: 50%;
+    transform: translate(-50%, -50%); background: rgba(220,235,250,.8); box-shadow: 0 0 6px rgba(0,0,0,.8);
+  }
+
+  /* indicateur directionnel attaque/parade */
+  #hud-dir {
+    position: absolute; left: 50%; top: 50%; width: 104px; height: 104px;
+    transform: translate(-50%, -50%);
+  }
+  #hud-dir span {
+    position: absolute; border-radius: 5px; background: rgba(220,235,250,.18);
+    transition: background .08s, box-shadow .08s;
+  }
+  #dir-up    { left: 34px; top: 2px;  width: 36px; height: 9px; }
+  #dir-down  { left: 34px; bottom: 2px; width: 36px; height: 9px; }
+  #dir-left  { left: 2px;  top: 34px; width: 9px; height: 36px; }
+  #dir-right { right: 2px; top: 34px; width: 9px; height: 36px; }
+  #hud-dir.attack span.on { background: #ffb347; box-shadow: 0 0 16px #ffb347; }
+  #hud-dir.block span.on, #hud-dir.assist span.on { background: #6fc3ff; box-shadow: 0 0 16px #6fc3ff; }
+  #hud-dir.assist span { background: rgba(111,195,255,.4); }
+
+  /* rappel des commandes pendant le combat */
+  #hud-controls {
+    position: absolute; bottom: calc(8px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: #a8c4dd; background: rgba(8,12,20,.6); border: 1px solid rgba(43,66,101,.7);
+    border-radius: 9px; padding: 5px 14px; white-space: nowrap; max-width: 96vw;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  #hud-controls b { color: #dce8f5; background: #101a28; border: 1px solid #2b4265; border-radius: 4px; padding: 0 6px; font-weight: 600; }
+  body.touch #hud-controls { bottom: auto; top: calc(40px + env(safe-area-inset-top)); font-size: 11px; }
+
+  #hud-count {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: clamp(56px, 16vh, 140px); font-weight: 900; color: #6fc3ff;
+    text-shadow: 0 0 30px rgba(80,160,255,.8), 0 6px 30px rgba(0,0,0,.8); text-align: center;
+  }
+  #hud-msg {
+    position: absolute; bottom: calc(86px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+    font-size: 15px; font-weight: 700; color: #ffe08a; text-shadow: 0 2px 6px rgba(0,0,0,.9);
+    max-width: 80vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: opacity .4s;
+  }
+  #lock-hint {
+    position: absolute; bottom: 32%; left: 50%; transform: translateX(-50%);
+    font-size: 15px; font-weight: 700; color: #dce8f5; background: rgba(8,12,20,.8);
+    border: 1px solid #35507a; border-radius: 10px; padding: 10px 18px;
+  }
+
+  #dmgfx { position: fixed; inset: 0; pointer-events: none; z-index: 6; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(255,40,20,.55) 100%); }
+
+  #btn-quit {
+    position: fixed; top: calc(10px + env(safe-area-inset-top)); left: calc(10px + env(safe-area-inset-left));
+    z-index: 8; width: 34px; height: 34px; padding: 0; font-size: 15px; border-radius: 8px;
+    background: rgba(15,23,36,.8); color: #8fa8c4; box-shadow: none; border: 1px solid #2b4265;
+    display: none;
+  }
+
+  /* ------- contrôles tactiles ------- */
+  #touch { position: fixed; inset: 0; z-index: 6; pointer-events: none; display: none; }
+  body.touch.playing #touch { display: block; }
+  #t-stick-zone { position: absolute; left: 0; top: 0; bottom: 0; width: 42%; pointer-events: auto; }
+  #t-swipe-zone { position: absolute; right: 0; top: 0; bottom: 0; width: 58%; pointer-events: auto; }
+  #t-stick-base {
+    position: absolute; width: 120px; height: 120px; border-radius: 50%;
+    border: 2px solid rgba(111,195,255,.4); background: rgba(15,23,36,.3); display: none; pointer-events: none;
+  }
+  #t-stick-nub {
+    position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px;
+    border-radius: 50%; background: rgba(111,195,255,.5);
+  }
+  .tbtn {
+    position: absolute; pointer-events: auto; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: rgba(15,23,36,.6); border: 2px solid rgba(111,195,255,.35);
+    color: #aee0ff; font-weight: 900; font-size: 13px; text-shadow: 0 2px 4px rgba(0,0,0,.7);
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); z-index: 7;
+  }
+  .tbtn.on { background: rgba(61,143,221,.55); border-color: #6fc3ff; }
+  #t-block { right: calc(14px + env(safe-area-inset-right)); bottom: calc(64px + env(safe-area-inset-bottom)); width: 96px; height: 96px; font-size: 15px; }
+  #t-jump  { right: calc(124px + env(safe-area-inset-right)); bottom: calc(30px + env(safe-area-inset-bottom)); width: 70px; height: 70px; }
+  #t-dash  { right: calc(136px + env(safe-area-inset-right)); bottom: calc(112px + env(safe-area-inset-bottom)); width: 64px; height: 64px; }
+  #t-force { right: calc(52px + env(safe-area-inset-right)); bottom: calc(170px + env(safe-area-inset-bottom)); width: 64px; height: 64px; font-size: 20px; }
+  body.touch #hud-bars { bottom: calc(12px + env(safe-area-inset-bottom)); left: calc(12px + env(safe-area-inset-left)); width: 150px; }
+  body.touch #hud-dir { width: 70px; height: 70px; }
+  body.touch #dir-up { left: 23px; width: 24px; } body.touch #dir-down { left: 23px; width: 24px; }
+  body.touch #dir-left { top: 23px; height: 24px; } body.touch #dir-right { top: 23px; height: 24px; }
+
+  /* ------- résultats ------- */
+  #results-table { width: min(440px, 92vw); border-collapse: collapse; margin: 14px 0 20px; }
+  #results-table td { padding: 7px 10px; border-bottom: 1px solid #22344f; font-size: 15px; text-align: left; }
+  #results-table td.rk { font-weight: 900; color: #6fc3ff; width: 44px; font-size: 18px; }
+  #results-table td.tm { text-align: right; color: #8fa8c4; font-variant-numeric: tabular-nums; }
+  #results-table tr.me td { background: rgba(111,195,255,.08); }
+  #results-table tr.me td.rk { color: #aee0ff; }
+
+  /* invite paysage — pendant la partie seulement */
+  #rotate { display: none; z-index: 60; background: #0a0d14; font-size: 20px; }
+  #rotate .phone { font-size: 64px; margin-bottom: 18px; animation: turn 1.8s ease-in-out infinite; }
+  @keyframes turn { 0%, 20% { transform: rotate(0); } 55%, 80% { transform: rotate(90deg); } 100% { transform: rotate(90deg); } }
+  @media (orientation: portrait) { body.touch.playing #rotate { display: flex; } }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud" class="hidden">
+  <div id="hud-obj"></div>
+  <div id="hud-scores"></div>
+  <div id="hud-cross"></div>
+  <div id="hud-dir" class="idle">
+    <span id="dir-up"></span><span id="dir-right"></span><span id="dir-down"></span><span id="dir-left"></span>
+  </div>
+  <div id="hud-bars">
+    <div class="bar-label">Vie</div>
+    <div class="bar"><i id="hud-hp"></i></div>
+    <div class="bar-label">Force</div>
+    <div class="bar"><i id="hud-force"></i></div>
+  </div>
+  <div id="hud-count" class="hidden"></div>
+  <div id="hud-msg"></div>
+  <div id="hud-controls"></div>
+  <div id="lock-hint" class="hidden">🖱️ Clique pour capturer la souris</div>
+</div>
+<div id="dmgfx"></div>
+<button id="btn-quit" title="Quitter">✕</button>
+
+<!-- contrôles tactiles -->
+<div id="touch">
+  <div id="t-stick-zone"></div>
+  <div id="t-swipe-zone"></div>
+  <div id="t-stick-base"><div id="t-stick-nub"></div></div>
+  <div class="tbtn" id="t-block">PARADE</div>
+  <div class="tbtn" id="t-jump">SAUT</div>
+  <div class="tbtn" id="t-dash">DASH</div>
+  <div class="tbtn" id="t-force">✋</div>
+</div>
+
+<!-- écran d'accueil -->
+<div id="screen-home" class="overlay">
+  <h1>THE APPRENTICE</h1>
+  <p class="subtitle">L'arène du Colisée t'attend, apprenti ⚔️</p>
+  <div id="home-box">
+    <div class="panel">
+      <h3>Ton sabre</h3>
+      <canvas id="char-prev" width="480" height="380"></canvas>
+      <div id="char-name"></div>
+      <div class="row">
+        <button class="ghost charnav" id="btn-char-prev">‹</button>
+        <button class="ghost charnav" id="btn-char-next">›</button>
+      </div>
+    </div>
+    <div class="panel col" style="justify-content:center">
+      <h3>Combattre</h3>
+      <input type="text" id="inp-name" maxlength="14" placeholder="Ton nom d'apprenti">
+      <button id="btn-solo-duel" style="width:100%">⚔️ Duel contre l'IA</button>
+      <button class="ghost" id="btn-solo-horde" style="width:100%">🤖 Horde de droïdes</button>
+      <div style="height:6px"></div>
+      <input type="text" id="inp-room" class="code" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off">
+      <div class="row" style="width:100%">
+        <button class="ghost" id="btn-create" style="flex:1">Créer une salle</button>
+        <button class="ghost" id="btn-join" style="flex:1">Rejoindre</button>
+      </div>
+      <div class="err" id="home-err"></div>
+      <p class="kb-help kb-only">
+        <b>ZQSD</b> se déplacer · <b>souris</b> caméra · <b>clic G</b> attaque · <b>clic D</b> parade<br>
+        direction du coup = geste de souris (haut/bas/gauche/droite)<br>
+        <b>Espace</b> saut (×2) · <b>Maj</b> dash · <b>E</b> poussée de Force<br>
+        Manette : <b>RT</b> attaque (stick D = direction) · <b>LT</b> parade · <b>A</b> saut · <b>B</b> dash · <b>X</b> Force
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- lobby multijoueur -->
+<div id="screen-lobby" class="overlay hidden">
+  <p class="subtitle" style="margin-bottom:0">Code de la salle — partage-le avec tes potes</p>
+  <div id="lobby-code" title="Copier le code">····</div>
+  <div id="lobby-copy">👆 touche le code pour le copier</div>
+  <div id="lobby-me">
+    <input type="text" id="lobby-name" maxlength="14" placeholder="Ton nom">
+    <span style="display:inline-flex; gap:8px; align-items:center; flex-wrap:nowrap">
+      <button class="ghost small" id="lobby-char-prev">‹</button>
+      <span id="lobby-char-name"></span>
+      <button class="ghost small" id="lobby-char-next">›</button>
+    </span>
+  </div>
+  <div id="lobby-players"></div>
+  <p class="hint" id="lobby-hint"></p>
+  <div class="row" style="margin-top:12px">
+    <button class="ghost" id="btn-leave">← Quitter</button>
+    <button id="btn-ready">Prêt !</button>
+    <button id="btn-start-duel" class="hidden">⚔️ Duel</button>
+    <button id="btn-start-horde" class="hidden danger">🤖 Horde</button>
+  </div>
+</div>
+
+<!-- résultats -->
+<div id="screen-results" class="overlay hidden">
+  <h1 style="font-size:clamp(24px,4.5vw,40px)" id="results-title">RÉSULTATS</h1>
+  <table id="results-table"></table>
+  <div class="row">
+    <button class="ghost" id="btn-res-home">← Menu</button>
+    <button id="btn-res-again">Rejouer</button>
+  </div>
+</div>
+
+<!-- invite paysage -->
+<div id="rotate" class="overlay">
+  <div class="phone">📱</div>
+  <div>Tourne ton appareil en mode paysage</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./lib/three.module.min.js",
+    "trystero": "./lib/trystero-nostr.min.js"
+  }
+}
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
