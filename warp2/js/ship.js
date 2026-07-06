@@ -2,7 +2,7 @@
 import { PARTS, CELL, GRID, BASE_ENERGY, BASE_REGEN, BASE_THRUST, placedCells, fireDir, computeStats } from './parts.js';
 import { TAU, clamp, wrapAngle, convexHull } from './util.js';
 
-const DAMPING = 0.7;        // linear damping /s
+const DAMPING = 0.62;       // linear damping /s
 const BOOST_MULT = 1.7;
 const BOOST_DRAIN = 20;     // energy/s
 const SHIELD_COST = 1.4;    // energy per point of damage blocked
@@ -102,7 +102,7 @@ export class Ship {
     this.hp = hpTotal;
     this.maxHpTotal = maxHpTotal;
     this.cockpitsAlive = cockpits;
-    this.accel = 8.0 * this.thrust / this.mass;
+    this.accel = 11.5 * this.thrust / this.mass;
     this.turnRate = clamp(1.6 + (this.thrust / this.mass) * 0.07, 1.8, 5.0);
     if (this.energy > energyMax) this.energy = energyMax;
   }
@@ -277,7 +277,7 @@ export class Ship {
         case 'flare':
           if (inp.flare && part.cooldown <= 0) {
             part.cooldown = 1 / w.rate;
-            world.spawnFlares(this, w);
+            world.spawnFlares(this, mx, my, Math.atan2(dirY, dirX), w);
           }
           break;
       }
@@ -664,19 +664,34 @@ export function drawPartShape(ctx, part, def, shade, ship) {
         ctx.beginPath(); ctx.arc(0, -h + 4, 2.5, 0, TAU); ctx.fill();
       }
       break;
-    case 'missile':
+    case 'missile': {
       ctx.fillStyle = shadeColor('#5e3535', shade);
       ctx.fillRect(-h + 2, -h + 2, CELL - 4, CELL - 4);
-      ctx.fillStyle = col;
-      ctx.fillRect(-6, -h + 3, 4, CELL - 7);
-      ctx.fillRect(2, -h + 3, 4, CELL - 7);
+      // Two tubes act as reload gauges: they fill bottom-up as the rack reloads,
+      // glowing bright red the instant a missile is ready.
+      const rf = reloadFrac(part);
+      const by = -h + 3, bh = CELL - 7;
+      for (const bx of [-6, 2]) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(bx, by, 4, bh);
+        const fh = bh * rf;
+        ctx.fillStyle = rf >= 1 ? '#ff6a6a' : col;
+        ctx.fillRect(bx, by + bh - fh, 4, fh);
+      }
       break;
-    case 'rocket':
+    }
+    case 'rocket': {
       ctx.fillStyle = shadeColor('#5e4535', shade);
       ctx.fillRect(-h + 2, -h + 2, CELL - 4, CELL - 4);
-      ctx.fillStyle = col;
+      const rf = reloadFrac(part);
+      ctx.fillStyle = rf >= 1 ? col : 'rgba(0,0,0,0.4)';
       ctx.beginPath(); ctx.arc(-4, 0, 2.6, 0, TAU); ctx.arc(4, 0, 2.6, 0, TAU); ctx.fill();
+      // Reload bar along the bottom edge.
+      const bx = -h + 3, by = h - 4, bw = CELL - 6;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(bx, by, bw, 2);
+      ctx.fillStyle = rf >= 1 ? col : '#ff9d4f'; ctx.fillRect(bx, by, bw * rf, 2);
       break;
+    }
     case 'turret': {
       // Base plate only — the rotating head is drawn separately in ship space.
       ctx.fillStyle = shadeColor('#3f421c', shade);
@@ -692,20 +707,36 @@ export function drawPartShape(ctx, part, def, shade, ship) {
       }
       break;
     }
-    case 'mine':
+    case 'mine': {
       ctx.fillStyle = shadeColor('#3d3355', shade);
       ctx.fillRect(-h + 2, -h + 2, CELL - 4, CELL - 4);
-      ctx.fillStyle = col;
-      ctx.beginPath(); ctx.arc(0, 0, 4, 0, TAU); ctx.fill();
-      ctx.strokeStyle = col;
-      ctx.beginPath(); ctx.moveTo(-5, -5); ctx.lineTo(5, 5); ctx.moveTo(5, -5); ctx.lineTo(-5, 5); ctx.stroke();
+      const rf = reloadFrac(part);
+      // Ring fills clockwise as the launcher reloads; solid core when armed.
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath(); ctx.arc(0, 0, 5.4, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = rf >= 1 ? '#b39dff' : col;
+      ctx.beginPath(); ctx.arc(0, 0, 5.4, -Math.PI / 2, -Math.PI / 2 + TAU * rf); ctx.stroke();
+      ctx.fillStyle = rf >= 1 ? col : shadeColor(def.color, shade * 0.45);
+      ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, TAU); ctx.fill();
       break;
-    case 'flare':
+    }
+    case 'flare': {
       ctx.fillStyle = shadeColor('#6a6136', shade);
       ctx.fillRect(-h + 2, -h + 2, CELL - 4, CELL - 4);
-      ctx.fillStyle = col;
-      for (let i = -1; i <= 1; i++) ctx.fillRect(i * 5 - 1.5, -h + 4, 3, CELL - 10);
+      // Three charge strips fill bottom-up; bright gold when a salvo is ready.
+      const rf = reloadFrac(part);
+      const by = -h + 4, bh = CELL - 10;
+      for (let i = -1; i <= 1; i++) {
+        const bx = i * 5 - 1.5;
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(bx, by, 3, bh);
+        const fh = bh * rf;
+        ctx.fillStyle = rf >= 1 ? '#ffe98a' : col;
+        ctx.fillRect(bx, by + bh - fh, 3, fh);
+      }
       break;
+    }
     default:
       ctx.fillRect(-h, -h, CELL, CELL);
   }
@@ -719,6 +750,14 @@ function drawOncePerPart(ctx, part) {
   if (drawnFrame.get(part) === frameTick) return false;
   drawnFrame.set(part, frameTick);
   return true;
+}
+
+// Reload progress of a weapon part: 0 just fired → 1 ready to fire again.
+// Editor/preview parts have no cooldown, so they render fully charged.
+function reloadFrac(part) {
+  const rate = part.def.weapon && part.def.weapon.rate;
+  if (!rate) return 1;
+  return clamp(1 - (part.cooldown || 0) * rate, 0, 1);
 }
 
 function shadeColor(hex, f) {

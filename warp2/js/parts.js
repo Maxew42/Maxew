@@ -95,9 +95,9 @@ export function computeStats(design) {
     if (def.kind === 'cockpit') cockpits++;
     if (def.kind === 'weapon') weapons.push(def.weapon.type);
   }
-  const accel = 8.0 * thrust / Math.max(mass, 1);
+  const accel = 11.5 * thrust / Math.max(mass, 1);
   const turnRate = clampNum(1.6 + (thrust / Math.max(mass, 1)) * 0.07, 1.8, 5.0);
-  const topSpeed = accel / 0.7; // accel balances the 0.7/s linear damping
+  const topSpeed = accel / 0.62; // accel balances the 0.62/s linear damping
   return { cost, mass, hp, thrust, energyMax, energyRegen, cockpits, weapons, accel, turnRate, topSpeed };
 }
 

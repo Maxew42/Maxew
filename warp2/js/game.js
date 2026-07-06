@@ -9,6 +9,14 @@ const WORLD_SIZE = 4200;
 const SNAP_RATE = 1 / 12; // net snapshots per second
 const RESPAWN_DELAY = 4;
 const KILL_TARGET = 5;    // deathmatch: first to 5 kills wins
+const RADAR_REV = 2.0;    // seconds for one radar sweep revolution
+
+// Did the sweep, moving from `prev` to `cur`, cross the given bearing this frame?
+function angleInSweep(bearing, prev, cur) {
+  const norm = a => ((a % TAU) + TAU) % TAU;
+  bearing = norm(bearing); prev = norm(prev); cur = norm(cur);
+  return prev <= cur ? (bearing > prev && bearing <= cur) : (bearing > prev || bearing <= cur);
+}
 
 export class Game {
   // opts: { mode: 'ai'|'mp', canvas, input, myDesign, myName, net, seed, bots: [{design,name,difficulty}], onExit }
@@ -28,6 +36,11 @@ export class Game {
     this.beams = []; // per-frame beam segments
     this.shockwaves = []; this.delayedBooms = [];
     this.shake = 0;
+    // Sweeping radar: the beam rotates, and an enemy blip only refreshes when
+    // the beam crosses its bearing. Range scales with hull mass (below).
+    this.radarSweep = 0;
+    this.radarBlips = new Map(); // shipId -> { x, y, t }
+    this.radarRange = 2400;
     this.time = 0;
     this.snapTimer = 0;
     this.running = false;
@@ -246,10 +259,12 @@ export class Game {
     this.mines.push(m);
     return m;
   }
-  spawnFlares(owner, w) {
+  // Flares leave the launcher itself, spread around the block's fire direction —
+  // so a rear-facing block sheds them behind, a forward/side block ahead or aside.
+  spawnFlares(owner, x, y, baseAngle, w) {
     for (let i = 0; i < w.count; i++) {
-      const a = owner.angle + Math.PI + (i - (w.count - 1) / 2) * 0.6;
-      this.flares.push(new Flare(owner, owner.x, owner.y, a, w.life));
+      const a = baseAngle + (i - (w.count - 1) / 2) * 0.6;
+      this.flares.push(new Flare(owner, x, y, a, w.life));
     }
   }
 
@@ -285,7 +300,7 @@ export class Game {
       const a = Math.random() * TAU, sp = 40 + Math.random() * 220;
       this.particles.push(new Particle(x, y, Math.cos(a) * sp, Math.sin(a) * sp,
         0.3 + Math.random() * 0.5, 3 + Math.random() * 5,
-        ['#ffdf8a', '#ff9d42', '#ff5d2a', '#8a8a8a'][i % 4], 3));
+        ['#ffdf8a', '#ff8a1e', '#ff5a10', '#e23a06'][i % 4], 3));
     }
     const dc = Math.hypot(this.camX - x, this.camY - y);
     this.shake = Math.min(14, this.shake + clamp(1 - dc / 900, 0, 1) * 10);
@@ -336,12 +351,20 @@ export class Game {
         ship.vx * 0.4 + Math.cos(a) * sp, ship.vy * 0.4 + Math.sin(a) * sp,
         0.7 + Math.random() * 1.4, 3 + Math.random() * 5, part.def.color, 1.4));
     }
-    // Fireball core.
-    for (let i = 0; i < 55; i++) {
-      const a = Math.random() * TAU, sp = 20 + Math.random() * 380;
+    // Fireball core — hot orange flame: a white-hot flash fading through amber,
+    // orange and deep red, with just a little dark smoke.
+    for (let i = 0; i < 72; i++) {
+      const a = Math.random() * TAU, sp = 20 + Math.random() * 420;
       this.particles.push(new Particle(x, y, Math.cos(a) * sp, Math.sin(a) * sp,
-        0.4 + Math.random() * 1.0, 3 + Math.random() * 7,
-        ['#ffffff', '#ffdf8a', '#ff9d42', '#ff5d2a', '#7a7a7a'][i % 5], 2.4));
+        0.45 + Math.random() * 1.1, 4 + Math.random() * 8,
+        ['#fff0c2', '#ffbe57', '#ff8a1e', '#ff5a10', '#e23a06', '#5a4038'][i % 6], 2.2));
+    }
+    // Rolling flame puffs: slower, bigger, lingering orange to sell the "flame".
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random() * TAU, sp = 10 + Math.random() * 130;
+      this.particles.push(new Particle(x, y, Math.cos(a) * sp, Math.sin(a) * sp,
+        0.7 + Math.random() * 0.9, 8 + Math.random() * 9,
+        ['#ff8a1e', '#ff6a12', '#ffae4a'][i % 3], 1.1));
     }
     // Shockwave rings (second one slightly delayed).
     this.shockwaves.push({ x, y, t: 0, life: 0.75, max: 210 + ship.radius * 1.7 });
@@ -544,12 +567,31 @@ export class Game {
         const a = Math.random() * TAU, sp = 30 + Math.random() * 180;
         this.particles.push(new Particle(b.x, b.y, Math.cos(a) * sp, Math.sin(a) * sp,
           0.25 + Math.random() * 0.4, 2.5 + Math.random() * 4,
-          ['#ffdf8a', '#ff9d42', '#ffffff'][i % 3], 3));
+          ['#ffbe57', '#ff8a1e', '#ff5a10'][i % 3], 3));
       }
       this.shockwaves.push({ x: b.x, y: b.y, t: 0, life: 0.35, max: 65 });
       this.shake = Math.min(20, this.shake + 3);
       return false;
     });
+
+    // Radar sweep: advance the beam, refresh a blip only as the beam passes it.
+    // Heavier hulls carry a bigger dish → they see a little farther, light ones less.
+    this.radarRange = clamp(1650 + this.me.mass * 20, 1500, 3400);
+    const prevSweep = this.radarSweep;
+    this.radarSweep = (this.radarSweep + (TAU / RADAR_REV) * dt) % TAU;
+    const r2 = this.radarRange * this.radarRange;
+    for (const s of this.ships) {
+      if (s === this.me || !s.alive) continue;
+      const dx = s.x - this.me.x, dy = s.y - this.me.y;
+      if (dx * dx + dy * dy > r2) continue;
+      if (angleInSweep(Math.atan2(dy, dx), prevSweep, this.radarSweep)) {
+        this.radarBlips.set(s.id, { x: s.x, y: s.y, t: this.time });
+      }
+    }
+    for (const [id, b] of this.radarBlips) {
+      const s = this.shipById(id);
+      if (!s || !s.alive || this.time - b.t > RADAR_REV * 1.05) this.radarBlips.delete(id);
+    }
 
     // Camera.
     const focus = this.me.alive ? this.me : (this.ships.find(s => s.alive) || this.me);
@@ -688,6 +730,23 @@ export class Game {
     ctx.restore();
 
     this.renderHUD(ctx, W, H);
+    this.updateControlsHint();
+  }
+
+  // Bottom-center control cheat-sheet, keyed to the input scheme in use.
+  // Hidden on touch (the on-screen joystick/buttons speak for themselves).
+  updateControlsHint() {
+    const el = document.getElementById('controls-hint');
+    if (!el) return;
+    const src = this.input.activeSource;
+    if (src === this._hintSrc) return;
+    this._hintSrc = src;
+    if (src === 'touch') { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    const rows = src === 'gamepad'
+      ? [['RT', 'Thrust'], ['L-Stick', 'Aim'], ['✕', 'Guns'], ['□', 'Missiles'], ['○', 'Mines'], ['△', 'Flares'], ['L1', 'Boost']]
+      : [['W ↑', 'Thrust'], ['A D', 'Turn'], ['Space', 'Guns'], ['E', 'Missiles'], ['X', 'Mines'], ['F', 'Flares'], ['Shift', 'Boost']];
+    el.innerHTML = rows.map(([k, a]) => `<span class="ck"><b>${k}</b>${a}</span>`).join('');
+    el.classList.remove('hidden');
   }
 
   renderHUD(ctx, W, H) {
@@ -745,38 +804,113 @@ export class Game {
       sy += 14 * dpr;
     }
 
-    // Radar (top right).
-    const rr = 62 * dpr, rx = W - rr - 16 * dpr, ry = rr + 16 * dpr, range = 2400;
+    // Radar (top right): a real sweeping scope. The beam rotates; enemy blips
+    // are painted at their last-pinged spot and fade until the beam finds them again.
+    const rr = 62 * dpr, rx = W - rr - 16 * dpr, ry = rr + 16 * dpr, range = this.radarRange;
     ctx.save();
-    ctx.globalAlpha = 0.85;
     ctx.beginPath(); ctx.arc(rx, ry, rr, 0, TAU);
-    ctx.fillStyle = 'rgba(8, 14, 24, 0.7)';
+    ctx.fillStyle = 'rgba(6, 18, 14, 0.72)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(94, 203, 255, 0.4)';
-    ctx.lineWidth = 1.5 * dpr;
-    ctx.stroke();
-    ctx.beginPath(); ctx.arc(rx, ry, rr * 0.5, 0, TAU); ctx.stroke();
     ctx.clip();
+    // Range rings + cross-hair grid.
+    ctx.strokeStyle = 'rgba(94, 255, 160, 0.28)';
+    ctx.lineWidth = 1 * dpr;
+    for (const f of [1, 0.66, 0.33]) { ctx.beginPath(); ctx.arc(rx, ry, rr * f, 0, TAU); ctx.stroke(); }
+    ctx.beginPath();
+    ctx.moveTo(rx - rr, ry); ctx.lineTo(rx + rr, ry);
+    ctx.moveTo(rx, ry - rr); ctx.lineTo(rx, ry + rr);
+    ctx.stroke();
+
+    // Sweep beam: a fading trailing wedge chasing the leading edge.
+    const sweep = this.radarSweep, span = TAU * 0.30, segs = 26;
+    for (let i = 0; i < segs; i++) {
+      const a0 = sweep - span * (i / segs), a1 = sweep - span * ((i + 1) / segs);
+      ctx.globalAlpha = 0.18 * (1 - i / segs);
+      ctx.fillStyle = '#5cffa0';
+      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.arc(rx, ry, rr, a1, a0); ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(140, 255, 180, 0.9)';
+    ctx.lineWidth = 1.4 * dpr;
+    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + Math.cos(sweep) * rr, ry + Math.sin(sweep) * rr); ctx.stroke();
+
+    // Static terrain: asteroids always show, dim green.
     for (const a of this.asteroids) {
       const dx = (a.x - me.x) / range * rr, dy = (a.y - me.y) / range * rr;
       if (dx * dx + dy * dy > rr * rr) continue;
-      ctx.fillStyle = 'rgba(160,150,140,0.5)';
-      ctx.beginPath(); ctx.arc(rx + dx, ry + dy, Math.max(1.5 * dpr, a.r / range * rr), 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(120, 170, 140, 0.35)';
+      ctx.beginPath(); ctx.arc(rx + dx, ry + dy, Math.max(1.3 * dpr, a.r / range * rr), 0, TAU); ctx.fill();
     }
-    for (const s of this.ships) {
-      if (!s.alive) continue;
-      const dx = (s.x - me.x) / range * rr, dy = (s.y - me.y) / range * rr;
-      ctx.fillStyle = s === me ? '#6fdc6f' : '#ff6f6f';
-      ctx.beginPath(); ctx.arc(rx + clamp(dx, -rr, rr), ry + clamp(dy, -rr, rr), 2.5 * dpr, 0, TAU); ctx.fill();
+    // Enemy blips from the last ping, fading over one revolution.
+    for (const [, b] of this.radarBlips) {
+      const dx = (b.x - me.x) / range * rr, dy = (b.y - me.y) / range * rr;
+      if (dx * dx + dy * dy > rr * rr) continue;
+      const fade = clamp(1 - (this.time - b.t) / RADAR_REV, 0, 1);
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = '#ff6f6f';
+      ctx.beginPath(); ctx.arc(rx + dx, ry + dy, 3 * dpr, 0, TAU); ctx.fill();
+      ctx.globalAlpha = fade * 0.4;
+      ctx.beginPath(); ctx.arc(rx + dx, ry + dy, 5.5 * dpr, 0, TAU); ctx.fill();
     }
+    ctx.globalAlpha = 1;
+    // Own ship at the center, pointing where we face.
+    ctx.save();
+    ctx.translate(rx, ry); ctx.rotate(me.angle);
+    ctx.fillStyle = '#8effc0';
+    ctx.beginPath(); ctx.moveTo(5 * dpr, 0); ctx.lineTo(-3.5 * dpr, -3 * dpr); ctx.lineTo(-3.5 * dpr, 3 * dpr); ctx.closePath(); ctx.fill();
     ctx.restore();
+    ctx.restore();
+    // Scope rim.
+    ctx.strokeStyle = 'rgba(94, 255, 160, 0.55)';
+    ctx.lineWidth = 1.5 * dpr;
+    ctx.beginPath(); ctx.arc(rx, ry, rr, 0, TAU); ctx.stroke();
 
-    // Incoming missile warning.
+    // Incoming-missile lock: full-screen pilot warning overlay.
     if (this.missiles.some(m => m.alive && m.targetId === me.id)) {
-      ctx.fillStyle = `rgba(255, 80, 80, ${0.5 + 0.5 * Math.sin(performance.now() / 120)})`;
-      ctx.font = `bold ${13 * dpr}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText('⚠ MISSILE — press F for flares', W / 2, 30 * dpr);
+      this.renderMissileLock(ctx, W, H, dpr);
     }
+  }
+
+  // Missile-lock overlay: a clean pulsing red HUD frame with corner brackets and
+  // edge tick marks, plus a warning label. No filled bands — just crisp lines.
+  renderMissileLock(ctx, W, H, dpr) {
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 110);
+    ctx.save();
+    ctx.lineJoin = 'miter';
+    // Soft outer glow line, then a crisp inner line — a double frame.
+    const m = 9 * dpr;
+    ctx.strokeStyle = `rgba(255, 40, 40, ${0.14 + 0.16 * pulse})`;
+    ctx.lineWidth = 12 * dpr;
+    ctx.strokeRect(m, m, W - 2 * m, H - 2 * m);
+    ctx.strokeStyle = `rgba(255, 70, 70, ${0.6 + 0.35 * pulse})`;
+    ctx.lineWidth = 2 * dpr;
+    ctx.strokeRect(m, m, W - 2 * m, H - 2 * m);
+    // Corner brackets.
+    ctx.strokeStyle = `rgba(255, 100, 100, ${0.75 + 0.25 * pulse})`;
+    ctx.lineWidth = 3 * dpr;
+    const c = 30 * dpr, o = m;
+    for (const [cx, cy, sx, sy] of [[o, o, 1, 1], [W - o, o, -1, 1], [o, H - o, 1, -1], [W - o, H - o, -1, -1]]) {
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + sy * c); ctx.lineTo(cx, cy); ctx.lineTo(cx + sx * c, cy);
+      ctx.stroke();
+    }
+    // Mid-edge tick marks.
+    ctx.lineWidth = 2 * dpr;
+    const t = 11 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - t, m); ctx.lineTo(W / 2 + t, m);
+    ctx.moveTo(W / 2 - t, H - m); ctx.lineTo(W / 2 + t, H - m);
+    ctx.moveTo(m, H / 2 - t); ctx.lineTo(m, H / 2 + t);
+    ctx.moveTo(W - m, H / 2 - t); ctx.lineTo(W - m, H / 2 + t);
+    ctx.stroke();
+    // Warning label, top-center.
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${18 * dpr}px system-ui, sans-serif`;
+    ctx.fillStyle = `rgba(255, 80, 80, ${0.7 + 0.3 * pulse})`;
+    ctx.fillText('⚠  MISSILE LOCK  ⚠', W / 2, 40 * dpr);
+    ctx.font = `${11 * dpr}px system-ui, sans-serif`;
+    ctx.fillStyle = 'rgba(255, 180, 180, 0.85)';
+    ctx.fillText('DEPLOY FLARES', W / 2, 58 * dpr);
+    ctx.restore();
   }
 }

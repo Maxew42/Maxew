@@ -41,7 +41,7 @@ Serve the folder from any static host (or `python3 -m http.server`) and it works
 | X        | drop mine |
 | F        | flares |
 | Shift    | boost (drains energy) |
-| Gamepad  | left stick steer+thrust · ✕ guns · □ missiles · ○ mines · △ flares · LT/RB boost |
+| Gamepad  | left stick aims · RT thrust · ✕ guns · □ missiles · ○ mines · △ flares · L1 boost |
 | Touch    | virtual joystick + FIRE/MSL/MINE/FLARE/BOOST buttons |
 
 Matches are deathmatch with respawns — first to 5 kills wins (vs AI and multiplayer).

@@ -95,6 +95,14 @@
   .lobby-row { padding: 8px 10px; background: rgba(94,203,255,0.06); border-radius: 8px; font-size: 14px; }
   #lobby-players { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
   #lobby-wait { color: #7d90aa; font-size: 13px; text-align: center; }
+  #lobby-ship { display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .lobby-ship-view { display: flex; flex-direction: column; align-items: center;
+    background: rgba(94, 203, 255, 0.05); border: 1px solid rgba(94, 203, 255, 0.18);
+    border-radius: 12px; padding: 8px 14px; min-width: 170px; }
+  #lobby-ship-canvas { width: 130px; height: 130px; }
+  #lobby-ship-name { font-weight: 800; font-size: 15px; color: #cfe6ff; }
+  .lobby-ship-hint { color: #7d90aa; font-size: 10px; margin-top: 2px; }
+  #lobby-ship .btn { font-size: 22px; line-height: 1; padding: 10px 14px; }
   .row { display: flex; gap: 8px; align-items: center; }
   .row > input { flex: 1; min-width: 0; }
 
@@ -143,6 +151,14 @@
   #game-over h2.win { color: #7ee787; text-shadow: 0 0 40px rgba(126, 231, 135, 0.4); }
   #game-over h2.lose { color: #ff6f6f; text-shadow: 0 0 40px rgba(255, 111, 111, 0.4); }
   #game-over .btn { width: 220px; padding: 13px; font-size: 15px; }
+  #controls-hint { position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: max(10px, env(safe-area-inset-bottom)); z-index: 4; pointer-events: none;
+    display: flex; gap: 6px 9px; flex-wrap: wrap; justify-content: center; max-width: 94vw;
+    background: rgba(8, 14, 24, 0.5); padding: 6px 12px; border-radius: 10px;
+    border: 1px solid rgba(94, 203, 255, 0.12); }
+  #controls-hint .ck { font-size: 11px; color: #9fb2cc; display: inline-flex; align-items: center; gap: 5px; }
+  #controls-hint .ck b { color: #cfe6ff; background: rgba(94, 203, 255, 0.14);
+    border: 1px solid rgba(94, 203, 255, 0.3); border-radius: 5px; padding: 2px 6px; font-weight: 700; }
 
   /* ---- Touch UI ---- */
   .touch-ui { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
@@ -200,7 +216,7 @@
   <button id="btn-builder" class="menu-btn">SHIP BUILDER</button>
   <div class="hint">
     WASD / arrows to fly · SPACE guns · E missiles · X mines · F flares · SHIFT boost<br>
-    Gamepad: ✕ guns · □ missiles · ○ mines · △ flares — touch supported · first to 5 kills
+    Gamepad: RT thrust · L-stick aim · ✕ guns · □ missiles · ○ mines · △ flares — touch supported · first to 5 kills
   </div>
 </div>
 
@@ -239,12 +255,22 @@
     <h3>Room</h3>
     <div id="room-code-display">----</div>
     <div style="color:#7d90aa;font-size:12px;text-align:center">Share this code with friends</div>
+    <div id="lobby-ship">
+      <button id="lobby-ship-prev" class="btn" title="Previous ship">‹</button>
+      <div class="lobby-ship-view">
+        <canvas id="lobby-ship-canvas" width="140" height="140"></canvas>
+        <div id="lobby-ship-name">—</div>
+        <div class="lobby-ship-hint">Your ship — tap ‹ › to switch</div>
+      </div>
+      <button id="lobby-ship-next" class="btn" title="Next ship">›</button>
+    </div>
     <div id="lobby-players"></div>
     <div class="row" style="justify-content:center;color:#9fb2cc;font-size:13px">
       AI bots: <select id="lobby-bots"><option>0</option><option>1</option><option>2</option></select>
     </div>
     <button id="btn-start-match" class="btn primary hidden">START MATCH</button>
     <div id="lobby-wait">Waiting for the host to start…</div>
+    <button id="btn-room-leave" class="btn">← Leave room</button>
   </div>
 </div>
 
@@ -287,6 +313,7 @@
 <div id="screen-game" class="screen hidden">
   <canvas id="game-canvas"></canvas>
   <button id="btn-exit-game" class="btn">✕ Quit</button>
+  <div id="controls-hint" class="hidden"></div>
   <div id="killfeed"></div>
   <div id="game-msg"></div>
   <div id="game-over" class="hidden">

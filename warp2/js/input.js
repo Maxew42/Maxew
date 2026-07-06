@@ -6,14 +6,23 @@ export class Input {
     this.keys = new Set();
     this.touch = { joyActive: false, joyAngle: 0, joyMag: 0, fire: false, missile: false, boost: false, mine: false, flare: false };
     this.enabled = false;
+    this.hasGamepad = false;
+    // Which control scheme is actually in use right now — drives the on-screen hint.
+    this.activeSource = this.isTouchDevice ? 'touch' : 'key';
 
     addEventListener('keydown', e => {
       if (e.repeat) return;
       this.keys.add(e.code);
+      if (!this.isTouchDevice) this.activeSource = 'key';
       if (this.enabled && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     });
     addEventListener('keyup', e => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
+    addEventListener('gamepadconnected', () => { this.hasGamepad = true; this.activeSource = 'gamepad'; });
+    addEventListener('gamepaddisconnected', () => {
+      this.hasGamepad = !!(navigator.getGamepads && [...navigator.getGamepads()].some(g => g && g.connected));
+      if (!this.hasGamepad && this.activeSource === 'gamepad') this.activeSource = this.isTouchDevice ? 'touch' : 'key';
+    });
   }
 
   get isTouchDevice() {
@@ -101,16 +110,28 @@ export class Input {
       const dead = 0.22;
       const lx = gp.axes[0] || 0, ly = gp.axes[1] || 0;
       const mag = Math.hypot(lx, ly);
-      // Face buttons, PlayStation layout: ✕ guns, □ missiles, ○ mines, △ flares.
-      return {
+      // Right trigger accelerates (analog); the left stick only aims the nose.
+      const btn = i => gp.buttons[i]?.pressed || false;
+      let rt = gp.buttons[7]?.value ?? (btn(7) ? 1 : 0);
+      if (btn(7) && rt < 0.5) rt = 1;      // some pads report a pressed trigger with no analog value
+      // Map a light-to-firm press to full thrust so advancing never feels sluggish.
+      const thrust = rt > 0.08 ? Math.min(1, (rt - 0.08) / 0.62) : 0;
+      const out = {
+        // Face buttons, PlayStation layout: ✕ guns, □ missiles, ○ mines, △ flares.
         stickAngle: mag > dead ? Math.atan2(ly, lx) : null,
-        stickMag: mag > dead ? Math.min(1, (mag - dead) / (1 - dead)) : 0,
-        fire: gp.buttons[0]?.pressed || gp.buttons[7]?.pressed || false,    // ✕ (cross) or RT
-        missile: gp.buttons[2]?.pressed || false,                           // □ (square)
-        mine: gp.buttons[1]?.pressed || false,                              // ○ (circle)
-        flare: gp.buttons[3]?.pressed || false,                             // △ (triangle)
-        boost: gp.buttons[6]?.pressed || gp.buttons[5]?.pressed || false,   // LT or RB
+        thrust,                            // RT / R2 = advance
+        fire: btn(0),                     // ✕ (cross)
+        missile: btn(2),                  // □ (square)
+        mine: btn(1),                     // ○ (circle)
+        flare: btn(3),                    // △ (triangle)
+        boost: btn(4) || btn(6),          // L1 / L2 = boost
       };
+      // Any meaningful input flips the active scheme to gamepad.
+      if (out.stickAngle != null || out.thrust || out.fire || out.missile || out.mine || out.flare || out.boost) {
+        this.hasGamepad = true;
+        this.activeSource = 'gamepad';
+      }
+      return out;
     }
     return null;
   }
@@ -143,14 +164,14 @@ export class Input {
     out.mine = out.mine || this.touch.mine;
     out.flare = out.flare || this.touch.flare;
 
-    // Gamepad: point-to-steer, overrides if active.
+    // Gamepad: left stick aims the nose, right trigger accelerates.
     const gp = this.pollGamepad();
     if (gp) {
       if (gp.stickAngle != null) {
         out.targetAngle = gp.stickAngle;
-        out.thrust = gp.stickMag;
         out.turn = 0;
       }
+      if (gp.thrust > 0.05) out.thrust = gp.thrust;
       out.fire = out.fire || gp.fire;
       out.missile = out.missile || gp.missile;
       out.boost = out.boost || gp.boost;

@@ -159,6 +159,49 @@ function enterRoom(code) {
   state.net.onHostChange = renderLobby;
   state.net.onStart = cfg => startMpGame(cfg);
   renderLobby();
+  renderLobbyShip();
+}
+
+// Show the player's currently-selected ship in the lobby.
+function renderLobbyShip() {
+  if (!state.design) return;
+  drawShipThumb($('#lobby-ship-canvas'), state.design);
+  $('#lobby-ship-name').textContent = state.design.name;
+}
+
+// Cycle through valid designs and broadcast the change to peers.
+function cycleLobbyShip(dir) {
+  const ships = allShips().filter(d => validateDesign(d).ok);
+  if (!ships.length || !state.net) return;
+  let idx = ships.findIndex(d => d.name === state.design?.name);
+  idx = ((idx < 0 ? 0 : idx) + dir + ships.length) % ships.length;
+  state.design = ships[idx];
+  state.net.setProfile({ name: state.name, design: state.design });
+  renderLobbyShip();
+  renderLobby();
+}
+
+$('#lobby-ship-prev').addEventListener('click', () => cycleLobbyShip(-1));
+$('#lobby-ship-next').addEventListener('click', () => cycleLobbyShip(1));
+$('#btn-room-leave').addEventListener('click', () => {
+  if (state.net) { state.net.leave(); state.net = null; }
+  openHangar();
+});
+
+// Return to the current room after a match instead of leaving it.
+function returnToLobby() {
+  if (state.game) { state.game.stop(); state.game = null; }
+  input.enabled = false;
+  show('lobby');
+  $('#lobby-join').classList.add('hidden');
+  $('#lobby-room').classList.remove('hidden');
+  if (state.net) {
+    state.net.onPeers = renderLobby;
+    state.net.onHostChange = renderLobby;
+    state.net.onStart = cfg => startMpGame(cfg);
+  }
+  renderLobby();
+  renderLobbyShip();
 }
 
 function renderLobby() {
@@ -187,7 +230,10 @@ $('#btn-start-match').addEventListener('click', () => {
 });
 
 function startMpGame(cfg) {
-  if (state.game) return; // already playing
+  if (state.game) {
+    if (!state.game.matchOver) return;           // a live match is already running
+    state.game.stop(); state.game = null;        // tear down a finished match so we can rejoin
+  }
   const bots = (cfg.bots || []).map(b => ({ design: PREMADE_SHIPS[b.designIdx], name: b.name, difficulty: b.difficulty }));
   state.returnTo = 'menu';
   launchGame({ mode: 'mp', myDesign: state.design, myName: state.name, net: state.net, seed: cfg.seed, bots });
@@ -220,6 +266,8 @@ function openEditor(design) {
 function launchGame(opts) {
   show('game');
   $('#game-over').classList.add('hidden');
+  $('#btn-rematch').textContent = opts.mode === 'mp' ? 'BACK TO LOBBY' : 'REMATCH';
+  $('#btn-exit-over').textContent = opts.mode === 'mp' ? 'LEAVE ROOM' : 'BACK';
   $('#killfeed').innerHTML = '';
   input.enabled = true;
   input.buildTouchUI($('#screen-game'));
@@ -243,8 +291,8 @@ $('#btn-exit-over').addEventListener('click', exitGame);
 $('#btn-rematch').addEventListener('click', () => {
   if (!state.lastGameOpts) return exitGame();
   const opts = state.lastGameOpts;
+  if (opts.mode === 'mp') return returnToLobby(); // rejoin the room, host can restart
   if (state.game) { state.game.stop(); state.game = null; }
-  if (opts.mode === 'mp') return exitGame(); // no solo rematch in MP
   launchGame(opts);
 });
 
