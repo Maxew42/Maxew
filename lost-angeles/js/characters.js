@@ -12,7 +12,7 @@ export const CHARACTERS = [
     stats: { speed: .88, accel: .82, turn: .85, weight: .70 } },
   { id: 'fury',  name: 'Rob Fury',                tag: 'Un bus. Oui, un bus.',                 color: 0x8a2f22,
     stats: { speed: .84, accel: .50, turn: .60, weight: 1.00 } },
-  { id: 'nails', name: 'Will Nails',              tag: 'Fiable, équilibré, increvable',        color: 0x4a7a4a,
+  { id: 'nails', name: 'Nails Wheels',            tag: 'Fiable, équilibré, increvable',        color: 0x4a7a4a,
     stats: { speed: .88, accel: .80, turn: .88, weight: .60 } },
   { id: 'lee',   name: 'Lee Tranchey',            tag: 'Du muscle et de la tôle',              color: 0x555a66,
     stats: { speed: .92, accel: .68, turn: .78, weight: .85 } },

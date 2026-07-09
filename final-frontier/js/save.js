@@ -1,106 +1,119 @@
-// Browser-persisted company progress: XP, unlocks, saved designs, records.
-import { unlockedTierIds, tierForXp, MILESTONES, altitudeXp } from './constants.js';
+import { STORAGE_KEY, MILESTONES, tierForXp, nextTierForXp } from "./data.js";
 
-const KEY = 'final-frontier-save-v1';
-
-const DEFAULT = () => ({
-  version: 1,
-  company: null,          // set on first run
-  founded: null,
+const DEFAULT_SAVE = {
+  version: 2,
+  company: "",
   xp: 0,
-  bestAlt: 0,
-  launches: 0,
-  achievements: {},       // milestone key -> true
-  designs: [],            // saved custom designs
-});
+  bestAltitude: 0,
+  bestSpeed: 0,
+  bestApoapsis: 0,
+  bestPeriapsis: -Infinity,
+  orbitAchieved: false,
+  moonRoad: false,
+  milestones: [],
+  blueprints: [],
+  lastRocketName: "First Spark",
+};
 
-let state = load();
+function cleanSave(raw) {
+  const save = { ...DEFAULT_SAVE, ...(raw || {}) };
+  save.xp = Math.max(0, Number(save.xp) || 0);
+  save.bestAltitude = Math.max(0, Number(save.bestAltitude) || 0);
+  save.bestSpeed = Math.max(0, Number(save.bestSpeed) || 0);
+  save.bestApoapsis = Math.max(0, Number(save.bestApoapsis) || 0);
+  save.bestPeriapsis = Number.isFinite(save.bestPeriapsis) ? save.bestPeriapsis : -Infinity;
+  save.milestones = Array.isArray(save.milestones) ? save.milestones : [];
+  save.blueprints = Array.isArray(save.blueprints) ? save.blueprints : [];
+  return save;
+}
 
-export function load() {
+export function loadSave() {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return Object.assign(DEFAULT(), JSON.parse(raw));
-  } catch (e) { /* ignore */ }
-  return DEFAULT();
+    return cleanSave(JSON.parse(localStorage.getItem(STORAGE_KEY)));
+  } catch (err) {
+    return cleanSave(null);
+  }
 }
 
-export function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* full/blocked */ }
+export function storeSave(save) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanSave(save)));
 }
 
-export const getState = () => state;
-export const hasCompany = () => !!state.company;
-
-export function createCompany(name, isoDate) {
-  state = DEFAULT();
-  state.company = name.trim().slice(0, 28) || 'Star Labs';
-  state.founded = isoDate || null;
-  save();
+export function resetSave() {
+  localStorage.removeItem(STORAGE_KEY);
+  return loadSave();
 }
 
-export function resetAll() { state = DEFAULT(); save(); }
-
-export const unlockedTiers = () => unlockedTierIds(state.xp);
-export const currentTier = () => tierForXp(state.xp);
-export const isTierUnlocked = id => unlockedTiers().includes(id);
-
-// Saved designs -------------------------------------------------------------
-export function saveDesign(design) {
-  const clean = { name: design.name, tier: design.tier || 0, stack: design.stack.map(n => ({ id: n.id, radial: (n.radial || []).slice() })) };
-  const idx = state.designs.findIndex(d => d.name === clean.name);
-  if (idx >= 0) state.designs[idx] = clean; else state.designs.push(clean);
-  save();
+export function currentTier(save) {
+  return tierForXp(save.xp);
 }
-export function deleteDesign(name) {
-  state.designs = state.designs.filter(d => d.name !== name);
-  save();
+
+export function nextTier(save) {
+  return nextTierForXp(save.xp);
 }
-export const savedDesigns = () => state.designs;
 
-// Flight results ------------------------------------------------------------
-// flight = { maxAlt, orbit, moon, space, crew, recovered }
-// Returns a report of XP gained + newly unlocked things.
-export function recordFlight(flight) {
-  const before = { xp: state.xp, tiers: unlockedTiers().slice(), best: state.bestAlt };
-  state.launches++;
+function altitudeXpFor(meters) {
+  if (meters <= 0) return 0;
+  return Math.floor(80 * Math.log10(1 + meters / 20));
+}
 
-  let xp = 0;
-  const lines = [];
+export function applyFlightRewards(save, flight) {
+  const beforeTier = currentTier(save);
+  const rewardLines = [];
+  let gained = 0;
 
-  const altXp = altitudeXp(flight.maxAlt);
-  xp += altXp;
-  lines.push({ label: 'Peak altitude', xp: altXp });
-
-  // record bonus for a new personal best
-  if (flight.maxAlt > state.bestAlt + 1) {
-    const bonus = Math.round(altitudeXp(flight.maxAlt) * 0.3);
-    xp += bonus;
-    lines.push({ label: 'New altitude record!', xp: bonus });
-    state.bestAlt = flight.maxAlt;
+  const previousAltitudeXp = altitudeXpFor(save.bestAltitude);
+  const newAltitudeXp = altitudeXpFor(Math.max(save.bestAltitude, flight.maxAltitude));
+  const altitudeGain = Math.max(0, newAltitudeXp - previousAltitudeXp);
+  if (altitudeGain > 0) {
+    gained += altitudeGain;
+    rewardLines.push({ label: "New altitude record", xp: altitudeGain });
   }
 
-  const newAch = [];
-  for (const m of MILESTONES) {
-    if (m.test(flight) && !state.achievements[m.key]) {
-      state.achievements[m.key] = true;
-      xp += m.xp;
-      lines.push({ label: m.label, xp: m.xp });
-      newAch.push(m);
+  const previousMilestones = new Set(save.milestones);
+  for (const milestone of MILESTONES) {
+    if (!previousMilestones.has(milestone.id) && milestone.test(flight)) {
+      save.milestones.push(milestone.id);
+      gained += milestone.xp;
+      rewardLines.push({ label: milestone.label, xp: milestone.xp });
     }
   }
 
-  state.xp += xp;
-  save();
+  save.xp += gained;
+  save.bestAltitude = Math.max(save.bestAltitude, flight.maxAltitude);
+  save.bestSpeed = Math.max(save.bestSpeed, flight.maxSpeed);
+  save.bestApoapsis = Math.max(save.bestApoapsis, flight.apoapsis);
+  save.bestPeriapsis = Math.max(save.bestPeriapsis, flight.periapsis);
+  save.orbitAchieved = save.orbitAchieved || flight.orbitAchieved;
+  save.moonRoad = save.moonRoad || flight.moonRoad;
 
-  const after = { xp: state.xp, tiers: unlockedTiers() };
-  const unlockedTierIdsNew = after.tiers.filter(id => !before.tiers.includes(id));
+  const afterTier = currentTier(save);
+  storeSave(save);
 
   return {
-    xpGained: xp,
-    lines,
-    totalXp: state.xp,
-    newAchievements: newAch,
-    unlockedTiers: unlockedTierIdsNew,
-    leveledUp: unlockedTierIdsNew.length > 0,
+    gained,
+    rewardLines,
+    unlockedTier: afterTier.id > beforeTier.id ? afterTier : null,
   };
+}
+
+export function saveBlueprint(save, design) {
+  const clean = {
+    id: design.id || String(Date.now()),
+    name: design.name || "Untitled Rocket",
+    parts: design.parts.map(partId => String(partId)),
+    savedAt: Date.now(),
+  };
+  const existing = save.blueprints.findIndex(bp => bp.name.toLowerCase() === clean.name.toLowerCase());
+  if (existing >= 0) save.blueprints.splice(existing, 1, clean);
+  else save.blueprints.unshift(clean);
+  save.blueprints = save.blueprints.slice(0, 18);
+  save.lastRocketName = clean.name;
+  storeSave(save);
+  return clean;
+}
+
+export function deleteBlueprint(save, id) {
+  save.blueprints = save.blueprints.filter(bp => bp.id !== id);
+  storeSave(save);
 }

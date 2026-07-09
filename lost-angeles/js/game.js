@@ -24,7 +24,8 @@ export class Race {
 
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog(0xc8905a, 90, 620);
-    this.camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, .1, 1600);
+    // near à .5 : évite le z-fighting scintillant route/sol au loin (« étoiles »)
+    this.camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, .5, 1600);
 
     const hemi = new THREE.HemisphereLight(0xe8b070, 0x3a2c20, 1.15);
     const sun = new THREE.DirectionalLight(0xffc890, 1.4);
@@ -74,6 +75,7 @@ export class Race {
     this.resultsShown = false;
     this.camShake = 0;
     this._lastCount = 4;
+    this._holdStart = null;      // instant où l'accélérateur a été enfoncé pendant le décompte
     this._prevSpin = false; this._prevStun = false;
     this._raf = null;
     this._acc = 0;
@@ -193,8 +195,15 @@ export class Race {
     this.clock += dt;
     this.tick++;
 
+    const rawInput = this.input.read();
+
     // décompte
     if (this.phase === 'count') {
+      // départ façon Mario Kart : on chronomètre depuis quand le gaz est tenu
+      if (this.local && !this.local._autopilot) {
+        if (rawInput.throttle > 0) { if (this._holdStart == null) this._holdStart = this.clock; }
+        else this._holdStart = null;
+      }
       const c = Math.ceil(-this.clock);
       if (c !== this._lastCount) {
         this._lastCount = c;
@@ -206,11 +215,23 @@ export class Race {
         this.audio.play('go');
         this.audio.engineStart();
         setTimeout(() => this.hud.countdown(''), 800);
+        // bien dosé → départ canon ; tenu trop longtemps → moteur noyé
+        if (this.local && !this.local._autopilot && this._holdStart != null) {
+          const held = this.clock - this._holdStart;
+          if (held >= .15 && held <= .85) {
+            this.local.startBoost(1.4, 1.38);
+            this.audio.play('boost');
+            this.hud.toast('🚀 Départ canon !');
+          } else if (held > 1.5) {
+            this.local.stallT = 1.3;
+            this.audio.play('wrong');
+            this.hud.toast('💨 Moteur noyé…');
+          }
+        }
       }
     }
 
     const inRace = this.phase === 'race';
-    const rawInput = this.input.read();
     if (rawInput.pause) { this._quit(); return; }
     this.lookBack = rawInput.look && !!this.local && !this.local._autopilot;
 
@@ -222,7 +243,8 @@ export class Race {
         const it = this.local.item;
         this.local.item = null;
         this.hud.setItem(null);
-        this.items.use(this.local, it);
+        // rétroviseur actif → la lance part vers l'arrière
+        this.items.use(this.local, it, { backward: this.lookBack });
       }
     }
 

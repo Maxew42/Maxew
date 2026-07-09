@@ -1,5 +1,5 @@
 // Warp II service worker: cache-first app shell for offline play (vs AI).
-const CACHE = 'warp2-v1';
+const CACHE = 'warp2-v2';
 const SHELL = [
   '.', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'js/main.js', 'js/game.js', 'js/ship.js', 'js/parts.js', 'js/weapons.js',

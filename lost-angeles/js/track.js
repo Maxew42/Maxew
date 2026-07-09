@@ -353,13 +353,14 @@ export class Track {
       this.group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: wallT, side: THREE.DoubleSide })));
     }
 
-    // sol
+    // sol — écarté de la route et poussé au fond du z-buffer, sinon il
+    // scintille à travers le bitume au loin (« étoiles » de z-fighting)
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(1600, 1600),
-      new THREE.MeshLambertMaterial({ map: groundTex(rng) })
+      new THREE.MeshLambertMaterial({ map: groundTex(rng), polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 })
     );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.05;
+    ground.position.y = -0.12;
     this.group.add(ground);
 
     // ligne de départ : damier + portique
@@ -374,7 +375,7 @@ export class Track {
     line.rotation.order = 'YXZ'; // plat au sol PUIS orienté selon la piste
     line.rotation.y = Math.atan2(t0.x, t0.z);
     line.rotation.x = -Math.PI / 2;
-    line.position.set(p0.x, 0.06, p0.z);
+    line.position.set(p0.x, 0.09, p0.z);
     this.group.add(line);
 
     const pyl = new THREE.MeshLambertMaterial({ color: 0x6e4a2a });
@@ -410,10 +411,10 @@ export class Track {
     const bGeoms = [], wreckGeoms = [], treeGeoms = [], rubbleGeoms = [], poleGeoms = [];
 
     // immeubles en ruine
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < 90; i++) {
       const x = (rng() - .5) * 1300, z = (rng() - .5) * 1300;
       const d = this._distToTrack(x, z);
-      if (d < WALL_DIST + 14 || d > 420) continue;
+      if (d < WALL_DIST + 18 || d > 420) continue; // pas trop près : la caméra passe derrière sinon
       const w = 10 + rng() * 16, h = 8 + rng() * (d > 60 ? 42 : 18), dp = 10 + rng() * 16;
       const g = new THREE.BoxGeometry(w, h, dp);
       // fenêtres à l'échelle
@@ -430,20 +431,85 @@ export class Track {
       }
     }
 
-    // carcasses de voitures brûlées près de la piste
+    // carcasses de voitures brûlées près de la piste (certaines sur le toit)
     const wreckCols = [0x3a3532, 0x52423a, 0x2e2b28, 0x5c3a28];
-    for (let i = 0; i < 34; i++) {
+    for (let i = 0; i < 44; i++) {
       const k = Math.floor(rng() * this.N);
       const p = this.pts[k], l = this.left[k];
       const side = rng() < .5 ? 1 : -1;
       const off = WALL_DIST + 2.5 + rng() * 12;
       const x = p.x + l.x * off * side, z = p.z + l.z * off * side;
       const col = wreckCols[Math.floor(rng() * wreckCols.length)];
-      const body = tinted(new THREE.BoxGeometry(2, .9, 4.2), col);
-      place(body, x, .45, z, rng() * 7, 0, (rng() - .5) * .35);
-      const cab = tinted(new THREE.BoxGeometry(1.7, .6, 1.8), col);
-      place(cab, x + (rng() - .5), 1.1, z + (rng() - .5), rng() * 7, 0, (rng() - .5) * .3);
-      wreckGeoms.push(body, cab);
+      if (rng() < .25) {
+        // épave retournée : cabine écrasée dessous, châssis en l'air
+        const body = tinted(new THREE.BoxGeometry(2, .9, 4.2), col);
+        place(body, x, .85, z, rng() * 7, 0, Math.PI + (rng() - .5) * .3);
+        const cab = tinted(new THREE.BoxGeometry(1.6, .35, 1.7), col);
+        place(cab, x + (rng() - .5) * .4, .18, z + (rng() - .5) * .4, rng() * 7);
+        wreckGeoms.push(body, cab);
+      } else {
+        const body = tinted(new THREE.BoxGeometry(2, .9, 4.2), col);
+        place(body, x, .45, z, rng() * 7, 0, (rng() - .5) * .35);
+        const cab = tinted(new THREE.BoxGeometry(1.7, .6, 1.8), col);
+        place(cab, x + (rng() - .5), 1.1, z + (rng() - .5), rng() * 7, 0, (rng() - .5) * .3);
+        wreckGeoms.push(body, cab);
+      }
+    }
+
+    // tas de ferraille : caisses, bidons et pneus entassés hors des murs
+    for (let i = 0; i < 20; i++) {
+      const k = Math.floor(rng() * this.N);
+      const p = this.pts[k], l = this.left[k];
+      const side = rng() < .5 ? 1 : -1;
+      const off = WALL_DIST + 3 + rng() * 18;
+      const cx = p.x + l.x * off * side, cz = p.z + l.z * off * side;
+      const n = 3 + Math.floor(rng() * 4);
+      for (let j = 0; j < n; j++) {
+        const jx = cx + (rng() - .5) * 3.4, jz = cz + (rng() - .5) * 3.4;
+        const r = rng();
+        if (r < .45) {
+          const bx = tinted(new THREE.BoxGeometry(.7 + rng() * .9, .5 + rng() * .7, .7 + rng() * .9),
+            [0x5a4a38, 0x4a4440, 0x6e5030][Math.floor(rng() * 3)]);
+          place(bx, jx, .3 + rng() * .5, jz, rng() * 7, (rng() - .5) * .5, (rng() - .5) * .5);
+          rubbleGeoms.push(bx);
+        } else if (r < .75) {
+          const drum = tinted(new THREE.CylinderGeometry(.34, .34, .95, 7), rng() < .5 ? 0x7a4a20 : 0x505860);
+          const tipped = rng() < .4;
+          place(drum, jx, tipped ? .34 : .48, jz, rng() * 7, 0, tipped ? Math.PI / 2 : (rng() - .5) * .15);
+          rubbleGeoms.push(drum);
+        } else {
+          const tire = tinted(new THREE.TorusGeometry(.5, .2, 6, 10), 0x1c1c1e);
+          place(tire, jx, .22, jz, rng() * 7, Math.PI / 2 + (rng() - .5) * .4);
+          rubbleGeoms.push(tire);
+        }
+      }
+    }
+
+    // piles de pneus le long des murs
+    for (let i = 0; i < 12; i++) {
+      const k = Math.floor(rng() * this.N);
+      const p = this.pts[k], l = this.left[k];
+      const side = rng() < .5 ? 1 : -1;
+      const off = WALL_DIST + 1.6 + rng() * 5;
+      const x = p.x + l.x * off * side, z = p.z + l.z * off * side;
+      const nT = 2 + Math.floor(rng() * 3);
+      for (let j = 0; j < nT; j++) {
+        const tire = tinted(new THREE.TorusGeometry(.55, .22, 6, 10), 0x1c1c1e);
+        place(tire, x + (rng() - .5) * .15, .22 + j * .42, z + (rng() - .5) * .15, rng() * 7, Math.PI / 2);
+        rubbleGeoms.push(tire);
+      }
+    }
+
+    // bidons rouillés isolés près des murs
+    for (let i = 0; i < 24; i++) {
+      const k = Math.floor(rng() * this.N);
+      const p = this.pts[k], l = this.left[k];
+      const side = rng() < .5 ? 1 : -1;
+      const off = WALL_DIST + 1.4 + rng() * 9;
+      const tipped = rng() < .3;
+      const drum = tinted(new THREE.CylinderGeometry(.34, .34, .95, 7), rng() < .6 ? 0x7a4a20 : 0x4a5560);
+      place(drum, p.x + l.x * off * side, tipped ? .34 : .48, p.z + l.z * off * side, rng() * 7, 0, tipped ? Math.PI / 2 : 0);
+      rubbleGeoms.push(drum);
     }
 
     // arbres morts
@@ -543,17 +609,29 @@ export class Track {
     halo.lookAt(0, 40, 0);
     this.group.add(halo);
 
-    // cendres en suspension autour de la caméra
-    const n = 260;
+    // cendres en suspension autour de la caméra — sprite rond estompé :
+    // les points carrés par défaut faisaient des « étoiles » plaquées sur le décor
+    const spot = document.createElement('canvas');
+    spot.width = spot.height = 32;
+    const sg = spot.getContext('2d');
+    const grad = sg.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255,255,255,.9)');
+    grad.addColorStop(.5, 'rgba(255,255,255,.35)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    sg.fillStyle = grad; sg.fillRect(0, 0, 32, 32);
+    const spotTex = new THREE.CanvasTexture(spot);
+    const n = 200;
     const pos = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
-      pos[i * 3] = (Math.random() - .5) * 120;
-      pos[i * 3 + 1] = Math.random() * 30;
-      pos[i * 3 + 2] = (Math.random() - .5) * 120;
+      pos[i * 3] = (Math.random() - .5) * 100;
+      pos[i * 3 + 1] = .5 + Math.random() * 12; // bas : de la cendre, pas des étoiles
+      pos[i * 3 + 2] = (Math.random() - .5) * 100;
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.dust = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xc9b090, size: .35, transparent: true, opacity: .55 }));
+    this.dust = new THREE.Points(g, new THREE.PointsMaterial({
+      color: 0x8a7660, size: .5, map: spotTex, transparent: true, opacity: .32, depthWrite: false,
+    }));
     this.group.add(this.dust);
   }
 

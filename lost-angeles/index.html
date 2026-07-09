@@ -183,8 +183,19 @@
     backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
   }
   .tbtn:active, .tbtn.on { background: rgba(240,154,46,.5); border-color: #ffb347; }
-  #t-left  { left: calc(16px + env(safe-area-inset-left)); bottom: calc(80px + env(safe-area-inset-bottom)); width: 88px; height: 88px; font-size: 34px; }
-  #t-right { left: calc(124px + env(safe-area-inset-left)); bottom: calc(80px + env(safe-area-inset-bottom)); width: 88px; height: 88px; font-size: 34px; }
+  #t-stick {
+    position: absolute; pointer-events: auto; touch-action: none;
+    left: calc(24px + env(safe-area-inset-left)); bottom: calc(56px + env(safe-area-inset-bottom));
+    width: 148px; height: 148px; border-radius: 50%;
+    background: rgba(50,38,26,.45); border: 2px solid rgba(255,179,71,.35);
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  }
+  #t-stick.on { border-color: #ffb347; }
+  #t-knob {
+    position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px;
+    border-radius: 50%; background: rgba(240,154,46,.55); border: 2px solid rgba(255,179,71,.7);
+    box-shadow: 0 3px 8px rgba(0,0,0,.4); pointer-events: none;
+  }
   #t-drift { right: calc(16px + env(safe-area-inset-right)); bottom: calc(70px + env(safe-area-inset-bottom)); width: 96px; height: 96px; font-size: 17px; }
   #t-item  { right: calc(128px + env(safe-area-inset-right)); bottom: calc(120px + env(safe-area-inset-bottom)); width: 76px; height: 76px; font-size: 30px; }
   #t-brake { right: calc(132px + env(safe-area-inset-right)); bottom: calc(36px + env(safe-area-inset-bottom)); width: 62px; height: 62px; font-size: 13px; }
@@ -232,8 +243,7 @@
 
 <!-- contrôles tactiles -->
 <div id="touch">
-  <div class="tbtn" id="t-left">◀</div>
-  <div class="tbtn" id="t-right">▶</div>
+  <div id="t-stick"><div id="t-knob"></div></div>
   <div class="tbtn" id="t-item">🎁</div>
   <div class="tbtn" id="t-drift">DRIFT</div>
   <div class="tbtn" id="t-brake">FREIN</div>

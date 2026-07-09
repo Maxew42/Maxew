@@ -151,6 +151,14 @@
   #game-over h2.win { color: #7ee787; text-shadow: 0 0 40px rgba(126, 231, 135, 0.4); }
   #game-over h2.lose { color: #ff6f6f; text-shadow: 0 0 40px rgba(255, 111, 111, 0.4); }
   #game-over .btn { width: 220px; padding: 13px; font-size: 15px; }
+  #comms-bubble { position: absolute; left: 14px; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 5;
+    display: flex; align-items: center; gap: 9px; max-width: 320px; pointer-events: none;
+    background: rgba(10, 18, 30, 0.85); border: 1px solid rgba(95, 217, 201, 0.45);
+    border-radius: 14px 14px 14px 4px; padding: 9px 14px;
+    animation: comms-in 0.18s ease-out; }
+  #comms-bubble .comms-icon { font-size: 20px; }
+  #comms-bubble #comms-text { font-size: 13px; color: #cfeee8; font-style: italic; }
+  @keyframes comms-in { from { transform: translateY(8px); opacity: 0; } }
   #controls-hint { position: absolute; left: 50%; transform: translateX(-50%);
     bottom: max(10px, env(safe-area-inset-bottom)); z-index: 4; pointer-events: none;
     display: flex; gap: 6px 9px; flex-wrap: wrap; justify-content: center; max-width: 94vw;
@@ -215,8 +223,9 @@
   <button id="btn-multi" class="menu-btn">MULTIPLAYER</button>
   <button id="btn-builder" class="menu-btn">SHIP BUILDER</button>
   <div class="hint">
-    WASD / arrows to fly · SPACE guns · E missiles · X mines · F flares · SHIFT boost<br>
-    Gamepad: RT thrust · L-stick aim · ✕ guns · □ missiles · ○ mines · △ flares — touch supported · first to 5 kills
+    WASD / arrows to fly · SPACE guns (hold to charge lasers) · E missiles · X mines · F flares · SHIFT boost<br>
+    Gamepad: RT thrust · L-stick aim · ✕ guns · □ missiles · ○ mines · △ flares — touch supported<br>
+    First to 5 kills · restock missiles at the supply station ◆
   </div>
 </div>
 
@@ -281,10 +290,8 @@
     <input type="text" id="ship-name" maxlength="20" placeholder="Ship name" style="width:150px">
     <select id="load-premade"></select>
     <span style="flex:1"></span>
-    <button class="deck-tab" data-deck="0">Bottom</button>
     <button class="deck-tab on" data-deck="1">Mid</button>
     <button class="deck-tab" data-deck="2">Top</button>
-    <button id="btn-flip" class="btn" title="Flip the ship: swap top and bottom decks">⇅ Flip</button>
     <button id="btn-rotate" class="btn" title="Rotate part (R)">↻ Rotate</button>
     <button id="btn-erase" class="btn" title="Right-click also erases">Erase</button>
     <button id="btn-clear" class="btn danger">Clear</button>
@@ -314,6 +321,7 @@
   <canvas id="game-canvas"></canvas>
   <button id="btn-exit-game" class="btn">✕ Quit</button>
   <div id="controls-hint" class="hidden"></div>
+  <div id="comms-bubble" class="hidden"><span class="comms-icon">🤖</span><span id="comms-text"></span></div>
   <div id="killfeed"></div>
   <div id="game-msg"></div>
   <div id="game-over" class="hidden">

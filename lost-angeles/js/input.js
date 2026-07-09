@@ -5,7 +5,7 @@ import { clamp } from './util.js';
 export class Input {
   constructor() {
     this.keys = new Set();
-    this.touch = { left: false, right: false, drift: false, item: false, brake: false, look: false };
+    this.touch = { steer: 0, drift: false, item: false, brake: false, look: false };
     this.touchMode = false;
     this._itemEdge = false;
     this._pauseEdge = false;
@@ -45,9 +45,39 @@ export class Input {
       el.addEventListener('pointercancel', off);
       el.addEventListener('pointerleave', off);
     };
-    bind('t-left', 'left'); bind('t-right', 'right');
     bind('t-drift', 'drift'); bind('t-item', 'item'); bind('t-brake', 'brake');
     bind('t-look', 'look');
+
+    // joystick de direction (axe horizontal uniquement)
+    const stick = document.getElementById('t-stick');
+    const knob = document.getElementById('t-knob');
+    const RANGE = 46; // course max du pouce en px
+    let stickId = null;
+    const setSteer = v => {
+      this.touch.steer = clamp(v, -1, 1);
+      knob.style.transform = `translate(${this.touch.steer * RANGE}px, 0)`;
+    };
+    const track = e => {
+      const r = stick.getBoundingClientRect();
+      setSteer((e.clientX - (r.left + r.width / 2)) / RANGE);
+    };
+    stick.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      this.touchMode = true;
+      stickId = e.pointerId;
+      stick.setPointerCapture(stickId);
+      stick.classList.add('on');
+      track(e);
+    });
+    stick.addEventListener('pointermove', e => { if (e.pointerId === stickId) track(e); });
+    const release = e => {
+      if (e.pointerId !== stickId) return;
+      stickId = null;
+      setSteer(0);
+      stick.classList.remove('on');
+    };
+    stick.addEventListener('pointerup', release);
+    stick.addEventListener('pointercancel', release);
     // toucher la case objet du HUD déclenche aussi l'objet
     document.getElementById('hud-item').addEventListener('pointerdown', e => {
       e.preventDefault(); this._itemEdge = true;
@@ -84,8 +114,7 @@ export class Input {
 
     // tactile (accélération auto : on freine avec le bouton FREIN)
     if (this.touchMode) {
-      if (t.left) steer -= 1;
-      if (t.right) steer += 1;
+      steer += t.steer; // joystick analogique
       if (t.drift) drift = true;
       if (t.look) look = true;
       if (t.brake) brake = 1; else throttle = Math.max(throttle, 1);

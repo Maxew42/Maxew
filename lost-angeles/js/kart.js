@@ -61,6 +61,7 @@ export class Kart {
     this.rouletteT = 0;       // roulette en cours (>0)
     this.boostT = 0; this.boostMult = 1.32;
     this.spinT = 0; this.stunT = 0; this.armorT = 0; this.sawT = 0; this.poopT = 0;
+    this.stallT = 0;          // moteur noyé au départ : accélérateur inopérant
     this.spinAngle = 0;
     this.finished = false; this.finishTime = null;
 
@@ -194,10 +195,11 @@ export class Kart {
     if (this.boostT > 0) vm *= this.boostMult;
     else if (this.offroad) vm *= .48;
 
+    const throttle = this.stallT > 0 ? 0 : input.throttle;
     if (controlled) {
-      if (input.throttle > 0) {
+      if (throttle > 0) {
         const a = this.accel * (1 - clamp(this.speed / vm, 0, 1)) + 2;
-        this.speed += a * input.throttle * dt;
+        this.speed += a * throttle * dt;
       } else if (this.speed > 0) {
         this.speed = Math.max(0, this.speed - 7 * dt);
       }
@@ -289,6 +291,7 @@ export class Kart {
     if (this.armorT > 0) this.armorT -= dt;
     if (this.sawT > 0) this.sawT -= dt;
     if (this.poopT > 0) this.poopT -= dt;
+    if (this.stallT > 0) this.stallT -= dt;
     if (this.rouletteT > 0) this.rouletteT -= dt;
     if (this.spinT > 0) { this.spinT -= dt; this.spinAngle += dt * 11.4; }
     else if (this.stunT > 0) { this.stunT -= dt; this.spinAngle += dt * 8; }

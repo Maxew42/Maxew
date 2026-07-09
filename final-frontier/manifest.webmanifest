@@ -1,15 +1,16 @@
 {
   "name": "Final Frontier",
-  "short_name": "Final Frontier",
-  "description": "Build rockets, launch them, and climb from backyard bottle rockets to the Moon.",
-  "start_url": ".",
-  "display": "fullscreen",
-  "orientation": "any",
-  "background_color": "#05060f",
-  "theme_color": "#0b1026",
+  "short_name": "Frontier",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#b7ddff",
+  "theme_color": "#17243a",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }

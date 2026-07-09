@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cauchemar",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd /private/tmp/claude-501/-Users-Novatix-Documents-projects-games-cauchemar-en-cuisine/365cc461-0709-4937-af4d-3c7eed9bda6e/scratchpad/serve && exec /usr/bin/python3 -m http.server 8317"],
+      "port": 8317
+    }
+  ]
+}

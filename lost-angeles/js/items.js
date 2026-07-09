@@ -95,14 +95,15 @@ export class ItemWorld {
   nextId(slot) { return slot * 1000 + (this.counter++); }
 
   // utilisé par le kart local et par l'hôte pour ses IA ; broadcast automatique
-  use(kart, itemId) {
-    const evt = this._apply(kart, itemId, null);
+  // opts: { backward } — lance tirée vers l'arrière (rétroviseur)
+  use(kart, itemId, opts) {
+    const evt = this._apply(kart, itemId, null, opts);
     if (evt) this.h.emit(evt);
   }
 
   onRemote(evt) { this._apply(this.h.kartBySlot(evt.s), evt.k === 'nailhit' ? null : evt.k, evt); }
 
-  _apply(kart, itemId, remote) {
+  _apply(kart, itemId, remote, opts) {
     if (remote && remote.k === 'nailhit') { this.removeNails(remote.id); return null; }
     if (!kart && !remote) return null;
 
@@ -135,16 +136,17 @@ export class ItemWorld {
         return remote ? null : data;
       }
       case 'spear': {
-        let target = null;
-        if (!remote) {
-          const myRank = kart.rank;
-          for (const k of this.h.allKarts()) if (k.rank === myRank - 1) target = k;
-        }
-        const data = remote || {
-          k: 'spear', s: kart.slot, id: this.nextId(kart.slot),
-          f: kart.lastF + 2, lat: clamp(kart.lat, -5.5, 5.5), t: target ? target.slot : -1,
-        };
-        this._spawnProjectile('spear', data);
+        // tir rectiligne (pas de guidage), vers l'arrière si rétroviseur actif
+        const data = remote || (() => {
+          const h = kart.heading + (opts && opts.backward ? Math.PI : 0);
+          return {
+            k: 'spear', s: kart.slot, id: this.nextId(kart.slot),
+            x: +(kart.x + Math.sin(h) * 2.6).toFixed(1),
+            z: +(kart.z + Math.cos(h) * 2.6).toFixed(1),
+            h: +h.toFixed(3),
+          };
+        })();
+        this._spawnSpear(data);
         this.h.sfx('spear');
         return remote ? null : data;
       }
@@ -249,7 +251,21 @@ export class ItemWorld {
     this.projectiles.push({
       kind, id: data.id, owner: data.s, target: data.t,
       f: data.f, lat: data.lat, mesh, life: 14,
-      speed: kind === 'missile' ? 64 : 47,
+      speed: 64,
+    });
+  }
+
+  // lance : ligne droite en coordonnées monde, portée limitée (~90 u)
+  _spawnSpear(data) {
+    const mesh = spearMesh();
+    mesh.position.set(data.x, 1.0, data.z);
+    mesh.rotation.y = data.h;
+    this.scene.add(mesh);
+    const o = this.h.kartBySlot(data.s);
+    this.projectiles.push({
+      kind: 'spear', id: data.id, owner: data.s,
+      x: data.x, z: data.z, h: data.h, hint: o ? o.hintIdx : 0,
+      mesh, life: 1.5, speed: 60,
     });
   }
 
@@ -289,35 +305,50 @@ export class ItemWorld {
   update(dt) {
     const track = this.track;
 
-    // projectiles guidés le long de la piste
+    // projectiles : missile guidé le long de la piste, lance en ligne droite
     for (const p of this.projectiles) {
       if (!p.mesh.parent) continue;
       p.life -= dt;
-      const target = p.target >= 0 ? this.h.kartBySlot(p.target) : null;
-      // avance le long de la piste
-      p.f += (p.speed / track.segLen) * dt;
-      if (target && !target.finished) {
-        // se rabat sur l'écart latéral de la cible
-        const tl = clamp(target.lat, -track.halfW, track.halfW);
-        p.lat += clamp(tl - p.lat, -6 * dt, 6 * dt);
-      }
-      const pos = track.posAt(p.f);
-      const l = track.leftAt(p.f);
-      const x = pos.x + l.x * p.lat, z = pos.z + l.z * p.lat;
-      const y = p.kind === 'missile' ? 1.6 + Math.sin(p.life * 9) * .2 : 1.0;
-      p.mesh.position.set(x, y, z);
-      p.mesh.rotation.y = track.headingAt(p.f);
-      if (p.mesh.userData.flame) p.mesh.userData.flame.scale.set(1, .7 + Math.random() * .6, 1);
-      if (p.kind === 'spear') p.mesh.rotation.z += dt * 6;
+      let x, z, boom = false;
 
-      let boom = false;
-      if (target && !target.finished) {
-        if (Math.hypot(target.x - x, target.z - z) < 2.6) boom = true;
-      } else {
-        // sans cible : explose au contact de n'importe quel kart (sauf le tireur)
+      if (p.kind === 'spear') {
+        // tout droit, explose sur un kart, un mur ou en bout de course
+        p.x += Math.sin(p.h) * p.speed * dt;
+        p.z += Math.cos(p.h) * p.speed * dt;
+        x = p.x; z = p.z;
+        p.mesh.position.set(x, 1.0, z);
+        p.mesh.rotation.z += dt * 6;
+        const proj = track.project(x, z, p.hint);
+        p.hint = proj.idx;
+        if (Math.abs(proj.lat) > track.wallDist - .5) boom = true; // mur de tôle
         for (const k of this.h.allKarts()) {
           if (k.slot === p.owner || k.finished) continue;
           if (Math.hypot(k.x - x, k.z - z) < 2.2) { boom = true; break; }
+        }
+      } else {
+        const target = p.target >= 0 ? this.h.kartBySlot(p.target) : null;
+        // avance le long de la piste
+        p.f += (p.speed / track.segLen) * dt;
+        if (target && !target.finished) {
+          // se rabat sur l'écart latéral de la cible
+          const tl = clamp(target.lat, -track.halfW, track.halfW);
+          p.lat += clamp(tl - p.lat, -6 * dt, 6 * dt);
+        }
+        const pos = track.posAt(p.f);
+        const l = track.leftAt(p.f);
+        x = pos.x + l.x * p.lat; z = pos.z + l.z * p.lat;
+        p.mesh.position.set(x, 1.6 + Math.sin(p.life * 9) * .2, z);
+        p.mesh.rotation.y = track.headingAt(p.f);
+        if (p.mesh.userData.flame) p.mesh.userData.flame.scale.set(1, .7 + Math.random() * .6, 1);
+
+        if (target && !target.finished) {
+          if (Math.hypot(target.x - x, target.z - z) < 2.6) boom = true;
+        } else {
+          // sans cible : explose au contact de n'importe quel kart (sauf le tireur)
+          for (const k of this.h.allKarts()) {
+            if (k.slot === p.owner || k.finished) continue;
+            if (Math.hypot(k.x - x, k.z - z) < 2.2) { boom = true; break; }
+          }
         }
       }
       if (p.life <= 0) boom = true;

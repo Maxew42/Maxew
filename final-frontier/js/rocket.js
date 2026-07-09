@@ -1,245 +1,422 @@
-// Rocket geometry (stacking layout) and cute canvas rendering.
-// Drawing convention: caller translates the context to the rocket's centre and
-// (optionally) rotates it; drawRocket() then draws in metres*ppm with the nose
-// pointing toward -y (local "up"), engine toward +y.
-import { PARTS } from './parts.js';
-import { roundRect } from './util.js';
+import { PARTS, WORLD, getPart } from "./data.js";
 
-// Compute stacked layout + per-node stage index.
-export function layout(design) {
-  const stack = design.stack || [];
-  const nodes = [];
-  let y = 0, W = 0.1;
-  for (const node of stack) {
-    const p = PARTS[node.id];
-    if (!p) continue;
-    const radial = (node.radial || []).map(id => PARTS[id]).filter(Boolean);
-    nodes.push({ node, part: p, top: y, h: p.h, w: p.w, cy: y + p.h / 2, radial });
-    y += p.h;
-    W = Math.max(W, p.w);
-    for (const r of radial) W = Math.max(W, p.w + r.w * 2);
-  }
-  const H = y || 1;
-  // stage index per node (bottom-first grouping, matches parts.buildStages)
-  let stg = 0;
-  const stageOf = new Map();
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    stageOf.set(nodes[i], stg);
-    if (nodes[i].part.kind === 'decoupler') stg++;
-  }
-  for (const n of nodes) n.stage = stageOf.get(n);
-  return { nodes, H, W, stageCount: stg + 1 };
+export function createDesign(name = "First Spark", parts = []) {
+  return { id: String(Date.now()), name, parts: [...parts] };
 }
 
-// Draw a whole rocket centred at the current origin, nose toward -y.
-// opts: { ppm, activeStage, throttle, flame, chuteOpen, alpha, selectIndex, t }
-export function drawRocket(ctx, design, opts = {}) {
-  const lo = opts.layout || layout(design);
-  const ppm = opts.ppm || 20;
-  const { nodes, H } = lo;
-  const active = opts.activeStage ?? -1;   // -1 = draw all (editor)
-  const t = opts.t || 0;
+export function sanitizeDesign(design) {
+  const parts = Array.isArray(design?.parts) ? design.parts.filter(id => getPart(id)) : [];
+  return {
+    id: design?.id || String(Date.now()),
+    name: String(design?.name || "Untitled Rocket").slice(0, 32),
+    parts,
+  };
+}
 
-  ctx.save();
-  if (opts.alpha != null) ctx.globalAlpha = opts.alpha;
-  // draw from bottom to top so nose overlaps body nicely
-  for (let i = nodes.length - 1; i >= 0; i--) {
-    const n = nodes[i];
-    if (active >= 0 && n.stage < active) continue;   // dropped stages gone
-    const ly = (n.cy - H / 2) * ppm;                  // local y of part centre
-    // radial parts first (behind body)
-    for (const r of n.radial) drawRadial(ctx, r, n, ly, ppm);
-    drawStackPart(ctx, n.part, ly, ppm, opts, i === opts.selectIndex);
-    // flame for engines in the active (burning) stage
-    if (opts.flame && n.part.thrust && (active < 0 || n.stage === active)) {
-      const by = (n.top + n.h - H / 2) * ppm;
-      drawFlame(ctx, n.part, by, ppm, opts.throttle ?? 1, t, i);
+export function defaultDesignForTier(tierId) {
+  if (tierId <= 0) {
+    return createDesign("Bottle One", ["paper-cone", "water-bottle", "wood-fins", "cork-nozzle"]);
+  }
+  if (tierId === 1) {
+    return createDesign("School Bell", ["student-cone", "student-chute", "aluminum-body", "servo-fins", "powder-booster"]);
+  }
+  if (tierId === 2) {
+    return createDesign("Garage Needle", [
+      "avionics-core",
+      "student-chute",
+      "small-liquid-tank",
+      "puddlehopper",
+      "light-decoupler",
+      "small-liquid-tank",
+      "puddlehopper",
+    ]);
+  }
+  if (tierId === 3) {
+    return createDesign("Orbit Try", [
+      "probe-core",
+      "orbital-tank",
+      "vacuum-engine",
+      "orbital-decoupler",
+      "booster-tank",
+      "mainstay-engine",
+    ]);
+  }
+  return createDesign("Moon Letter", [
+    "crew-capsule",
+    "service-module",
+    "lunar-engine",
+    "heavy-decoupler",
+    "heavy-tank",
+    "atlas-engine",
+  ]);
+}
+
+export function partMass(part, fuelFraction = 1) {
+  return part.dryMass + (part.fuelMass || 0) * fuelFraction;
+}
+
+export function stageGroups(partIds) {
+  const parts = partIds.map(getPart).filter(Boolean);
+  if (!parts.length) return [];
+  const groups = [];
+  let start = 0;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i].decoupler) {
+      if (start < i) groups.push({ start, end: i - 1, parts: parts.slice(start, i) });
+      start = i;
     }
   }
-  // chute canopy
-  if (opts.chuteOpen) {
-    for (const n of nodes) {
-      if (active >= 0 && n.stage < active) continue;
-      if (n.part.kind === 'chute') drawCanopy(ctx, n, H, ppm);
+  if (start < parts.length) groups.push({ start, end: parts.length - 1, parts: parts.slice(start) });
+  return groups;
+}
+
+export function bottomFirstStages(partIds) {
+  return stageGroups(partIds).slice().reverse();
+}
+
+function stageEngineStats(parts, atmospherePressure = 0) {
+  let thrust = 0;
+  let weightedIsp = 0;
+  let engineCount = 0;
+  const fuelTypes = new Set();
+  for (const part of parts) {
+    if (!part.engine) continue;
+    const isp = part.engine.ispVac * (1 - atmospherePressure) + part.engine.ispSea * atmospherePressure;
+    thrust += part.engine.thrust;
+    weightedIsp += isp * part.engine.thrust;
+    engineCount += 1;
+    fuelTypes.add(part.engine.fuelType);
+  }
+  return {
+    thrust,
+    isp: thrust > 0 ? weightedIsp / thrust : 0,
+    engineCount,
+    fuelTypes,
+  };
+}
+
+function fuelForEngineTypes(parts, fuelTypes) {
+  let fuel = 0;
+  for (const part of parts) {
+    if (part.fuelMass && fuelTypes.has(part.fuelType)) fuel += part.fuelMass;
+  }
+  return fuel;
+}
+
+export function computeStats(design) {
+  const clean = sanitizeDesign(design);
+  const parts = clean.parts.map(getPart);
+  const groups = bottomFirstStages(clean.parts);
+  const dryMass = parts.reduce((sum, part) => sum + part.dryMass, 0);
+  const fuelMass = parts.reduce((sum, part) => sum + (part.fuelMass || 0), 0);
+  const wetMass = dryMass + fuelMass;
+  const totalHeight = parts.reduce((sum, part) => sum + part.height, 0);
+  const maxWidth = parts.reduce((max, part) => Math.max(max, part.width), 0);
+  const command = parts.some(part => part.command);
+  const crew = parts.some(part => part.crew);
+  const parachute = parts.some(part => part.parachute);
+  const control = parts.reduce((sum, part) => sum + (part.control || 0), 0);
+  const stability = parts.reduce((sum, part) => sum + (part.stability || 0), 0);
+  const drag = parts.reduce((sum, part) => sum + (part.drag || 0.5) * part.width, 0) / Math.max(1, parts.length);
+  const stageDetails = [];
+
+  let carriedWetMass = wetMass;
+  let totalDv = 0;
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    const engine = stageEngineStats(group.parts, 0);
+    const fuel = fuelForEngineTypes(group.parts, engine.fuelTypes);
+    const massAfterBurn = Math.max(0.01, carriedWetMass - fuel);
+    const dv = engine.thrust > 0 && fuel > 0
+      ? Math.max(0, engine.isp * WORLD.g0 * Math.log(carriedWetMass / massAfterBurn))
+      : 0;
+    totalDv += dv;
+    stageDetails.push({
+      number: i + 1,
+      start: group.start,
+      end: group.end,
+      parts: group.parts,
+      wetMass: group.parts.reduce((sum, part) => sum + partMass(part), 0),
+      dryMass: group.parts.reduce((sum, part) => sum + part.dryMass, 0),
+      fuelMass: group.parts.reduce((sum, part) => sum + (part.fuelMass || 0), 0),
+      thrust: engine.thrust,
+      isp: engine.isp,
+      twr: carriedWetMass > 0 ? engine.thrust / (carriedWetMass * WORLD.g0) : 0,
+      dv,
+      engineCount: engine.engineCount,
+    });
+    carriedWetMass -= group.parts.reduce((sum, part) => sum + partMass(part), 0);
+    carriedWetMass = Math.max(0, carriedWetMass);
+  }
+
+  const warnings = [];
+  if (!parts.length) warnings.push("Add at least one part.");
+  if (!parts.some(part => part.engine)) warnings.push("No engine or nozzle is installed.");
+  if (wetMass > 0 && stageDetails[0] && stageDetails[0].twr < 1.05) warnings.push("First stage TWR is below 1.05, so it may not lift off.");
+  if (parts.length > 0 && !command && !parts.some(part => part.engine?.fuelType === "water")) warnings.push("Add a command part for guided flight.");
+  if (parts.some(part => part.engine?.fuelType === "liquid") && !command) warnings.push("Liquid rockets need avionics or a capsule for SAS.");
+  if (control <= 0 && parts.some(part => part.engine && part.engine.fuelType !== "water")) warnings.push("No active control surfaces or avionics.");
+  if (stageDetails.length > 1 && !parts.some(part => part.decoupler)) warnings.push("Multi-stage designs need decouplers.");
+  if (wetMass > 25 && !parachute && !crew) warnings.push("No parachute or landing system for recovery.");
+
+  return {
+    design: clean,
+    parts,
+    dryMass,
+    fuelMass,
+    wetMass,
+    totalHeight,
+    maxWidth,
+    command,
+    crew,
+    parachute,
+    control,
+    stability,
+    drag,
+    stages: stageDetails,
+    totalDv,
+    warnings,
+    canLaunch: parts.length > 0 && parts.some(part => part.engine) && (!stageDetails[0] || stageDetails[0].twr > 0.25),
+  };
+}
+
+export function makeRuntimeParts(partIds) {
+  return partIds.map((id, index) => {
+    const part = getPart(id);
+    return {
+      uid: `${id}-${index}-${Math.random().toString(36).slice(2)}`,
+      id,
+      def: part,
+      fuel: part.fuelMass || 0,
+      chuteDeployed: false,
+    };
+  }).filter(item => item.def);
+}
+
+export function runtimeMass(runtimeParts) {
+  return runtimeParts.reduce((sum, item) => sum + item.def.dryMass + item.fuel, 0);
+}
+
+export function runtimeDryMass(runtimeParts) {
+  return runtimeParts.reduce((sum, item) => sum + item.def.dryMass, 0);
+}
+
+export function runtimeStageGroups(runtimeParts) {
+  if (!runtimeParts.length) return [];
+  const groups = [];
+  let start = 0;
+  for (let i = 0; i < runtimeParts.length; i++) {
+    if (runtimeParts[i].def.decoupler) {
+      if (start < i) groups.push({ start, end: i - 1, items: runtimeParts.slice(start, i) });
+      start = i;
+    }
+  }
+  if (start < runtimeParts.length) groups.push({ start, end: runtimeParts.length - 1, items: runtimeParts.slice(start) });
+  return groups;
+}
+
+export function activeRuntimeStage(runtimeParts) {
+  const groups = runtimeStageGroups(runtimeParts);
+  return groups.length ? groups[groups.length - 1] : null;
+}
+
+export function drawPartShape(ctx, part, cx, top, scale, opts = {}) {
+  const w = part.width * scale;
+  const h = part.height * scale;
+  const x = cx - w / 2;
+  const y = top;
+  ctx.save();
+  ctx.lineWidth = Math.max(1.2, scale * 0.025);
+  ctx.strokeStyle = opts.selected ? "#25334c" : "rgba(38,50,71,0.34)";
+  ctx.fillStyle = part.color || "#ddd";
+  ctx.shadowColor = opts.selected ? "rgba(68,120,196,0.28)" : "transparent";
+  ctx.shadowBlur = opts.selected ? 12 : 0;
+
+  if (part.shape === "cone") {
+    ctx.beginPath();
+    ctx.moveTo(cx, y);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(x, y + h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.36)";
+    ctx.beginPath();
+    ctx.moveTo(cx, y + h * 0.18);
+    ctx.lineTo(cx + w * 0.18, y + h * 0.82);
+    ctx.lineTo(cx, y + h * 0.82);
+    ctx.closePath();
+    ctx.fill();
+  } else if (part.shape === "capsule") {
+    ctx.beginPath();
+    ctx.moveTo(cx, y);
+    ctx.bezierCurveTo(x + w, y + h * 0.14, x + w * 0.86, y + h, cx, y + h);
+    ctx.bezierCurveTo(x + w * 0.14, y + h, x, y + h * 0.14, cx, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#85c8ef";
+    ctx.beginPath();
+    ctx.arc(cx, y + h * 0.5, Math.min(w, h) * 0.18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (part.shape === "engine") {
+    ctx.beginPath();
+    ctx.roundRect(x + w * 0.13, y, w * 0.74, h * 0.58, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#263247";
+    ctx.beginPath();
+    ctx.moveTo(cx - w * 0.32, y + h * 0.58);
+    ctx.lineTo(cx + w * 0.32, y + h * 0.58);
+    ctx.lineTo(cx + w * 0.44, y + h);
+    ctx.lineTo(cx - w * 0.44, y + h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (part.shape === "ring") {
+    ctx.beginPath();
+    ctx.roundRect(x, y + h * 0.18, w, h * 0.64, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "rgba(38,50,71,0.18)";
+    ctx.fillRect(x + w * 0.12, y + h * 0.43, w * 0.76, h * 0.16);
+  } else if (part.shape === "fins") {
+    ctx.beginPath();
+    ctx.roundRect(cx - w * 0.22, y + h * 0.12, w * 0.44, h * 0.76, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - w * 0.22, y + h * 0.28);
+    ctx.lineTo(x, y + h);
+    ctx.lineTo(cx - w * 0.2, y + h * 0.82);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + w * 0.22, y + h * 0.28);
+    ctx.lineTo(x + w, y + h);
+    ctx.lineTo(cx + w * 0.2, y + h * 0.82);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (part.shape === "wings") {
+    ctx.beginPath();
+    ctx.roundRect(cx - w * 0.22, y + h * 0.1, w * 0.44, h * 0.8, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#8ed5f5";
+    ctx.strokeStyle = "rgba(38,50,71,0.24)";
+    ctx.beginPath();
+    ctx.moveTo(cx - w * 0.22, y + h * 0.18);
+    ctx.lineTo(x, y + h * 0.8);
+    ctx.lineTo(cx - w * 0.22, y + h * 0.86);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + w * 0.22, y + h * 0.18);
+    ctx.lineTo(x + w, y + h * 0.8);
+    ctx.lineTo(cx + w * 0.22, y + h * 0.86);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (part.shape === "chute") {
+    ctx.beginPath();
+    ctx.roundRect(x + w * 0.08, y + h * 0.22, w * 0.84, h * 0.56, 7);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(38,50,71,0.28)";
+    for (let i = 1; i < 4; i++) {
+      const px = x + (w * i) / 4;
+      ctx.beginPath();
+      ctx.moveTo(px, y + h * 0.26);
+      ctx.lineTo(px, y + h * 0.74);
+      ctx.stroke();
+    }
+  } else if (part.shape === "legs") {
+    ctx.beginPath();
+    ctx.roundRect(cx - w * 0.24, y + h * 0.18, w * 0.48, h * 0.48, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = "#263247";
+    ctx.beginPath();
+    ctx.moveTo(cx - w * 0.18, y + h * 0.62);
+    ctx.lineTo(x + w * 0.05, y + h);
+    ctx.moveTo(cx + w * 0.18, y + h * 0.62);
+    ctx.lineTo(x + w * 0.95, y + h);
+    ctx.stroke();
+  } else {
+    const radius = part.shape === "bottle" ? 12 : 6;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, radius);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.beginPath();
+    ctx.roundRect(x + w * 0.12, y + h * 0.08, w * 0.22, h * 0.84, 5);
+    ctx.fill();
+    if (part.fuelMass) {
+      ctx.fillStyle = "rgba(68,120,196,0.18)";
+      ctx.fillRect(x + w * 0.08, y + h * 0.58, w * 0.84, h * 0.34);
     }
   }
   ctx.restore();
 }
 
-function drawStackPart(ctx, p, ly, ppm, opts, selected) {
-  const w = p.w * ppm, h = p.h * ppm;
-  const x = -w / 2, y = ly - h / 2;
-  ctx.lineWidth = Math.max(1, ppm * 0.03);
-  ctx.strokeStyle = p.edge;
-  ctx.fillStyle = p.col;
-
-  switch (p.kind) {
-    case 'nose': {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.quadraticCurveTo(x, y + h * 0.35, x, y + h);
-      ctx.lineTo(x + w, y + h);
-      ctx.quadraticCurveTo(x + w, y + h * 0.35, 0, y);
-      ctx.closePath();
-      ctx.fill(); ctx.stroke();
-      break;
-    }
-    case 'command': {
-      // rounded capsule with a window
-      roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.35);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = 'rgba(120,190,255,0.9)';
-      ctx.beginPath();
-      ctx.ellipse(0, y + h * 0.42, w * 0.22, h * 0.24, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = p.edge; ctx.stroke();
-      break;
-    }
-    case 'tank': {
-      roundRect(ctx, x, y, w, h, Math.min(w * 0.28, ppm * 0.4));
-      ctx.fill(); ctx.stroke();
-      if (p.band) {
-        ctx.fillStyle = p.band;
-        ctx.fillRect(x, y + h * 0.16, w, Math.max(1.5, h * 0.06));
-        ctx.fillRect(x, y + h * 0.78, w, Math.max(1.5, h * 0.06));
-      }
-      // subtle vertical shading
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.fillRect(x + w * 0.14, y + h * 0.05, w * 0.14, h * 0.9);
-      break;
-    }
-    case 'body': {
-      roundRect(ctx, x, y, w, h, Math.min(w * 0.2, ppm * 0.25));
-      ctx.fill(); ctx.stroke();
-      break;
-    }
-    case 'decoupler': {
-      ctx.fillStyle = p.col;
-      roundRect(ctx, x, y, w, h, h * 0.35);
-      ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-      for (let i = 1; i < 6; i++) {
-        const xx = x + (w / 6) * i;
-        ctx.beginPath(); ctx.moveTo(xx, y + 1); ctx.lineTo(xx, y + h - 1); ctx.stroke();
-      }
-      break;
-    }
-    case 'chute': {
-      roundRect(ctx, x, y, w, h, Math.min(w, h) * 0.3);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.beginPath(); ctx.arc(0, ly, Math.min(w, h) * 0.18, 0, Math.PI * 2); ctx.fill();
-      break;
-    }
-    case 'engine': {
-      // body block
-      roundRect(ctx, x + w * 0.1, y, w * 0.8, h * 0.55, ppm * 0.15);
-      ctx.fill(); ctx.stroke();
-      // bell nozzle
-      const bw = (p.flameW || p.w * 0.7) * ppm;
-      ctx.beginPath();
-      ctx.moveTo(-w * 0.3, y + h * 0.5);
-      ctx.lineTo(-bw / 2, y + h);
-      ctx.lineTo(bw / 2, y + h);
-      ctx.lineTo(w * 0.3, y + h * 0.5);
-      ctx.closePath();
-      ctx.fillStyle = '#9aa3b2'; ctx.fill(); ctx.stroke();
-      break;
-    }
-    default: {
-      roundRect(ctx, x, y, w, h, 3);
-      ctx.fill(); ctx.stroke();
-    }
-  }
-
-  if (selected) {
-    ctx.strokeStyle = '#ffe08a';
-    ctx.lineWidth = Math.max(2, ppm * 0.05);
-    roundRect(ctx, x - 3, y - 3, w + 6, h + 6, 6);
-    ctx.stroke();
-  }
+export function drawPartIcon(canvas, part) {
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || canvas.width;
+  const cssH = canvas.clientHeight || canvas.height;
+  canvas.width = Math.max(1, Math.round(cssW * dpr));
+  canvas.height = Math.max(1, Math.round(cssH * dpr));
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const scale = Math.min(cssW / (part.width * 1.5), cssH / (part.height * 1.18));
+  drawPartShape(ctx, part, cssW / 2, (cssH - part.height * scale) / 2, scale);
 }
 
-function drawRadial(ctx, r, n, ly, ppm) {
-  const bodyW = n.w * ppm;
-  const rw = r.w * ppm, rh = r.h * ppm;
-  for (const side of [-1, 1]) {
-    ctx.save();
-    ctx.translate(side * bodyW / 2, ly);
-    if (side < 0) ctx.scale(-1, 1);
-    ctx.fillStyle = r.col; ctx.strokeStyle = r.edge;
-    ctx.lineWidth = Math.max(1, ppm * 0.03);
-    if (r.kind === 'fin') {
-      // swept fin triangle
-      ctx.beginPath();
-      ctx.moveTo(0, -rh * 0.3);
-      ctx.lineTo(rw, rh * 0.35);
-      ctx.lineTo(rw, rh * 0.5);
-      ctx.lineTo(0, rh * 0.5);
-      ctx.closePath();
-      ctx.fill(); ctx.stroke();
-    } else if (r.kind === 'booster') {
-      // strap-on booster (rounded tube with a little nose)
-      roundRect(ctx, 0, -rh / 2, rw, rh, rw * 0.4);
-      ctx.fill(); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, -rh / 2);
-      ctx.quadraticCurveTo(rw / 2, -rh / 2 - rw * 0.9, rw, -rh / 2);
-      ctx.closePath(); ctx.fill(); ctx.stroke();
-    } else {
-      roundRect(ctx, 0, -rh / 2, rw, rh, 3);
-      ctx.fill(); ctx.stroke();
+export function drawRocketStack(ctx, design, options = {}) {
+  const parts = sanitizeDesign(design).parts.map(getPart);
+  const scale = options.scale || 46;
+  const cx = options.x || 0;
+  const top = options.y || 0;
+  let y = top;
+  const boxes = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const h = part.height * scale;
+    const w = part.width * scale;
+    if (options.stageBands) {
+      ctx.save();
+      ctx.globalAlpha = part.decoupler ? 0.22 : 0.08;
+      ctx.fillStyle = part.decoupler ? "#f29e4c" : "#4478c4";
+      ctx.fillRect(cx - Math.max(w, 70) / 2 - 5, y, Math.max(w, 70) + 10, h);
+      ctx.restore();
     }
-    ctx.restore();
+    drawPartShape(ctx, part, cx, y, scale, { selected: options.selectedIndex === i });
+    boxes.push({ index: i, x: cx - w / 2, y, w, h });
+    y += h;
   }
+  return boxes;
 }
 
-function drawFlame(ctx, p, by, ppm, throttle, t, seed) {
-  if (throttle <= 0.01) return;
-  const w = (p.flameW || p.w * 0.7) * ppm;
-  const flick = 0.8 + 0.2 * Math.sin(t * 40 + seed);
-  const len = w * (1.6 + throttle * 3.2) * flick;
-  const col = p.flameCol || '#ffd36b';
-  const grad = ctx.createLinearGradient(0, by, 0, by + len);
-  grad.addColorStop(0, '#fff6d0');
-  grad.addColorStop(0.35, col);
-  grad.addColorStop(1, 'rgba(255,120,60,0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.5, by);
-  ctx.quadraticCurveTo(-w * 0.3, by + len * 0.6, 0, by + len);
-  ctx.quadraticCurveTo(w * 0.3, by + len * 0.6, w * 0.5, by);
-  ctx.closePath();
-  ctx.fill();
-  // inner bright core
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.beginPath();
-  ctx.moveTo(-w * 0.22, by);
-  ctx.quadraticCurveTo(0, by + len * 0.4, 0, by + len * 0.55);
-  ctx.quadraticCurveTo(0, by + len * 0.4, w * 0.22, by);
-  ctx.closePath();
-  ctx.fill();
+export function formatMass(kg) {
+  if (kg < 1) return `${Math.round(kg * 1000)} g`;
+  if (kg < 1000) return `${kg.toFixed(1)} kg`;
+  return `${(kg / 1000).toFixed(2)} t`;
 }
 
-function drawCanopy(ctx, n, H, ppm) {
-  const topY = (n.top - H / 2) * ppm;
-  const cw = n.w * ppm * 3.2;
-  const ch = cw * 0.55;
-  const cy = topY - ch * 0.9;
-  ctx.fillStyle = '#ff9ec2';
-  ctx.strokeStyle = '#c96a92';
-  ctx.lineWidth = Math.max(1, ppm * 0.03);
-  ctx.beginPath();
-  ctx.moveTo(-cw / 2, cy + ch);
-  ctx.quadraticCurveTo(-cw / 2, cy - ch * 0.5, 0, cy - ch * 0.5);
-  ctx.quadraticCurveTo(cw / 2, cy - ch * 0.5, cw / 2, cy + ch);
-  ctx.closePath();
-  ctx.fill(); ctx.stroke();
-  // scallops + lines
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-  ctx.beginPath();
-  ctx.moveTo(-cw / 2, cy + ch); ctx.lineTo(0, topY);
-  ctx.moveTo(cw / 2, cy + ch); ctx.lineTo(0, topY);
-  ctx.moveTo(0, cy - ch * 0.5); ctx.lineTo(0, topY);
-  ctx.stroke();
+export function formatMeters(meters) {
+  if (!Number.isFinite(meters)) return "escape";
+  const abs = Math.abs(meters);
+  if (abs < 1000) return `${Math.round(meters)} m`;
+  if (abs < 1000000) return `${(meters / 1000).toFixed(abs < 10000 ? 1 : 0)} km`;
+  return `${(meters / 1000000).toFixed(2)} Mm`;
+}
+
+export function formatSpeed(speed) {
+  if (Math.abs(speed) < 1000) return `${Math.round(speed)} m/s`;
+  return `${(speed / 1000).toFixed(2)} km/s`;
 }

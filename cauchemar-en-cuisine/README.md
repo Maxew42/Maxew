@@ -1,8 +1,14 @@
 # 🍳 Cauchemar en Cuisine
 
-Bullet hell de survie dans une cuisine de restaurant. Vous êtes le chef ; la vermine (souris, rats, cafards, mille-pattes, chats de gouttière, rats géants, ratons laveurs) envahit la cuisine par vagues de plus en plus violentes. Survivez 10 minutes… et **Philippe ChuileBest**, le chef ultime, entre en cuisine pour un vrai combat de boss : charges télégraphées, volées d'assiettes, coups de poêle au sol et invocations de vermine. Battez-le pour valider le service.
+Bullet hell de survie en deux niveaux.
 
-Des bonus apparaissent parfois sur la carte, comme le 🧲 **aimant** qui attire d'un coup tout le fromage vers vous.
+**Niveau 1 — Le service.** Vous êtes le chef ; la vermine (souris, rats, cafards, mille-pattes, chats de gouttière, rats géants, ratons laveurs) envahit la cuisine par vagues de plus en plus violentes. Survivez 10 minutes… et **Philippe ChuileBest**, le chef ultime, entre en cuisine pour un vrai combat de boss : charges télégraphées, volées d'assiettes, coups de poêle au sol et invocations de vermine. Battez-le pour valider le service.
+
+**Niveau 2 — La cuisine de Pablo** (déverrouillé en battant le niveau 1). Vos dettes vous rattrapent : vous voilà Cuisinier d'un labo de cocaïne au fond de la jungle colombienne, et il va falloir s'évader. La jungle envoie fourmis rouges, araignées, serpents, singes, singes hurleurs (qui bombardent à distance), crocodiles et jaguars. Au bout de 10 minutes, **l'Hippo de Pablo** débarque : charges, coups de patte au sol, vomi de boulettes de dollars à esquiver… et il se soigne tant que vous ne détruisez pas la 🍉 pastèque qui pousse régulièrement au centre de la carte. L'XP se ramasse en 💵 dollars, les 🥟 empanadas soignent, et le bonus de carte est un 💊 sachet de coke (+55% de vitesse pendant 8 s). Dans ce niveau, les améliorations d'armes changent aussi leur motif de tir (plus de balles, plus de directions, plus de portée…).
+
+Des bonus apparaissent parfois sur la carte, comme le 🧲 **aimant** (niveau 1) qui attire d'un coup tout le fromage vers vous.
+
+Astuce debug : sur l'écran titre, maintenir **H** en cliquant sur le niveau 2 l'ouvre même verrouillé.
 
 100% statique : HTML + JavaScript vanilla, rendu 3D low-poly avec Three.js (embarqué dans `lib/`, aucun CDN), aucun build. Vue du dessus légèrement inclinée, personnages en primitives 3D.
 
@@ -56,6 +62,8 @@ Si la manette se déconnecte en pleine partie, le jeu se met en pause automatiqu
 
 ## Armes
 
+### Niveau 1 — la cuisine
+
 - 🍳 **Poêle** (départ) — frappe l'ennemi le plus proche
 - 🔪 **Couteau** — lancé en ligne vers la souris, transperce
 - 🪓 **Hachoir** — dégâts rapides en cercle autour de vous
@@ -65,7 +73,16 @@ Si la manette se déconnecte en pleine partie, le jeu se met en pause automatiqu
 - 🌶️ **Siphon piquant** — sauce piquante qui reste au sol
 - 🍾 **Bouchon de champagne** — tir dévastateur qui ricoche sur les murs
 
-À chaque niveau : améliorer une arme (dégâts + cadence), en prendre une nouvelle (5 max), améliorer le chef (+vitesse, +PV max), ou rarement se soigner. Le meilleur temps est sauvegardé dans le navigateur (`localStorage`).
+### Niveau 2 — La cuisine de Pablo
+
+- 🗡️ **Machette** (départ) — taillade en arc devant vous, l'arc s'élargit avec les niveaux
+- 🎯 **Sarbacane** — fléchettes qui ralentissent et empoisonnent, +1 fléchette tous les 2 niveaux
+- 🪢 **Fouet** — claque en cône court, gros recul, cône de plus en plus large
+- 🔫 **AK-47 « Viva la revolución »** — rafale dans un cône étroit, +1 balle par niveau
+- 💣 **Grenade de la Liberté** — explose là où vous visez ; évolue en rebonds multi-directions, puis met le feu au sol (niveau 6)
+- 🔥 **Lance-flammes** — jet de feu continu vers la visée, portée croissante
+
+À chaque niveau : améliorer une arme (dégâts + cadence, et au niveau 2 le motif de tir), en prendre une nouvelle (5 max), améliorer le chef (+vitesse, +PV max), ou rarement se soigner. Le meilleur temps de chaque niveau est sauvegardé dans le navigateur (`localStorage`).
 
 ## Déployer sur GitHub Pages
 
@@ -89,4 +106,6 @@ Aucune étape de build : `index.html`, `game.js` et `lib/three.min.js` suffisent
 
 ## Debug
 
-Dans la console du navigateur : `DEBUG.gainXp(50)`, `DEBUG.setTime(300)`, `DEBUG.godMode()`, `DEBUG.info()`.
+Dans la console du navigateur : `DEBUG.gainXp(50)`, `DEBUG.setTime(300)`, `DEBUG.godMode()`, `DEBUG.info()`, `DEBUG.boss()`, `DEBUG.killBoss()`, `DEBUG.level(2)`, `DEBUG.strong()` / `DEBUG.strong2()`, `DEBUG.unlock()`, `DEBUG.coke()`.
+
+Sur l'écran titre : maintenir **H** en cliquant sur le bouton du niveau 2 pour l'ouvrir sans avoir battu le niveau 1.

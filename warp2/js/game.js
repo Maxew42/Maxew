@@ -3,7 +3,6 @@ import { Ship, nextRenderFrame } from './ship.js';
 import { Bullet, Rocket, Missile, Mine, Flare, Particle } from './weapons.js';
 import { AIController } from './ai.js';
 import { TAU, clamp, lerp, angleLerp, seededRandom, hashString } from './util.js';
-import { CELL } from './parts.js';
 
 const WORLD_SIZE = 4200;
 const SNAP_RATE = 1 / 12; // net snapshots per second
@@ -33,7 +32,7 @@ export class Game {
     this.controllers = new Map(); // shipId -> AIController (only ones we simulate)
     this.bullets = []; this.rockets = []; this.missiles = [];
     this.mines = []; this.flares = []; this.particles = [];
-    this.beams = []; // per-frame beam segments
+    this.beamPulses = []; // charge-laser discharges, fading over a few frames
     this.shockwaves = []; this.delayedBooms = [];
     this.shake = 0;
     // Sweeping radar: the beam rotates, and an enemy blip only refreshes when
@@ -122,6 +121,16 @@ export class Game {
       }
       this.asteroids.push({ x, y, r, pts, tone: 0.75 + rng() * 0.4 });
     }
+    // Missile resupply station: one per map, deterministic from the seed so
+    // every peer sees it in the same spot, clear of spawns and rocks.
+    let sx = 0, sy = 0, ok = false, tries = 0;
+    while (!ok && tries++ < 80) {
+      const a = rng() * TAU, r = this.size * (0.26 + rng() * 0.14);
+      sx = Math.cos(a) * r; sy = Math.sin(a) * r;
+      ok = !this.asteroids.some(ast => Math.hypot(ast.x - sx, ast.y - sy) < ast.r + 170)
+        && spawns.every(s => Math.hypot(s.x - sx, s.y - sy) > 320);
+    }
+    this.ammoStation = { x: sx, y: sy, r: 80 };
   }
 
   generateStars(seed) {
@@ -199,6 +208,12 @@ export class Game {
     };
   }
 
+  static COMMS = {
+    droid: ['Damage contained, Commandant.', 'Fire controlled, Commandant.', 'Hull patched up, Commandant.', 'All welded, Commandant.'],
+    noammo: ['Out of missiles, Sir!', 'Missile racks empty, Sir!'],
+    resupply: ['Missiles restocked, Sir!', 'Racks full again, Commandant.'],
+  };
+
   static inputFlags(inp) {
     return (inp.fire ? 1 : 0) | (inp.boost ? 2 : 0) | (inp.mine ? 4 : 0) | (inp.flare ? 8 : 0) | (inp.missile ? 16 : 0);
   }
@@ -268,33 +283,44 @@ export class Game {
     }
   }
 
-  fireBeam(owner, x, y, angle, w, dt) {
-    const step = CELL * 0.55;
+  // Charge-laser discharge: one thick short ray. Brightest and hardest-hitting
+  // at the muzzle; both the light and the damage fade along its length.
+  fireChargeBeam(owner, x, y, angle, w, power) {
+    const step = 8;
     const dx = Math.cos(angle) * step, dy = Math.sin(angle) * step;
-    let px = x, py = y;
-    let hit = null;
-    const maxSteps = Math.ceil(w.range / step);
-    for (let i = 0; i < maxSteps; i++) {
-      px += dx; py += dy;
-      if (this.hitAsteroid(px, py)) { hit = 'ast'; break; }
-      let done = false;
+    let px = x, py = y, dist = 0;
+    let hit = false;
+    while (dist < w.range && !hit) {
+      px += dx; py += dy; dist += step;
+      if (this.hitAsteroid(px, py)) { hit = true; break; }
       for (const ship of this.ships) {
         if (!ship.alive || ship.id === owner.id) continue;
         const ddx = ship.x - px, ddy = ship.y - py;
         if (ddx * ddx + ddy * ddy > ship.radius * ship.radius) continue;
         if (ship.partAtWorld(px, py)) {
-          if (ship.authority) ship.applyDamageAt(px, py, w.dps * dt, owner.id, this);
-          hit = ship; done = true;
+          // Full damage through the first half of the ray, fading past it.
+          const fade = Math.max(0, dist / w.range - 0.5) * 2;
+          const dmg = w.dmg * power * (1 - w.falloff * fade);
+          if (ship.authority) ship.applyDamageAt(px, py, dmg, owner.id, this);
+          this.spark(px, py, '#ff9df5');
+          hit = true;
           break;
         }
       }
-      if (done) break;
     }
-    this.beams.push({ x1: x, y1: y, x2: px, y2: py, hit: !!hit });
-    if (hit && Math.random() < 0.5) this.spark(px, py, '#ff9df5');
+    // Store the ray in the owner's local frame so it stays glued to the
+    // laser block while the ship keeps moving during the flash.
+    const [lx, ly] = owner.worldToLocal(x, y);
+    this.beamPulses.push({
+      ship: owner, lx, ly, la: angle - owner.angle, len: dist,
+      x1: x, y1: y, x2: px, y2: py, power, t: 0, life: 0.22,
+    });
+    const dc = Math.hypot(this.camX - x, this.camY - y);
+    this.shake = Math.min(14, this.shake + (2 + 5 * power) * clamp(1 - dc / 900, 0, 1));
   }
 
-  explosion(x, y, radius, dmg, ownerId) {
+  // pierce: the blast ignores shields and bites the hull directly (mines).
+  explosion(x, y, radius, dmg, ownerId, pierce = false) {
     // FX
     for (let i = 0; i < 22; i++) {
       const a = Math.random() * TAU, sp = 40 + Math.random() * 220;
@@ -308,7 +334,7 @@ export class Game {
     for (const ship of this.ships) {
       if (!ship.alive || !ship.authority || ship.id === ownerId) continue;
       const d = Math.hypot(ship.x - x, ship.y - y);
-      if (d < radius + ship.radius) ship.applyExplosion(x, y, radius, dmg, ownerId, this);
+      if (d < radius + ship.radius) ship.applyExplosion(x, y, radius, dmg, ownerId, this, pierce);
     }
   }
 
@@ -321,6 +347,121 @@ export class Game {
   smoke(x, y) {
     this.particles.push(new Particle(x, y, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20,
       0.4 + Math.random() * 0.3, 3.5, 'rgba(180,180,190,0.5)', 1.5));
+  }
+
+  // Damaged blocks show it: half of them trail smoke, the other half throw
+  // little electric arcs (the on-block flicker is drawn in renderPart).
+  emitDamageFX(dt) {
+    for (const ship of this.ships) {
+      if (!ship.alive) continue;
+      for (const part of ship.parts) {
+        if (!part.alive) continue;
+        const dmg = 1 - part.hp / part.maxHp;
+        if (dmg < 0.35) continue;
+        if (Math.random() > (dmg - 0.2) * dt * 2.4) continue;
+        const [wx, wy] = ship.cellCenterWorld(part.x, part.y);
+        if (part.uid & 1) {
+          this.smoke(wx + (Math.random() - 0.5) * 8, wy + (Math.random() - 0.5) * 8);
+        } else {
+          for (let i = 0; i < 3; i++) {
+            this.particles.push(new Particle(wx, wy,
+              ship.vx + (Math.random() - 0.5) * 90, ship.vy + (Math.random() - 0.5) * 90,
+              0.1 + Math.random() * 0.14, 1.6, '#aee6ff', 3));
+          }
+        }
+      }
+    }
+  }
+
+  // Any ship gliding over the station leaves with full missile racks.
+  updateStation() {
+    const st = this.ammoStation;
+    for (const ship of this.ships) {
+      if (!ship.alive) continue;
+      if (Math.hypot(ship.x - st.x, ship.y - st.y) > st.r + ship.radius * 0.5) continue;
+      let refilled = false;
+      for (const p of ship.parts) {
+        const cap = p.alive && p.def.weapon && p.def.weapon.ammo;
+        if (cap && p.ammo < cap) { p.ammo = cap; refilled = true; }
+      }
+      if (refilled) {
+        this.spark(ship.x, ship.y, '#7ee787');
+        if (ship === this.me) { this.killFeed('Missiles resupplied'); this.comms('resupply'); }
+      }
+    }
+  }
+
+  // Supply platform, drawn under the ships; the pickup missiles hover above
+  // it at ship level (renderStationMissiles).
+  renderStation(ctx) {
+    const s = this.ammoStation, t = this.time;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    // resupply radius ring, gently pulsing
+    ctx.globalAlpha = 0.16 + 0.08 * Math.sin(t * 2.4);
+    ctx.strokeStyle = '#ffd257';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath(); ctx.arc(0, 0, s.r, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    // octagonal pad
+    ctx.rotate(Math.PI / 8);
+    const R = 46;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * TAU;
+      i ? ctx.lineTo(Math.cos(a) * R, Math.sin(a) * R) : ctx.moveTo(Math.cos(a) * R, Math.sin(a) * R);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#232a38';
+    ctx.fill();
+    ctx.strokeStyle = '#10141d';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // inner deck + hazard ring
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * TAU;
+      i ? ctx.lineTo(Math.cos(a) * R * 0.68, Math.sin(a) * R * 0.68) : ctx.moveTo(Math.cos(a) * R * 0.68, Math.sin(a) * R * 0.68);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#2e374a';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(232, 201, 92, 0.75)';
+    ctx.lineWidth = 4;
+    ctx.setLineDash([9, 7]);
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.84, 0, TAU); ctx.stroke();
+    ctx.setLineDash([]);
+    // center pad
+    ctx.fillStyle = '#1b202c';
+    ctx.beginPath(); ctx.arc(0, 0, 11, 0, TAU); ctx.fill();
+    // corner beacons blink in pairs
+    for (let i = 0; i < 8; i += 2) {
+      const a = i / 8 * TAU;
+      const on = Math.floor(t * 2 + i / 2) % 2 === 0;
+      ctx.fillStyle = on ? '#ffd257' : 'rgba(255,210,87,0.2)';
+      ctx.beginPath(); ctx.arc(Math.cos(a) * R * 0.92, Math.sin(a) * R * 0.92, 2.4, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  renderStationMissiles(ctx) {
+    const s = this.ammoStation, t = this.time;
+    for (let i = 0; i < 3; i++) {
+      const a = t * 0.7 + i * TAU / 3;
+      const x = s.x + Math.cos(a) * 26, y = s.y + Math.sin(a) * 26 + Math.sin(t * 2 + i) * 2;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a + Math.PI / 2);
+      ctx.fillStyle = 'rgba(255, 120, 120, 0.25)';
+      ctx.beginPath(); ctx.arc(0, 0, 8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#d94f4f';
+      ctx.beginPath();
+      ctx.moveTo(8, 0); ctx.lineTo(-6, -3.4); ctx.lineTo(-4, 0); ctx.lineTo(-6, 3.4);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
   }
 
   // ---- damage callbacks --------------------------------------------------------
@@ -431,6 +572,22 @@ export class Game {
     document.getElementById('game-msg').textContent = text;
   }
 
+  // Crew chatter bubble (bottom-left, desktop only — the touch UI needs the room).
+  comms(kind) {
+    if (this.input.isTouchDevice) return;
+    const el = document.getElementById('comms-bubble');
+    const msgs = Game.COMMS[kind];
+    if (!el || !msgs) return;
+    this._commsLast = this._commsLast || {};
+    if (this.time - (this._commsLast[kind] ?? -99) < 3) return; // don't chatter
+    this._commsLast[kind] = this.time;
+    el.querySelector('.comms-icon').textContent = kind === 'droid' ? '🤖' : '🚀';
+    el.querySelector('#comms-text').textContent = msgs[Math.floor(Math.random() * msgs.length)];
+    el.classList.remove('hidden');
+    clearTimeout(this._commsT);
+    this._commsT = setTimeout(() => el.classList.add('hidden'), 4000);
+  }
+
   // ---- main loop -----------------------------------------------------------------
   start() {
     this.running = true;
@@ -455,7 +612,6 @@ export class Game {
 
   update(dt) {
     this.time += dt;
-    this.beams.length = 0;
 
     // My input.
     if (this.me.alive && !this.matchOver) {
@@ -492,6 +648,15 @@ export class Game {
       }
       ship.updateWeapons(dt, this);
     }
+
+    // Repair droids (healing + FX) for every ship, ours and mirrored ones.
+    for (const ship of this.ships) ship.updateDroids(dt, this);
+
+    // Damaged blocks vent smoke or crackle with electric arcs.
+    this.emitDamageFX(dt);
+
+    // Passing over the supply station refills every missile rack.
+    this.updateStation();
 
     // Ship-ship collision: mass-weighted bounce + ram damage at the contact point.
     for (let i = 0; i < this.ships.length; i++) {
@@ -560,6 +725,7 @@ export class Game {
     }
 
     // Shockwaves + delayed secondary explosions.
+    this.beamPulses = this.beamPulses.filter(b => (b.t += dt) < b.life);
     this.shockwaves = this.shockwaves.filter(w => (w.t += dt) < w.life);
     this.delayedBooms = this.delayedBooms.filter(b => {
       if (this.time < b.t) return true;
@@ -665,19 +831,12 @@ export class Game {
       ctx.restore();
     }
 
+    // Supply station platform (under ships).
+    this.renderStation(ctx);
+
     // Mines, flares (under ships).
     for (const m of this.mines) m.render(ctx);
     for (const f of this.flares) f.render(ctx);
-
-    // Beams.
-    for (const b of this.beams) {
-      ctx.strokeStyle = 'rgba(255, 120, 255, 0.9)';
-      ctx.lineWidth = 3.2;
-      ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
-    }
 
     // Ships + overhead labels.
     for (const ship of this.ships) {
@@ -698,6 +857,40 @@ export class Game {
         ctx.restore();
       }
     }
+
+    // Charge-laser rays: luminous at the muzzle, shading out toward the tip.
+    ctx.lineCap = 'round';
+    for (const b of this.beamPulses) {
+      const k = 1 - b.t / b.life;
+      // Re-anchor to the (moving) firing ship; keep last coords if it died.
+      if (b.ship && b.ship.alive) {
+        [b.x1, b.y1] = b.ship.localToWorld(b.lx, b.ly);
+        const a = b.la + b.ship.angle;
+        b.x2 = b.x1 + Math.cos(a) * b.len;
+        b.y2 = b.y1 + Math.sin(a) * b.len;
+      }
+      const g = ctx.createLinearGradient(b.x1, b.y1, b.x2, b.y2);
+      g.addColorStop(0, `rgba(255,255,255,${0.95 * k})`);
+      g.addColorStop(0.3, `rgba(255,157,245,${0.8 * k})`);
+      g.addColorStop(0.75, `rgba(190,70,180,${0.4 * k})`);
+      g.addColorStop(1, 'rgba(90,20,85,0)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 1 + (4 + 10 * b.power) * k;
+      ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+      // hot white core, fading out sooner than the glow
+      const g2 = ctx.createLinearGradient(b.x1, b.y1, b.x2, b.y2);
+      g2.addColorStop(0, `rgba(255,255,255,${0.95 * k})`);
+      g2.addColorStop(0.55, `rgba(255,225,255,${0.35 * k})`);
+      g2.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = g2;
+      ctx.lineWidth = Math.max(1, 2.5 * k);
+      ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+
+    // Station pickup missiles + repair droids fly at ship level.
+    this.renderStationMissiles(ctx);
+    for (const ship of this.ships) ship.renderDroids(ctx);
 
     // Projectiles above ships.
     for (const b of this.bullets) b.render(ctx);
@@ -772,21 +965,30 @@ export class Game {
     ctx.fillStyle = '#dfe8f2';
     ctx.fillText(`ENERGY ${Math.round(me.energy)}`, x + 4 * dpr, y + bh * 2 + 3 * dpr);
 
-    // Missile reload bar — fills with red as the launcher reloads, bright red when armed.
+    // Missile reload bar — fills with red as the launcher reloads, bright red
+    // when armed; goes dark when the racks are out of ammo.
     let bottom = y + bh * 2 + 6 * dpr;
     const missileParts = me.parts.filter(p => p.alive && p.def.kind === 'weapon' && p.def.weapon.type === 'missile');
     if (missileParts.length) {
       const my = bottom + 6 * dpr;
       // Least-ready rack drives the bar: full only once every launcher has reloaded.
-      let frac = 1;
-      for (const p of missileParts) frac = Math.min(frac, 1 - clamp(p.cooldown * p.def.weapon.rate, 0, 1));
-      const ready = frac >= 1;
+      let frac = 1, ammo = 0, cap = 0;
+      for (const p of missileParts) {
+        frac = Math.min(frac, 1 - clamp(p.cooldown * p.def.weapon.rate, 0, 1));
+        ammo += p.ammo; cap += p.def.weapon.ammo;
+      }
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.fillRect(x, my, bw, bh);
-      ctx.fillStyle = ready ? '#ff5a5a' : '#d94f4f';
-      ctx.fillRect(x, my, bw * frac, bh);
-      ctx.fillStyle = '#dfe8f2';
-      ctx.fillText(ready ? 'MISSILE READY' : 'MISSILE', x + 4 * dpr, my + bh - 3 * dpr);
+      if (ammo <= 0) {
+        ctx.fillStyle = 'rgba(255, 210, 87, 0.9)';
+        ctx.fillText('NO MISSILES — FIND THE SUPPLY STATION ◆', x + 4 * dpr, my + bh - 3 * dpr);
+      } else {
+        const ready = frac >= 1;
+        ctx.fillStyle = ready ? '#ff5a5a' : '#d94f4f';
+        ctx.fillRect(x, my, bw * frac, bh);
+        ctx.fillStyle = '#dfe8f2';
+        ctx.fillText(`${ready ? 'MISSILE READY' : 'MISSILE'} · AMMO ${ammo}/${cap}`, x + 4 * dpr, my + bh - 3 * dpr);
+      }
       bottom = my + bh;
     }
 
@@ -853,6 +1055,20 @@ export class Game {
       ctx.beginPath(); ctx.arc(rx + dx, ry + dy, 5.5 * dpr, 0, TAU); ctx.fill();
     }
     ctx.globalAlpha = 1;
+    // Supply-station beacon — always on scope, pinned to the rim when out of range.
+    {
+      const st = this.ammoStation;
+      let dx = (st.x - me.x) / range * rr, dy = (st.y - me.y) / range * rr;
+      const dd = Math.hypot(dx, dy) || 1;
+      if (dd > rr * 0.9) { dx *= rr * 0.9 / dd; dy *= rr * 0.9 / dd; }
+      const bl = 0.6 + 0.4 * Math.sin(this.time * 5);
+      ctx.fillStyle = `rgba(255, 210, 87, ${bl})`;
+      const ds = 3.2 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(rx + dx, ry + dy - ds); ctx.lineTo(rx + dx + ds, ry + dy);
+      ctx.lineTo(rx + dx, ry + dy + ds); ctx.lineTo(rx + dx - ds, ry + dy);
+      ctx.closePath(); ctx.fill();
+    }
     // Own ship at the center, pointing where we face.
     ctx.save();
     ctx.translate(rx, ry); ctx.rotate(me.angle);

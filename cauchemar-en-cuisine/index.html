@@ -78,6 +78,16 @@
   .best { margin-top: 18px; font-size: 16px; color: #cbb896; }
   .best b { color: #ffd700; }
 
+  .levels { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  #btnLevel2, #btnNext {
+    color: #0c2a10;
+    background: linear-gradient(#8fdb7a, #3f9e3f);
+    box-shadow: 0 5px 0 #1e5c22, 0 8px 20px rgba(0,0,0,.5);
+  }
+  #btnLevel2:active, #btnNext:active { box-shadow: 0 2px 0 #1e5c22; }
+  #btnLevel2.locked { filter: grayscale(0.75); opacity: 0.65; }
+  #lockHint { margin-top: 12px; font-size: 14px; color: #ffb347; }
+
   #iosTip {
     margin-top: 14px; max-width: 440px; font-size: 13px; line-height: 1.5;
     color: #cbb896; background: rgba(42, 32, 25, 0.8); border: 1px solid #5a4630;
@@ -135,8 +145,8 @@
 
 <div id="start" class="overlay">
   <h1>🍳 CAUCHEMAR EN CUISINE</h1>
-  <p class="subtitle">La vermine envahit la cuisine. Survivez 10 minutes… et le Chef ultime viendra juger votre service.</p>
-  <div class="weapons-preview">🍳 🔪 🪓 🔥 ⚡ 🌶️ 🍾</div>
+  <p class="subtitle">La vermine envahit la cuisine. Survivez 10 minutes… et le Chef ultime viendra juger votre service.<br>Ensuite ? Direction le labo de Pablo, au fond de la jungle.</p>
+  <div class="weapons-preview">🍳 🔪 🪓 🔥 ⚡ 🌶️ 🍾 · 🗡️ 🔫 💣</div>
   <div class="controls kb-only">
     <b>Flèches / WASD</b><span>se déplacer</span>
     <b>Souris</b><span>viser (attaque automatique)</span>
@@ -154,8 +164,12 @@
     <b>A</b><span>commencer / choisir une carte</span>
     <b>Start / Select</b><span>pause / couper le son</span>
   </div>
-  <button id="btnStart">Commencer le service</button>
-  <div class="best">🏆 Record : <b id="bestStart">—</b></div>
+  <div class="levels">
+    <button id="btnStart">🍳 Niveau 1 — Le service</button>
+    <button id="btnLevel2" class="locked">🔒 Niveau 2 — La cuisine de Pablo</button>
+  </div>
+  <p id="lockHint" class="hidden">Terminez le niveau 1 pour déverrouiller La cuisine de Pablo !</p>
+  <div class="best">🏆 Records — Cuisine : <b id="bestStart">—</b> · Jungle : <b id="bestStart2">—</b></div>
   <p id="iosTip" class="hidden">📲 Plein écran sans la barre Safari : touchez <b>Partager</b> puis <b>« Sur l'écran d'accueil »</b>, et lancez le jeu depuis l'icône.</p>
 </div>
 
@@ -166,15 +180,18 @@
 </div>
 
 <div id="victory" class="overlay hidden">
-  <h1>🏆 SERVICE VALIDÉ !</h1>
-  <p class="subtitle">Philippe ChuileBest s'incline. La cuisine est à vous, Chef !</p>
+  <h1 id="vTitle">🏆 SERVICE VALIDÉ !</h1>
+  <p class="subtitle" id="vSub">Philippe ChuileBest s'incline. La cuisine est à vous, Chef !</p>
   <div id="newrecord2" class="hidden" style="font-size:24px;color:#ffd700;margin-bottom:14px;">🏆 NOUVEAU RECORD !</div>
   <div class="stats">
     Temps du service : <b id="vTime">0:00</b><br>
     Vermine éliminée : <b id="vKills">0</b><br>
     Niveau atteint : <b id="vLevel">1</b>
   </div>
-  <button id="btnRestart2">Nouvelle partie</button>
+  <div class="levels">
+    <button id="btnNext" class="hidden">🌴 Continuer : La cuisine de Pablo</button>
+    <button id="btnRestart2">Rejouer</button>
+  </div>
 </div>
 
 <div id="rotate" class="overlay">

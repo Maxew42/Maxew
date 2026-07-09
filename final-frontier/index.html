@@ -6,361 +6,913 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0b1026">
+<meta name="theme-color" content="#17243a">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <title>Final Frontier</title>
 <style>
-  :root{
-    --space:#0b1026; --deep:#05060f; --panel:rgba(16,22,44,.86); --panel2:rgba(24,32,60,.9);
-    --ink:#eaf1ff; --muted:#93a3c9; --line:rgba(140,170,240,.16);
-    --pink:#ff9ec2; --blue:#8fd3ff; --green:#8df0a8; --yellow:#ffd479; --purple:#c9a8ff;
-    --good:#8df0a8; --warn:#ffd479; --bad:#ff8f8f;
+  :root {
+    --ink: #263247;
+    --soft-ink: #5d6d82;
+    --paper: #fff8eb;
+    --panel: rgba(255, 250, 235, 0.92);
+    --panel-strong: rgba(255, 250, 235, 0.98);
+    --line: rgba(38, 50, 71, 0.16);
+    --sky: #9fd6ff;
+    --blue: #4478c4;
+    --green: #55a968;
+    --yellow: #efb64c;
+    --red: #db6b65;
+    --violet: #7663bb;
+    --shadow: rgba(32, 40, 60, 0.18);
   }
-  *{margin:0;padding:0;box-sizing:border-box}
-  html,body{height:100%;overflow:hidden}
-  body{
-    background:var(--deep); color:var(--ink);
-    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
-    user-select:none;-webkit-user-select:none;touch-action:manipulation;
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #b7ddff;
+    color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
   }
-  button{font-family:inherit;cursor:pointer;color:inherit}
-  .hidden{display:none !important}
-  .muted{color:var(--muted)}
-  .good{color:var(--good)} .warn{color:var(--warn)} .bad{color:var(--bad)}
-  .screen{position:fixed;inset:0;display:flex;flex-direction:column}
+  button, input { font: inherit; }
+  button { color: inherit; cursor: pointer; }
+  canvas { display: block; }
+  .hidden { display: none !important; }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; }
 
-  .btn{
-    border:none;border-radius:14px;padding:13px 20px;font-size:15px;font-weight:700;
-    background:rgba(120,150,220,.16); color:var(--ink); transition:transform .1s, background .15s, box-shadow .15s;
+  .btn, .icon-btn {
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.62);
+    border-radius: 8px;
+    box-shadow: 0 2px 0 rgba(38, 50, 71, 0.1);
+    transition: transform 0.08s, background 0.14s, box-shadow 0.14s;
   }
-  .btn:hover{background:rgba(120,150,220,.26)}
-  .btn:active{transform:translateY(1px)}
-  .btn.primary{background:linear-gradient(180deg,#ffc7de,#ff96c2);color:#3a0e26;box-shadow:0 6px 18px rgba(255,140,190,.3)}
-  .btn.blue{background:linear-gradient(180deg,#a9e0ff,#7ec6f5);color:#082033}
-  .btn:disabled{opacity:.45;cursor:not-allowed}
-
-  /* ---------------- MENU ---------------- */
-  #screen-menu{
-    align-items:center;justify-content:center;gap:8px;padding:24px;
-    background:radial-gradient(ellipse at 50% 24%, #16204a 0%, #0b1026 55%, #05060f 100%);
-    overflow:auto;
+  .btn:hover, .icon-btn:hover { background: rgba(255, 255, 255, 0.9); }
+  .btn:active, .icon-btn:active { transform: translateY(1px); box-shadow: none; }
+  .btn {
+    padding: 10px 14px;
+    font-weight: 800;
+    font-size: 14px;
   }
-  .stars-bg{position:absolute;inset:0;pointer-events:none;opacity:.5;
-    background-image:radial-gradient(1px 1px at 20% 30%,#fff,transparent),radial-gradient(1px 1px at 70% 20%,#fff,transparent),radial-gradient(1px 1px at 40% 70%,#fff,transparent),radial-gradient(2px 2px at 85% 60%,#fff,transparent),radial-gradient(1px 1px at 55% 45%,#fff,transparent),radial-gradient(1px 1px at 10% 80%,#fff,transparent);}
-  #screen-menu h1{
-    font-size:clamp(40px,9vw,84px);font-weight:900;letter-spacing:.02em;text-align:center;
-    background:linear-gradient(180deg,#fff,#bfe2ff 45%,#ff9ec2);
-    -webkit-background-clip:text;background-clip:text;color:transparent;
-    text-shadow:0 0 40px rgba(143,211,255,.25); z-index:1;
+  .btn.primary {
+    background: #f29e4c;
+    color: #351f11;
+    border-color: rgba(143, 75, 22, 0.24);
   }
-  #screen-menu .sub{color:var(--muted);margin-bottom:18px;letter-spacing:.16em;font-size:12px;text-transform:uppercase;z-index:1;text-align:center}
-  .menu-card{
-    width:min(440px,94vw);background:var(--panel);border:1px solid var(--line);border-radius:22px;
-    padding:22px;z-index:1;box-shadow:0 18px 50px rgba(0,0,0,.4);
+  .btn.primary:hover { background: #ffb566; }
+  .btn.blue {
+    background: #84c5f4;
+    color: #102f4e;
+    border-color: rgba(45, 96, 148, 0.25);
   }
-  .mc-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px}
-  .mc-company{font-size:22px;font-weight:800}
-  .mc-tier{font-size:13px;color:var(--blue);font-weight:700;white-space:nowrap}
-  .mc-goal{color:var(--muted);font-size:13.5px;line-height:1.45;margin:10px 0 14px}
-  .mc-goal b{color:var(--ink)}
-  .prog{height:10px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden}
-  .prog>span{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--pink));transition:width .5s}
-  .prog-label{font-size:11.5px;color:var(--muted);margin-top:6px;text-align:center}
-  .mc-stats{display:flex;justify-content:space-between;font-size:13px;margin-bottom:16px}
-  .menu-btns{display:flex;flex-direction:column;gap:10px}
-  .menu-btns .row{display:flex;gap:10px}
-  .menu-btns .row .btn{flex:1}
-  #btn-reset{background:transparent;color:var(--muted);font-weight:600;font-size:12px;padding:8px}
-  #btn-reset:hover{color:var(--bad)}
+  .btn.green {
+    background: #89d690;
+    color: #123818;
+    border-color: rgba(36, 114, 51, 0.25);
+  }
+  .btn.danger {
+    background: rgba(219, 107, 101, 0.12);
+    color: #913731;
+    border-color: rgba(219, 107, 101, 0.35);
+  }
+  .btn:disabled { opacity: 0.46; cursor: not-allowed; }
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 900;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 4px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.58);
+    color: var(--soft-ink);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .meter {
+    height: 10px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(38, 50, 71, 0.12);
+  }
+  .meter > span {
+    display: block;
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #69bd7b, #efb64c, #f29e4c);
+    transition: width 0.28s;
+  }
 
-  /* ---------------- BUILD ---------------- */
-  #screen-build{background:#0d1226}
-  .top-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line);z-index:5}
-  .top-bar .title{font-weight:800;font-size:16px;color:var(--blue)}
-  .top-bar .spacer{flex:1}
-  .icon-btn{background:rgba(120,150,220,.16);border:none;border-radius:10px;width:38px;height:38px;font-size:16px;display:flex;align-items:center;justify-content:center}
-  .build-main{flex:1;display:flex;min-height:0}
-  #palette{width:200px;flex-shrink:0;overflow-y:auto;padding:10px;background:rgba(10,14,30,.6);border-right:1px solid var(--line)}
-  .pal-cat{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:12px 4px 6px;font-weight:700}
-  .pal-cat:first-child{margin-top:2px}
-  .pal-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .pal-card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:6px 4px 7px;display:flex;flex-direction:column;align-items:center;gap:2px;transition:transform .1s,border-color .12s}
-  .pal-card:hover{border-color:var(--blue);transform:translateY(-2px)}
-  .pal-card canvas{width:52px;height:52px}
-  .pal-name{font-size:11px;font-weight:700;text-align:center;line-height:1.1}
-  .pal-stat{font-size:9.5px;color:var(--muted);text-align:center}
-  #build-canvas-wrap{flex:1;position:relative;min-width:0}
-  #build-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
-  #stats-panel{width:230px;flex-shrink:0;padding:12px;background:rgba(10,14,30,.6);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column;gap:10px}
-  #build-name{width:100%;background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:10px;padding:10px;color:var(--ink);font-size:14px;font-weight:700}
-  #build-name::placeholder{color:var(--muted)}
-  .stat-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
-  .stat-row b{font-weight:800}
-  .dv-hint{font-size:11px;color:var(--muted);text-align:center;margin:4px 0;padding:6px;background:rgba(255,255,255,.04);border-radius:8px}
-  .stage-list{display:flex;flex-direction:column;gap:5px;margin-top:2px}
-  .stage-item{display:flex;align-items:center;gap:8px;font-size:12px;background:rgba(255,255,255,.04);border-radius:8px;padding:5px 8px}
-  .stg-num{font-weight:800;color:var(--blue);min-width:22px}
-  #build-warn{font-size:12px;color:var(--warn);display:flex;flex-direction:column;gap:4px}
-  #build-warn.shake{animation:shake .4s}
-  @keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
-  .build-actions{display:flex;flex-direction:column;gap:8px;margin-top:auto}
-  .build-actions .row{display:flex;gap:8px}
-  .build-actions .row .btn{flex:1;padding:10px}
-  #sel-bar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:6px 8px 6px 14px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
-  #sel-name{font-size:13px;font-weight:700;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #sel-bar .icon-btn{width:34px;height:34px}
-  #load-panel{position:absolute;inset:0;background:rgba(6,8,18,.8);backdrop-filter:blur(4px);display:flex;flex-direction:column;padding:16px;z-index:10}
-  .load-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-  .load-head h3{font-size:18px}
-  #load-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;max-width:520px;width:100%;margin:0 auto}
-  .load-section{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-top:8px}
-  .load-row{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:8px 12px;cursor:pointer}
-  .load-row:hover{border-color:var(--blue)}
-  .load-row canvas{width:44px;height:66px;flex-shrink:0}
-  .load-info{flex:1}
-  .load-name{font-weight:700}
-  .load-sub{font-size:12px;color:var(--muted)}
-  .load-del{background:rgba(255,120,120,.15);border:none;border-radius:8px;width:30px;height:30px;color:var(--bad)}
-  #build-toast{position:absolute;left:50%;top:64px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 16px;font-size:13px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
-  #build-toast.show{opacity:1}
+  /* Menu */
+  #screen-menu {
+    align-items: center;
+    justify-content: center;
+    padding: clamp(16px, 4vw, 42px);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0) 34%),
+      linear-gradient(180deg, #90cffd 0%, #cbeefd 48%, #8dcc86 48%, #79b36c 100%);
+    overflow: auto;
+  }
+  .menu-stars {
+    position: absolute;
+    inset: 0 0 50%;
+    opacity: 0.42;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle at 12% 28%, #fff 0 1px, transparent 2px),
+      radial-gradient(circle at 24% 18%, #fff 0 1px, transparent 2px),
+      radial-gradient(circle at 71% 24%, #fff 0 1px, transparent 2px),
+      radial-gradient(circle at 86% 13%, #fff 0 1px, transparent 2px),
+      radial-gradient(circle at 53% 8%, #fff 0 1.5px, transparent 2.5px);
+  }
+  .menu-hero {
+    width: min(900px, 100%);
+    min-height: min(610px, calc(100vh - 34px));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    gap: 22px;
+    align-items: end;
+    z-index: 1;
+  }
+  .hero-title {
+    align-self: center;
+    padding-bottom: min(8vh, 60px);
+  }
+  .hero-title h1 {
+    max-width: 640px;
+    font-size: clamp(54px, 12vw, 116px);
+    line-height: 0.88;
+    letter-spacing: 0;
+    color: #1f3150;
+    text-shadow: 0 5px 0 rgba(255,255,255,0.45), 0 18px 36px rgba(48, 74, 106, 0.18);
+  }
+  .hero-title p {
+    max-width: 540px;
+    margin-top: 16px;
+    color: #415d7c;
+    font-size: clamp(15px, 2.3vw, 20px);
+    line-height: 1.45;
+    font-weight: 750;
+  }
+  .menu-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 22px 50px var(--shadow);
+    padding: 18px;
+  }
+  .menu-card h2 {
+    font-size: 22px;
+    color: #263247;
+    margin-bottom: 8px;
+  }
+  .menu-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(38, 50, 71, 0.08);
+    font-size: 14px;
+  }
+  .menu-row:last-child { border-bottom: 0; }
+  .menu-row b { text-align: right; }
+  .goal-box {
+    margin: 12px 0;
+    padding: 12px;
+    border: 1px dashed rgba(68, 120, 196, 0.34);
+    border-radius: 8px;
+    background: rgba(132, 197, 244, 0.18);
+    color: #365676;
+    font-size: 13px;
+    line-height: 1.35;
+    font-weight: 750;
+  }
+  .menu-actions {
+    display: grid;
+    gap: 9px;
+    margin-top: 14px;
+  }
+  .menu-actions .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+  }
+  .launchpad-preview {
+    position: absolute;
+    left: max(18px, calc((100vw - 900px) / 2));
+    bottom: 0;
+    width: min(480px, 50vw);
+    height: 230px;
+    pointer-events: none;
+  }
 
-  /* ---------------- FLIGHT ---------------- */
-  #screen-flight{background:#05060f}
-  #flight-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
-  .hud{position:absolute;top:10px;left:10px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:grid;grid-template-columns:auto auto;gap:2px 14px;font-size:13px;min-width:186px;z-index:3}
-  .hud .k{color:var(--muted)}
-  .hud .v{font-weight:800;text-align:right}
-  .hud .full{grid-column:1/3;height:1px;background:var(--line);margin:4px 0}
-  .flight-top-right{position:absolute;top:10px;right:10px;display:flex;flex-direction:column;gap:8px;z-index:3;align-items:flex-end}
-  #flight-abort{background:rgba(255,120,120,.16);border:1px solid rgba(255,120,120,.3);color:#ffb3b3}
-  #flight-recover{background:linear-gradient(180deg,#a9f0c0,#7fe0a0);color:#08331c}
-  .fuel-wrap{position:absolute;left:10px;bottom:104px;width:186px;z-index:3}
-  .fuel-label{font-size:10px;color:var(--muted);margin-bottom:3px}
-  .fuel-bar{height:10px;background:rgba(255,255,255,.08);border-radius:6px;overflow:hidden}
-  #h-fuel-fill{height:100%;background:linear-gradient(90deg,var(--yellow),var(--pink));width:100%;transition:width .1s}
-  .throttle-wrap{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:16px;height:150px;background:rgba(255,255,255,.08);border-radius:8px;overflow:hidden;z-index:3;display:flex;flex-direction:column-reverse}
-  #h-throttle-fill{width:100%;background:linear-gradient(0deg,var(--green),var(--yellow));height:100%}
-  .controls{position:absolute;bottom:12px;left:0;right:0;display:flex;align-items:flex-end;justify-content:space-between;padding:0 14px;z-index:4;pointer-events:none}
-  .controls>*{pointer-events:auto}
-  .ctl-cluster{display:flex;gap:8px;align-items:center}
-  .cbtn{width:58px;height:58px;border-radius:16px;background:var(--panel);border:1px solid var(--line);font-size:22px;font-weight:800;display:flex;align-items:center;justify-content:center;color:var(--ink)}
-  .cbtn:active{background:rgba(143,211,255,.3)}
-  .cbtn.small{width:50px;height:50px;font-size:12px;flex-direction:column;gap:1px}
-  .cbtn.stage{width:72px;height:72px;background:linear-gradient(180deg,#ffc7de,#ff96c2);color:#3a0e26;font-size:14px;flex-direction:column}
-  .cbtn.stage span{font-size:10px;opacity:.8}
-  .throttle-col{display:flex;flex-direction:column;gap:8px}
+  /* Shared top bars */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    min-height: 56px;
+    background: rgba(255, 250, 235, 0.88);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 8px 24px rgba(53, 72, 99, 0.08);
+    z-index: 3;
+  }
+  .topbar-title {
+    font-size: 16px;
+    font-weight: 900;
+    color: #263247;
+    white-space: nowrap;
+  }
+  .topbar-spacer { flex: 1; }
+  .text-input {
+    width: min(220px, 32vw);
+    min-width: 116px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 10px;
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--ink);
+    font-weight: 800;
+  }
+  .check {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 850;
+    color: var(--soft-ink);
+    white-space: nowrap;
+  }
+  .check input { width: 16px; height: 16px; accent-color: #4478c4; }
 
-  /* ---------------- OUTCOME ---------------- */
-  #screen-outcome{align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at 50% 30%,#16204a,#0b1026 60%,#05060f)}
-  .out-card{width:min(440px,94vw);background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:24px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.5);max-height:92vh;overflow:auto}
-  #out-title{font-size:26px;font-weight:900;margin-bottom:12px}
-  .out-big{font-size:48px;font-weight:900;background:linear-gradient(180deg,#fff,#8fd3ff);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
-  #out-alt-label{color:var(--muted);font-size:13px;margin-bottom:16px}
-  #out-lines{display:flex;flex-direction:column;gap:6px;text-align:left;margin:14px 0}
-  .out-line{display:flex;justify-content:space-between;font-size:14px;padding:6px 12px;background:rgba(255,255,255,.04);border-radius:10px}
-  .out-line b{color:var(--green)}
-  .out-line.total{background:rgba(143,240,168,.12);font-weight:800}
-  .out-line.total b{color:var(--green)}
-  #out-unlocks{display:flex;flex-direction:column;gap:8px;margin:6px 0 14px}
-  .out-unlock{display:flex;align-items:center;gap:12px;text-align:left;background:linear-gradient(180deg,rgba(255,212,121,.16),rgba(255,158,194,.12));border:1px solid rgba(255,212,121,.3);border-radius:14px;padding:12px}
-  .out-unlock-emoji{font-size:32px}
-  .out-unlock-title{font-weight:800;color:var(--yellow)}
-  .out-unlock-sub{font-size:12px;color:var(--muted)}
-  .out-btns{display:flex;gap:10px;margin-top:8px}
-  .out-btns .btn{flex:1}
+  /* Build */
+  #screen-build {
+    background:
+      linear-gradient(180deg, #b2ddff 0%, #ddf2ff 46%, #d8bf8c 46%, #bf9964 100%);
+  }
+  .build-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr) 270px;
+    min-height: 0;
+  }
+  .palette, .stats-panel {
+    min-height: 0;
+    overflow: auto;
+    padding: 12px;
+    background: rgba(255, 250, 235, 0.76);
+    border-color: var(--line);
+  }
+  .palette { border-right: 1px solid var(--line); }
+  .stats-panel { border-left: 1px solid var(--line); }
+  .panel-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    font-weight: 900;
+    color: #33425a;
+  }
+  .part-group-label {
+    margin: 12px 0 6px;
+    color: #6f7c8e;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+  .part-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .part-card {
+    display: grid;
+    grid-template-rows: 54px auto auto;
+    gap: 3px;
+    min-height: 112px;
+    padding: 7px 5px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.58);
+    text-align: center;
+  }
+  .part-card:hover { border-color: rgba(68, 120, 196, 0.45); background: rgba(255,255,255,0.84); }
+  .part-art {
+    width: 46px;
+    height: 54px;
+    justify-self: center;
+  }
+  .part-name {
+    min-height: 28px;
+    font-size: 11px;
+    line-height: 1.18;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .part-meta {
+    color: var(--soft-ink);
+    font-size: 10px;
+    line-height: 1.2;
+  }
+  .build-stage {
+    position: relative;
+    min-width: 0;
+  }
+  #build-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+  .selection-bar {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100% - 28px);
+    padding: 7px 8px 7px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-strong);
+    box-shadow: 0 12px 30px var(--shadow);
+  }
+  #selected-name {
+    width: min(190px, 38vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 900;
+  }
+  .stats-block {
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.52);
+    margin-bottom: 10px;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    color: var(--soft-ink);
+    font-size: 13px;
+  }
+  .stat-row b { color: var(--ink); text-align: right; }
+  .stage-card {
+    border: 1px solid rgba(68, 120, 196, 0.16);
+    border-radius: 8px;
+    background: rgba(132, 197, 244, 0.14);
+    padding: 8px;
+    margin-bottom: 7px;
+    font-size: 12px;
+  }
+  .stage-card b { color: #274b73; }
+  .warnings {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .warning {
+    padding: 7px 9px;
+    border-radius: 8px;
+    background: rgba(239, 182, 76, 0.18);
+    border: 1px solid rgba(239, 182, 76, 0.35);
+    color: #76521a;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .stats-actions {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .stats-actions .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .toast {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 24px);
+    padding: 9px 13px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-strong);
+    box-shadow: 0 14px 30px var(--shadow);
+    font-size: 13px;
+    font-weight: 850;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s;
+    z-index: 4;
+  }
+  .toast.show { opacity: 1; }
 
-  /* ---------------- MODALS ---------------- */
-  .modal{position:fixed;inset:0;background:rgba(5,6,15,.82);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50}
-  .modal-card{width:min(460px,94vw);background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.6);max-height:90vh;overflow:auto}
-  .modal-card h2{font-size:24px;margin-bottom:6px}
-  .modal-card .flavor{color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:18px}
-  #company-input{width:100%;background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:16px;font-weight:700;color:var(--ink);margin-bottom:14px;text-align:center}
-  .tech-head-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-  .tech-head-bar h2{font-size:22px}
-  #tech-body{display:flex;flex-direction:column;gap:12px}
-  .tech-card{background:var(--panel2);border:1px solid var(--line);border-radius:16px;padding:14px}
-  .tech-card.locked{opacity:.55}
-  .tech-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
-  .tech-emoji{font-size:30px}
-  .tech-name{font-weight:800;font-size:16px}
-  .tech-name .lock{font-size:12px;color:var(--yellow);font-weight:700;margin-left:6px}
-  .tech-tag{font-size:12px;color:var(--muted)}
-  .tech-goal{font-size:13px;color:var(--blue);margin-bottom:8px}
-  .tech-parts{display:flex;flex-wrap:wrap;gap:5px}
-  .chip{font-size:11px;background:rgba(255,255,255,.07);border-radius:20px;padding:3px 9px;color:var(--ink)}
+  /* Flight */
+  #screen-flight { background: #14243f; }
+  #flight-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+  .hud {
+    position: absolute;
+    left: max(10px, env(safe-area-inset-left));
+    top: max(10px, env(safe-area-inset-top));
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 3px 13px;
+    width: 230px;
+    padding: 10px;
+    border: 1px solid rgba(255,255,255,0.28);
+    border-radius: 8px;
+    background: rgba(255, 250, 235, 0.88);
+    box-shadow: 0 14px 34px rgba(0,0,0,0.16);
+    z-index: 2;
+    font-size: 12px;
+  }
+  .hud .key { color: #617084; }
+  .hud .value { text-align: right; font-weight: 950; }
+  .hud .line { grid-column: 1 / 3; height: 1px; background: rgba(38,50,71,0.13); margin: 3px 0; }
+  .top-flight-actions {
+    position: absolute;
+    right: max(10px, env(safe-area-inset-right));
+    top: max(10px, env(safe-area-inset-top));
+    display: flex;
+    gap: 8px;
+    z-index: 2;
+  }
+  .fuel-stack {
+    position: absolute;
+    left: max(10px, env(safe-area-inset-left));
+    bottom: max(96px, calc(env(safe-area-inset-bottom) + 92px));
+    width: 230px;
+    display: grid;
+    gap: 5px;
+    z-index: 2;
+  }
+  .tiny-label {
+    font-size: 10px;
+    font-weight: 950;
+    color: rgba(255,255,255,0.84);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.45);
+  }
+  .fuel-stack .meter {
+    height: 12px;
+    background: rgba(255,255,255,0.26);
+    border: 1px solid rgba(255,255,255,0.18);
+  }
+  .flight-controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 14px;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .flight-controls > * { pointer-events: auto; }
+  .control-cluster { display: flex; align-items: end; gap: 8px; }
+  .control-col { display: grid; gap: 8px; }
+  .control-btn {
+    width: 58px;
+    height: 58px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.38);
+    background: rgba(255,250,235,0.84);
+    color: #263247;
+    box-shadow: 0 4px 0 rgba(38,50,71,0.14);
+    font-size: 22px;
+    font-weight: 950;
+  }
+  .control-btn.small {
+    width: 58px;
+    height: 50px;
+    font-size: 11px;
+    line-height: 1.1;
+  }
+  .control-btn.stage {
+    width: 78px;
+    height: 68px;
+    background: #f29e4c;
+    font-size: 13px;
+  }
+  .control-btn.on { background: #89d690; }
+  .control-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(38,50,71,0.14); }
 
-  /* ---------------- responsive ---------------- */
-  @media (max-width:760px){
-    .build-main{flex-direction:column}
-    #palette{width:100%;height:132px;display:flex;overflow-x:auto;overflow-y:hidden;border-right:none;border-bottom:1px solid var(--line);gap:8px;flex-direction:row;align-items:flex-start}
-    #palette .pal-cat{writing-mode:vertical-rl;transform:rotate(180deg);margin:0;align-self:stretch;display:flex;align-items:center}
-    #palette .pal-grid{grid-auto-flow:column;grid-template-columns:none;grid-template-rows:1fr 1fr}
-    #stats-panel{width:100%;max-height:230px;border-left:none;border-top:1px solid var(--line)}
-    #build-canvas-wrap{min-height:200px}
+  /* Outcome and modals */
+  .center-screen {
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background:
+      radial-gradient(circle at 50% 20%, rgba(255,255,255,0.22), transparent 34%),
+      linear-gradient(180deg, #2e4a78 0%, #111d34 62%, #0c1324 100%);
+  }
+  .out-card, .modal-card {
+    width: min(480px, 94vw);
+    max-height: 92vh;
+    overflow: auto;
+    padding: 20px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-strong);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.26);
+  }
+  .out-card { text-align: center; }
+  #out-title {
+    font-size: 24px;
+    font-weight: 950;
+    margin-bottom: 12px;
+  }
+  #out-big {
+    font-size: clamp(40px, 11vw, 70px);
+    line-height: 0.98;
+    color: #4478c4;
+    font-weight: 950;
+  }
+  .out-label {
+    color: var(--soft-ink);
+    font-weight: 850;
+    margin-bottom: 14px;
+  }
+  .out-lines {
+    display: grid;
+    gap: 7px;
+    margin: 14px 0;
+    text-align: left;
+  }
+  .out-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 11px;
+    border-radius: 8px;
+    background: rgba(68, 120, 196, 0.09);
+    font-size: 13px;
+    color: var(--soft-ink);
+  }
+  .out-line b { color: var(--ink); text-align: right; }
+  .unlock-list {
+    display: grid;
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .unlock-card {
+    padding: 10px;
+    border: 1px solid rgba(85, 169, 104, 0.28);
+    border-radius: 8px;
+    background: rgba(85, 169, 104, 0.14);
+    text-align: left;
+    font-size: 13px;
+    color: #244d2c;
+    font-weight: 850;
+  }
+  .out-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+    margin-top: 10px;
+  }
+  .modal {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(24, 38, 62, 0.58);
+    backdrop-filter: blur(4px);
+    z-index: 10;
+  }
+  .modal-card h2 {
+    font-size: 25px;
+    margin-bottom: 8px;
+    color: #263247;
+  }
+  .modal-card p {
+    color: var(--soft-ink);
+    line-height: 1.46;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .modal-card input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 13px 12px;
+    margin-bottom: 12px;
+    background: #fff;
+    color: var(--ink);
+    font-size: 17px;
+    font-weight: 900;
+    text-align: center;
+  }
+  .tech-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .tech-list {
+    display: grid;
+    gap: 9px;
+  }
+  .tech-card {
+    display: grid;
+    gap: 6px;
+    padding: 11px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.58);
+  }
+  .tech-card.locked { opacity: 0.56; }
+  .tech-card h3 {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 16px;
+  }
+  .tech-card p {
+    margin: 0;
+    font-size: 13px;
+  }
+  .tech-parts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .tech-chip {
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(68, 120, 196, 0.1);
+    font-size: 11px;
+    font-weight: 850;
+    color: #365676;
+  }
+
+  @media (max-width: 860px) {
+    .menu-hero {
+      grid-template-columns: 1fr;
+      min-height: auto;
+      align-items: center;
+      padding-bottom: 90px;
+    }
+    .hero-title {
+      padding: 28px 0 4px;
+    }
+    .launchpad-preview {
+      width: 100%;
+      left: 0;
+      height: 150px;
+    }
+    .build-body {
+      grid-template-columns: 1fr;
+      grid-template-rows: 132px minmax(0, 1fr) auto;
+    }
+    .palette {
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 9px;
+    }
+    .panel-title { min-width: 142px; align-self: center; }
+    .part-group { display: contents; }
+    .part-group-label { display: none; }
+    .part-grid { display: flex; gap: 8px; }
+    .part-card { width: 92px; flex: 0 0 92px; min-height: 110px; }
+    .stats-panel {
+      max-height: 224px;
+      border-left: 0;
+      border-top: 1px solid var(--line);
+    }
+    .stats-block { margin-bottom: 7px; }
+  }
+
+  @media (max-width: 620px) {
+    .topbar { gap: 7px; padding: 8px; flex-wrap: wrap; }
+    .topbar-title { flex: 1; min-width: 150px; }
+    .text-input { order: 5; flex: 1; width: 100%; }
+    .hud { width: calc(100vw - 20px); max-width: 232px; font-size: 11px; }
+    .top-flight-actions { top: 10px; right: 10px; }
+    .top-flight-actions .btn { padding: 8px 10px; font-size: 12px; }
+    .fuel-stack { width: 174px; bottom: 92px; }
+    .control-btn { width: 50px; height: 52px; }
+    .control-btn.small { width: 52px; height: 44px; }
+    .control-btn.stage { width: 64px; height: 60px; }
+    .flight-controls { padding: 0 8px; gap: 6px; }
+    .control-cluster { gap: 5px; }
+    .menu-actions .split, .out-actions { grid-template-columns: 1fr; }
   }
 </style>
 </head>
 <body>
-
-<!-- =================== MENU =================== -->
 <section id="screen-menu" class="screen">
-  <div class="stars-bg"></div>
-  <h1>Final Frontier</h1>
-  <div class="sub">from backyard bottle rockets to the Moon</div>
-  <div class="menu-card">
-    <div class="mc-top">
-      <div class="mc-company" id="m-company">Star Labs</div>
-      <div class="mc-tier" id="m-tier">🧒 Backyard</div>
+  <div class="menu-stars"></div>
+  <canvas id="pad-preview" class="launchpad-preview" width="640" height="300"></canvas>
+  <main class="menu-hero">
+    <div class="hero-title">
+      <h1>Final Frontier</h1>
+      <p>Build backyard experiments into real launch vehicles, learn the numbers, and make a little company reach orbit.</p>
     </div>
-    <div class="mc-stats">
-      <span id="m-xp">0 XP</span>
-      <span id="m-best" class="muted">Best altitude: —</span>
-    </div>
-    <div class="mc-goal">🎯 <b id="m-goal">Pump it up and see how high a water rocket flies.</b></div>
-    <div id="m-progress-wrap">
-      <div class="prog"><span id="m-progress" style="width:0%"></span></div>
-      <div class="prog-label" id="m-progress-label"></div>
-    </div>
-    <div class="menu-btns" style="margin-top:16px">
-      <button class="btn primary" id="btn-build">🛠️  Build &amp; Launch</button>
-      <div class="row">
-        <button class="btn blue" id="btn-tech">🔬 Tech Tree</button>
+    <section class="menu-card">
+      <h2 id="menu-company">Company</h2>
+      <div class="menu-row"><span>Era</span><b id="menu-tier">Backyard</b></div>
+      <div class="menu-row"><span>XP</span><b id="menu-xp">0</b></div>
+      <div class="menu-row"><span>Best altitude</span><b id="menu-best-alt">0 m</b></div>
+      <div class="menu-row"><span>Best orbit</span><b id="menu-best-orbit">Not yet</b></div>
+      <div class="goal-box" id="menu-goal"></div>
+      <div class="meter"><span id="menu-xp-fill"></span></div>
+      <div class="menu-row"><span id="menu-next-label">Next unlock</span><b id="menu-next-xp">0 XP</b></div>
+      <div class="menu-actions">
+        <button class="btn primary" id="btn-open-build">Build and launch</button>
+        <div class="split">
+          <button class="btn blue" id="btn-tech">Tech tree</button>
+          <button class="btn" id="btn-reset">Reset</button>
+        </div>
       </div>
-      <button id="btn-reset">reset progress</button>
-    </div>
-  </div>
+    </section>
+  </main>
 </section>
 
-<!-- =================== BUILD =================== -->
 <section id="screen-build" class="screen hidden">
-  <div class="top-bar">
-    <button class="icon-btn" id="build-exit" title="Back to menu">←</button>
-    <div class="title">Assembly Bay</div>
-    <div class="spacer"></div>
-    <input id="build-name" placeholder="Rocket name" style="width:150px" autocomplete="off">
-    <button class="icon-btn" id="build-load" title="Load / blueprints">📁</button>
-    <button class="icon-btn" id="build-save" title="Save rocket">💾</button>
+  <div class="topbar">
+    <button class="icon-btn" id="btn-build-back" title="Back">‹</button>
+    <div class="topbar-title">Assembly Yard</div>
+    <span class="pill" id="build-tier-pill">Backyard parts</span>
+    <label class="check"><input type="checkbox" id="toggle-old-parts"> See previous tiers</label>
+    <div class="topbar-spacer"></div>
+    <input class="text-input" id="rocket-name" maxlength="32" autocomplete="off" placeholder="Rocket name">
   </div>
-  <div class="build-main">
-    <div id="palette"></div>
-    <div id="build-canvas-wrap">
+  <div class="build-body">
+    <aside class="palette">
+      <div class="panel-title">
+        <span>Parts</span>
+        <span class="pill" id="parts-count">0</span>
+      </div>
+      <div id="parts-list"></div>
+    </aside>
+    <main class="build-stage">
       <canvas id="build-canvas"></canvas>
-      <div id="sel-bar" class="hidden">
-        <div id="sel-name">Part</div>
-        <button class="icon-btn" id="sel-up" title="Move up">↑</button>
-        <button class="icon-btn" id="sel-down" title="Move down">↓</button>
-        <button class="icon-btn" id="sel-del" title="Remove">🗑️</button>
+      <div class="toast" id="build-toast"></div>
+      <div class="selection-bar hidden" id="selection-bar">
+        <div id="selected-name">Part</div>
+        <button class="icon-btn" id="btn-part-up" title="Move up">↑</button>
+        <button class="icon-btn" id="btn-part-down" title="Move down">↓</button>
+        <button class="icon-btn" id="btn-part-duplicate" title="Duplicate">+</button>
+        <button class="icon-btn" id="btn-part-delete" title="Delete">×</button>
       </div>
-      <div id="build-toast"></div>
-      <div id="load-panel" class="hidden">
-        <div class="load-head">
-          <h3>Load a rocket</h3>
-          <button class="icon-btn" id="load-close">✕</button>
+    </main>
+    <aside class="stats-panel">
+      <div class="panel-title"><span>Engineer notes</span><span class="pill" id="parts-mass">0 t</span></div>
+      <div class="stats-block" id="rocket-stats"></div>
+      <div id="stage-list"></div>
+      <div class="warnings" id="warnings"></div>
+      <div class="stats-actions">
+        <button class="btn primary" id="btn-launch">Launch</button>
+        <div class="split">
+          <button class="btn blue" id="btn-save-blueprint">Save</button>
+          <button class="btn" id="btn-load-blueprint">Load</button>
         </div>
-        <div id="load-list"></div>
+        <button class="btn danger" id="btn-clear">Clear stack</button>
       </div>
-    </div>
-    <div id="stats-panel">
-      <div id="stats-body"></div>
-      <div id="build-warn"></div>
-      <div class="build-actions">
-        <button class="btn primary" id="build-launch">🚀 LAUNCH</button>
-        <div class="row">
-          <button class="btn" id="build-clear">Clear</button>
-        </div>
-      </div>
-    </div>
+    </aside>
   </div>
 </section>
 
-<!-- =================== FLIGHT =================== -->
 <section id="screen-flight" class="screen hidden">
   <canvas id="flight-canvas"></canvas>
   <div class="hud">
-    <span class="k">Altitude</span><span class="v" id="h-alt">0 m</span>
-    <span class="k">Speed</span><span class="v" id="h-speed">0 m/s</span>
-    <span class="k">Vert. speed</span><span class="v" id="h-vspeed">0 m/s</span>
-    <div class="full"></div>
-    <span class="k">Apoapsis</span><span class="v" id="h-ap">—</span>
-    <span class="k">Periapsis</span><span class="v" id="h-pe">—</span>
-    <div class="full"></div>
-    <span class="k">Δv left</span><span class="v" id="h-dv">0 m/s</span>
-    <span class="k">TWR</span><span class="v" id="h-twr">—</span>
-    <span class="k">Throttle</span><span class="v" id="h-throttle">100%</span>
-    <span class="k">Warp / <span id="h-stage">Stage 1</span></span><span class="v" id="h-warp">×1</span>
+    <span class="key">Altitude</span><span class="value" id="hud-alt">0 m</span>
+    <span class="key">Speed</span><span class="value" id="hud-speed">0 m/s</span>
+    <span class="key">Vertical</span><span class="value" id="hud-vspeed">0 m/s</span>
+    <span class="key">Horizontal</span><span class="value" id="hud-hspeed">0 m/s</span>
+    <div class="line"></div>
+    <span class="key">Apoapsis</span><span class="value" id="hud-ap">0 m</span>
+    <span class="key">Periapsis</span><span class="value" id="hud-pe">0 m</span>
+    <span class="key">Orbit</span><span class="value" id="hud-orbit">Suborbital</span>
+    <div class="line"></div>
+    <span class="key">Stage</span><span class="value" id="hud-stage">1</span>
+    <span class="key">TWR</span><span class="value" id="hud-twr">0.00</span>
+    <span class="key">dV left</span><span class="value" id="hud-dv">0 m/s</span>
+    <span class="key">Throttle</span><span class="value" id="hud-throttle">100%</span>
+    <span class="key">Pitch</span><span class="value" id="hud-pitch">0 deg</span>
+    <span class="key">Time</span><span class="value" id="hud-time">0:00</span>
   </div>
-
-  <div class="flight-top-right">
-    <button class="btn" id="flight-abort">⏹ End flight</button>
-    <button class="btn hidden" id="flight-recover">✓ Collect</button>
+  <div class="top-flight-actions">
+    <button class="btn" id="btn-toggle-map">Map</button>
+    <button class="btn danger" id="btn-end-flight">End flight</button>
   </div>
-
-  <div class="fuel-wrap">
-    <div class="fuel-label">STAGE FUEL</div>
-    <div class="fuel-bar"><div id="h-fuel-fill"></div></div>
+  <div class="fuel-stack">
+    <div class="tiny-label">ACTIVE STAGE FUEL</div>
+    <div class="meter"><span id="hud-fuel-fill"></span></div>
   </div>
-  <div class="throttle-wrap"><div id="h-throttle-fill"></div></div>
-
-  <div class="controls">
-    <div class="ctl-cluster">
-      <button class="cbtn" id="c-left" title="Rotate left">⟲</button>
-      <button class="cbtn" id="c-right" title="Rotate right">⟳</button>
+  <div class="flight-controls">
+    <div class="control-cluster">
+      <button class="control-btn" id="ctl-left" title="Pitch left">‹</button>
+      <button class="control-btn" id="ctl-right" title="Pitch right">›</button>
     </div>
-    <div class="ctl-cluster">
-      <button class="cbtn small" id="c-map">🗺️<span>MAP</span></button>
-      <button class="cbtn small" id="c-warp">⏩<span>WARP</span></button>
-      <button class="cbtn small" id="c-sas">SAS ON</button>
-      <button class="cbtn stage" id="c-stage">STAGE<span>(space)</span></button>
+    <div class="control-cluster">
+      <button class="control-btn small" id="ctl-sas">SAS<br>ON</button>
+      <button class="control-btn small" id="ctl-warp">WARP<br>x1</button>
+      <button class="control-btn small" id="ctl-chute">CHUTE</button>
+      <button class="control-btn stage" id="ctl-stage">STAGE</button>
     </div>
-    <div class="throttle-col">
-      <button class="cbtn" id="c-up" title="Throttle up">▲</button>
-      <button class="cbtn" id="c-down" title="Throttle down">▼</button>
+    <div class="control-col">
+      <button class="control-btn" id="ctl-throttle-up">▲</button>
+      <button class="control-btn" id="ctl-throttle-down">▼</button>
     </div>
   </div>
 </section>
 
-<!-- =================== OUTCOME =================== -->
-<section id="screen-outcome" class="screen hidden">
+<section id="screen-outcome" class="screen center-screen hidden">
   <div class="out-card">
     <div id="out-title">Flight complete</div>
-    <div class="out-big" id="out-alt">0 m</div>
-    <div id="out-alt-label">peak altitude</div>
-    <div id="out-lines"></div>
-    <div id="out-unlocks" class="hidden"></div>
-    <div class="out-btns">
-      <button class="btn blue" id="out-menu">Menu</button>
-      <button class="btn primary" id="out-again">Build again</button>
+    <div id="out-big">0 m</div>
+    <div class="out-label">peak altitude</div>
+    <div class="out-lines" id="out-lines"></div>
+    <div class="unlock-list hidden" id="unlock-list"></div>
+    <div class="out-actions">
+      <button class="btn blue" id="btn-out-menu">Menu</button>
+      <button class="btn primary" id="btn-out-build">Build again</button>
     </div>
   </div>
 </section>
 
-<!-- =================== MODALS =================== -->
-<div id="company-modal" class="modal hidden">
+<div class="modal hidden" id="company-modal">
   <div class="modal-card">
-    <h2>Name your rocket company 🚀</h2>
-    <p class="flavor">Every space giant started somewhere. You're a kid in the backyard with a soda bottle and big dreams. What will you call your company?</p>
-    <input id="company-input" placeholder="e.g. Nova Rockets" maxlength="28" autocomplete="off">
-    <button class="btn primary" id="found-btn" style="width:100%">Found the company</button>
+    <h2>Name your rocket company</h2>
+    <p>You are starting with tape, bottles, notebooks, and a backyard launch pad. Put a name on the first page before the engines get serious.</p>
+    <input id="company-input" maxlength="30" placeholder="Nova Yard Aerospace" autocomplete="off">
+    <button class="btn primary" id="btn-found-company" style="width: 100%">Found company</button>
   </div>
 </div>
 
-<div id="tech-modal" class="modal hidden">
+<div class="modal hidden" id="tech-modal">
   <div class="modal-card">
-    <div class="tech-head-bar">
-      <h2>🔬 Tech Tree</h2>
-      <button class="icon-btn" id="tech-close">✕</button>
+    <div class="tech-head">
+      <h2>Tech tree</h2>
+      <button class="icon-btn" id="btn-close-tech" title="Close">×</button>
     </div>
-    <div id="tech-body"></div>
+    <div class="tech-list" id="tech-list"></div>
+  </div>
+</div>
+
+<div class="modal hidden" id="blueprint-modal">
+  <div class="modal-card">
+    <div class="tech-head">
+      <h2>Blueprints</h2>
+      <button class="icon-btn" id="btn-close-blueprints" title="Close">×</button>
+    </div>
+    <div class="tech-list" id="blueprint-list"></div>
   </div>
 </div>
 
 <script type="module" src="js/main.js"></script>
 <script>
-  // Offline/install support in production only (keeps local dev cache-free).
-  if ('serviceWorker' in navigator && location.protocol === 'https:' && !sessionStorage.devNoSw) {
-    navigator.serviceWorker.register('sw.js');
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    navigator.serviceWorker.register("sw.js");
   }
 </script>
 </body>

@@ -1,10 +1,10 @@
 // Runtime ship: built from a lego design, simulated part-by-part.
-import { PARTS, CELL, GRID, BASE_ENERGY, BASE_REGEN, BASE_THRUST, placedCells, fireDir, computeStats } from './parts.js';
+import { PARTS, CELL, GRID, BASE_ENERGY, BASE_REGEN, BASE_THRUST, ENERGY_PER_PART, REGEN_PER_PART, placedCells, fireDir, computeStats } from './parts.js';
 import { TAU, clamp, wrapAngle, convexHull } from './util.js';
 
 const DAMPING = 0.62;       // linear damping /s
-const BOOST_MULT = 1.7;
-const BOOST_DRAIN = 20;     // energy/s
+const BOOST_MULT = 1.95;
+const BOOST_DRAIN = 32;     // energy/s
 const SHIELD_COST = 1.4;    // energy per point of damage blocked
 
 let nextPartUid = 1;
@@ -36,15 +36,19 @@ export class Ship {
   }
 
   buildFromDesign() {
-    this.parts = this.design.parts.map(p => {
+    // Unknown ids (parts removed in newer versions) are skipped defensively.
+    this.parts = this.design.parts.filter(p => PARTS[p.id]).map(p => {
       const def = PARTS[p.id];
       return {
         uid: nextPartUid++,
         id: p.id, def, x: p.x, y: p.y, deck: p.deck, rot: p.rot || 0,
         hp: def.hp, maxHp: def.hp, alive: true,
-        cooldown: 0, turretAngle: 0, minesOut: [],
+        cooldown: 0, charge: 0, turretAngle: 0, minesOut: [],
+        ammo: def.weapon && def.weapon.ammo ? def.weapon.ammo : 0,
       };
     });
+    this.droids = [];
+    this.droidSpawnT = 0;
     // Geometric center of the occupied cells => local origin.
     let sx = 0, sy = 0, n = 0;
     for (const part of this.parts) for (const [x, y] of placedCells(part)) { sx += x + 0.5; sy += y + 0.5; n++; }
@@ -91,8 +95,8 @@ export class Ship {
       maxHpTotal += p.maxHp;
       if (!p.alive) continue;
       mass += p.def.mass; hpTotal += p.hp;
+      energyMax += ENERGY_PER_PART; regen += REGEN_PER_PART;
       if (p.def.kind === 'reactor') thrust += p.def.thrust;
-      if (p.def.kind === 'cell') { energyMax += p.def.energyMax; regen += p.def.energyRegen; }
       if (p.def.kind === 'cockpit') cockpits++;
     }
     this.mass = Math.max(mass, 1);
@@ -226,19 +230,31 @@ export class Ship {
             world.spawnRocket(this, mx, my, Math.atan2(dirY, dirX), w);
           }
           break;
-        case 'beam':
-          part.beamOn = false;
-          if (inp.fire && this.energy > 4) {
-            this.energy -= w.energyPerSec * dt;
-            part.beamOn = true;
-            world.fireBeam(this, mx, my, Math.atan2(dirY, dirX), w, dt);
+        case 'chargebeam':
+          // Hold fire to charge (drains energy), release to discharge one
+          // thick short ray — the longer the charge, the harder it hits.
+          if (inp.fire && this.energy > 2) {
+            if (part.charge < 1) {
+              this.energy -= w.energyPerSec * dt;
+              part.charge = Math.min(1, part.charge + dt / w.chargeTime);
+            }
+          } else if (part.charge > 0) {
+            if (part.charge >= w.minCharge) {
+              world.fireChargeBeam(this, mx, my, Math.atan2(dirY, dirX), w, part.charge);
+            }
+            part.charge = 0;
           }
           break;
         case 'missile':
-          if (inp.missile && part.cooldown <= 0) {
+          if (inp.missile && part.cooldown <= 0 && part.ammo > 0) {
             part.cooldown = 1 / w.rate;
+            part.ammo--;
             const target = world.nearestEnemy(this, 900);
             world.spawnMissile(this, mx, my, Math.atan2(dirY, dirX), w, target ? target.id : null, true);
+            // That was the last one across every rack — tell the pilot.
+            if (world.me === this && !this.parts.some(p => p.alive && p.def.weapon && p.def.weapon.type === 'missile' && p.ammo > 0)) {
+              world.comms && world.comms('noammo');
+            }
           }
           break;
         case 'turret': {
@@ -308,17 +324,20 @@ export class Ship {
     if (best) this.damagePart(best, dmg, attackerId, world, wx, wy);
   }
 
-  damagePart(part, dmg, attackerId, world, wx, wy) {
+  damagePart(part, dmg, attackerId, world, wx, wy, pierce = false) {
     if (!this.alive || !part.alive) return;
     if (attackerId != null) this.lastAttacker = attackerId;
 
     // Shield: blocks the hit entirely if there is enough energy.
-    const cost = dmg * SHIELD_COST;
-    if (this.energy >= cost) {
-      this.energy -= cost;
-      this.shieldFlash = 1;
-      world.onShieldHit && world.onShieldHit(this, wx, wy);
-      return;
+    // Piercing damage (mines) skips it and bites the hull directly.
+    if (!pierce) {
+      const cost = dmg * SHIELD_COST;
+      if (this.energy >= cost) {
+        this.energy -= cost;
+        this.shieldFlash = 1;
+        world.onShieldHit && world.onShieldHit(this, wx, wy);
+        return;
+      }
     }
 
     part.hp -= dmg;
@@ -336,7 +355,7 @@ export class Ship {
   }
 
   // Explosion: damages every part whose cell center is inside the radius.
-  applyExplosion(wx, wy, radius, dmg, attackerId, world) {
+  applyExplosion(wx, wy, radius, dmg, attackerId, world, pierce = false) {
     if (!this.alive) return;
     const hits = [];
     for (const part of this.parts) {
@@ -352,7 +371,7 @@ export class Ship {
       // Top/bottom parts sheltered by intact mid-deck hull take much less splash.
       let cover = 1;
       if (part.deck !== 1 && placedCells(part).every(([x, y]) => this.grids[1].has(x + ',' + y))) cover = 0.35;
-      this.damagePart(part, dmg * fall * cover, attackerId, world, ...this.cellCenterWorld(part.x, part.y));
+      this.damagePart(part, dmg * fall * cover, attackerId, world, ...this.cellCenterWorld(part.x, part.y), pierce);
     }
   }
 
@@ -373,8 +392,8 @@ export class Ship {
   applyNetDamage(partIndex, hp, world) {
     const part = this.parts[partIndex];
     if (!part || !part.alive) return;
+    if (hp < part.hp) this.hitFlash = 0.6; // repairs shouldn't flash red
     part.hp = hp;
-    this.hitFlash = 0.6;
     if (hp <= 0) {
       part.alive = false;
       world.onPartDestroyed && world.onPartDestroyed(this, part);
@@ -441,6 +460,132 @@ export class Ship {
     this.vx = 0; this.vy = 0;
     this.alive = true;
     this.lastAttacker = null;
+  }
+
+  // ---- repair droids ---------------------------------------------------------
+  // Tiny drones launched by a repair bay. They fly to a damaged (still alive)
+  // block, weld it back up, then pick the next one or dock. A droid working on
+  // a block that gets destroyed is destroyed with it. At most 3 per ship.
+  updateDroids(dt, world) {
+    if (!this.droids) return;
+    if (!this.alive) { this.droids.length = 0; return; }
+    const bays = this.parts.filter(p => p.alive && p.def.kind === 'droidbay');
+    if (!bays.length) { this.droids.length = 0; return; }
+    const rate = bays[0].def.repairRate;
+    const cap = bays[0].def.maxDroids;
+
+    const candidates = () => this.parts.filter(p =>
+      p.alive && p.hp < p.maxHp - 0.5 && !this.droids.some(d => d.part === p));
+
+    // Launch a new droid when there is work and a free slot.
+    this.droidSpawnT -= dt;
+    if (this.droids.length < cap && this.droidSpawnT <= 0) {
+      const cands = candidates();
+      if (cands.length) {
+        this.droidSpawnT = 1.0;
+        const bay = bays[Math.floor(Math.random() * bays.length)];
+        const [bx, by] = this.cellCenterWorld(bay.x, bay.y);
+        cands.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+        this.droids.push({ part: cands[0], x: bx, y: by, state: 'fly', syncT: 0, wobble: Math.random() * TAU });
+      }
+    }
+
+    for (const d of this.droids) {
+      d.wobble += dt * 7;
+      // The block it was welding just blew up — the droid goes with it.
+      if (d.state === 'work' && (!d.part || !d.part.alive)) {
+        d.dead = true;
+        world.spark(d.x, d.y, '#9fe1ff');
+        world.smoke(d.x, d.y);
+        continue;
+      }
+      if (d.part && (!d.part.alive || d.part.hp >= d.part.maxHp)) {
+        if (d.state === 'work' && d.part.alive && world.me === this) world.comms && world.comms('droid');
+        d.part = null;
+      }
+      if (!d.part) {
+        const cands = candidates();
+        if (cands.length) {
+          cands.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp);
+          d.part = cands[0];
+          d.state = 'fly';
+        } else {
+          d.state = 'return';
+        }
+      }
+
+      // Chase the work site (or home bay), riding along with the ship.
+      let tx, ty;
+      if (d.state === 'return') {
+        [tx, ty] = this.cellCenterWorld(bays[0].x, bays[0].y);
+      } else {
+        [tx, ty] = this.cellCenterWorld(d.part.x, d.part.y);
+        tx += Math.cos(d.wobble) * 4;
+        ty += Math.sin(d.wobble * 1.3) * 4;
+      }
+      d.x += this.vx * dt; d.y += this.vy * dt;
+      const dx = tx - d.x, dy = ty - d.y, dist = Math.hypot(dx, dy);
+      const step = Math.min(dist, (60 + dist * 4) * dt);
+      if (dist > 0.01) { d.x += dx / dist * step; d.y += dy / dist * step; }
+
+      if (d.state === 'return') {
+        if (dist < 5) d.dead = true; // docked
+        continue;
+      }
+      if (d.state === 'fly' && dist < 8) d.state = 'work';
+      if (d.state === 'work') {
+        if (this.authority) {
+          const healed = Math.min(d.part.maxHp - d.part.hp, rate * dt);
+          d.part.hp += healed;
+          this.hp = Math.min(this.maxHpTotal, this.hp + healed);
+          d.syncT -= dt;
+          if (world.net && d.syncT <= 0) {
+            d.syncT = 0.5;
+            world.net.sendEvent({ k: 'dmg', ship: this.id, part: this.parts.indexOf(d.part), hp: Math.round(d.part.hp) });
+          }
+        }
+        if (Math.random() < dt * 12) world.spark(d.x, d.y, '#ffe98a');
+      }
+    }
+    this.droids = this.droids.filter(d => !d.dead);
+  }
+
+  renderDroids(ctx) {
+    if (!this.alive || !this.droids) return;
+    for (const d of this.droids) {
+      ctx.save();
+      ctx.translate(d.x, d.y);
+      // soft glow
+      ctx.fillStyle = 'rgba(95,217,201,0.22)';
+      ctx.beginPath(); ctx.arc(0, 0, 5, 0, TAU); ctx.fill();
+      // little grabber arms
+      ctx.strokeStyle = '#7fb8ae';
+      ctx.lineWidth = 1;
+      const a = d.wobble * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 2, Math.sin(a) * 2); ctx.lineTo(Math.cos(a) * 4.4, Math.sin(a) * 4.4);
+      ctx.moveTo(-Math.cos(a) * 2, -Math.sin(a) * 2); ctx.lineTo(-Math.cos(a) * 4.4, -Math.sin(a) * 4.4);
+      ctx.stroke();
+      // body + eye
+      ctx.fillStyle = '#cfe8e4';
+      ctx.beginPath(); ctx.arc(0, 0, 2.6, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(10,16,24,0.8)';
+      ctx.stroke();
+      ctx.fillStyle = '#2bd9c0';
+      ctx.beginPath(); ctx.arc(0, 0, 1, 0, TAU); ctx.fill();
+      // weld flash while working
+      if (d.state === 'work' && Math.random() < 0.5) {
+        ctx.strokeStyle = 'rgba(255,240,180,0.95)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i < 3; i++) {
+          const wa = Math.random() * TAU, wr = 2.5 + Math.random() * 3.5;
+          ctx.moveTo(0, 0); ctx.lineTo(Math.cos(wa) * wr, Math.sin(wa) * wr);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   // ---- rendering -------------------------------------------------------------
@@ -511,6 +656,20 @@ export class Ship {
           ctx.stroke();
         }
         ctx.globalAlpha = 1;
+      }
+      // Electric-fault blocks (half of them; the rest smoke) flicker with arcs.
+      if (dmg > 0.35 && !(part.uid & 1) && Math.random() < 0.16) {
+        ctx.strokeStyle = `rgba(170,225,255,${0.5 + Math.random() * 0.5})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        let ax = -CELL / 2 + Math.random() * 4, ay = (Math.random() - 0.5) * CELL * 0.7;
+        ctx.moveTo(ax, ay);
+        for (let i = 0; i < 3; i++) {
+          ax += CELL / 3.4;
+          ay = (Math.random() - 0.5) * CELL * 0.7;
+          ctx.lineTo(ax, ay);
+        }
+        ctx.stroke();
       }
       ctx.restore();
     }
@@ -610,15 +769,23 @@ export function drawPartShape(ctx, part, def, shade, ship) {
       ctx.fillStyle = 'rgba(255,200,120,0.5)';
       ctx.fillRect(-3, -h + 3, 6, 6);
       break;
-    case 'cell':
-      ctx.fillRect(-h, -h, CELL, CELL);
-      ctx.strokeRect(-h + 0.5, -h + 0.5, CELL - 1, CELL - 1);
-      ctx.fillStyle = '#123d33';
-      ctx.fillRect(-h + 3, -h + 3, CELL - 6, CELL - 6);
-      const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 300 + part.uid);
-      ctx.fillStyle = `rgba(80,255,200,${0.35 + 0.4 * pulse})`;
-      ctx.fillRect(-h + 5, -h + 5, CELL - 10, CELL - 10);
+    case 'droidbay': {
+      ctx.fillStyle = shadeColor('#2e5a54', shade);
+      ctx.fillRect(-h + 1, -h + 1, CELL - 2, CELL - 2);
+      ctx.strokeRect(-h + 1.5, -h + 1.5, CELL - 3, CELL - 3);
+      // split launch hatch
+      ctx.fillStyle = shadeColor(def.color, shade * 0.8);
+      ctx.fillRect(-h + 4, -h + 4, CELL - 8, CELL - 10);
+      ctx.strokeStyle = 'rgba(10,16,24,0.6)';
+      ctx.beginPath(); ctx.moveTo(0, -h + 4); ctx.lineTo(0, h - 6); ctx.stroke();
+      // docked-droid pips (all lit in the editor preview)
+      const out = ship && ship.droids ? Math.min(def.maxDroids, ship.droids.length) : 0;
+      for (let i = 0; i < def.maxDroids; i++) {
+        ctx.fillStyle = i < def.maxDroids - out ? '#bfffe9' : 'rgba(0,0,0,0.45)';
+        ctx.beginPath(); ctx.arc((i - 1) * 5, h - 4, 1.6, 0, TAU); ctx.fill();
+      }
       break;
+    }
     case 'sphere':
       ctx.fillStyle = shadeColor('#3a4c5e', shade);
       ctx.fillRect(-h + 1, -h + 1, CELL - 2, CELL - 2);
@@ -652,31 +819,51 @@ export function drawPartShape(ctx, part, def, shade, ship) {
       ctx.fillRect(-2.5, -h - 3, 5, h + 4); // barrel forward
       ctx.fillRect(-4.5, -h + 4, 9, 5);
       break;
-    case 'beam':
+    case 'beam': {
       ctx.fillStyle = shadeColor('#4a2a4a', shade);
       ctx.fillRect(-h + 2, -h + 4, CELL - 4, CELL - 6);
+      // Emitter glows brighter as the shot charges; white pulse when full.
+      const ch = part.charge || 0;
       ctx.fillStyle = col;
-      ctx.beginPath();
-      ctx.arc(0, -h + 4, 4.5, 0, TAU);
-      ctx.fill();
-      if (part.beamOn) {
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(0, -h + 4, 2.5, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, -h + 4, 4.5, 0, TAU); ctx.fill();
+      if (ch > 0) {
+        const pulse = ch >= 1 ? 0.75 + 0.25 * Math.sin(performance.now() / 60) : 1;
+        ctx.globalAlpha = (0.35 + 0.65 * ch) * pulse;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(0, -h + 4, 1.5 + 3 * ch, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 1;
       }
+      // charge bar along the bottom edge
+      const cbx = -h + 3, cby = h - 4, cbw = CELL - 6;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(cbx, cby, cbw, 2);
+      ctx.fillStyle = ch >= 1 ? '#ffffff' : col; ctx.fillRect(cbx, cby, cbw * ch, 2);
       break;
+    }
     case 'missile': {
       ctx.fillStyle = shadeColor('#5e3535', shade);
       ctx.fillRect(-h + 2, -h + 2, CELL - 4, CELL - 4);
       // Two tubes act as reload gauges: they fill bottom-up as the rack reloads,
-      // glowing bright red the instant a missile is ready.
+      // glowing bright red the instant a missile is ready. Grey when out of ammo.
       const rf = reloadFrac(part);
-      const by = -h + 3, bh = CELL - 7;
+      const hasAmmo = (part.ammo ?? 1) > 0;
+      const by = -h + 3, bh = CELL - 9;
       for (const bx of [-6, 2]) {
         ctx.fillStyle = 'rgba(0,0,0,0.5)';
         ctx.fillRect(bx, by, 4, bh);
         const fh = bh * rf;
-        ctx.fillStyle = rf >= 1 ? '#ff6a6a' : col;
+        ctx.fillStyle = !hasAmmo ? '#3a3a42' : rf >= 1 ? '#ff6a6a' : col;
         ctx.fillRect(bx, by + bh - fh, 4, fh);
+      }
+      // Ammo pips along the bottom edge, centered inside the housing.
+      const cap = def.weapon.ammo || 0;
+      if (cap) {
+        const ammo = part.ammo ?? cap;
+        const pw = 1.5, gap = 2.2;
+        const x0 = -((cap - 1) * gap + pw) / 2;
+        for (let i = 0; i < cap; i++) {
+          ctx.fillStyle = i < ammo ? '#ffd27a' : 'rgba(0,0,0,0.5)';
+          ctx.fillRect(x0 + i * gap, h - 4.5, pw, 2.4);
+        }
       }
       break;
     }

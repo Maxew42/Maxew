@@ -26,7 +26,9 @@ export class Input {
   }
 
   get isTouchDevice() {
-    return matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+    // Primary pointer only: desktop Chrome exposes ontouchstart even with a
+    // mouse, so checking it here used to show the touch UI on desktops.
+    return matchMedia('(pointer: coarse)').matches;
   }
 
   // Build the touch UI inside a container (only shown on touch devices).

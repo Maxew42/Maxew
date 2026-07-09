@@ -1,10 +1,10 @@
 // Part catalog, ship designs (lego grids) and stat computation.
 //
-// A ship is built on three stacked decks of an 11x11 grid:
-//   deck 0 = bottom, deck 1 = mid, deck 2 = top.
-// The mid deck holds structure (blocks), reactors and energy cells.
-// The top/bottom decks hold cockpits and weapons; every cell of a
-// top/bottom part must be supported by a mid-deck part underneath.
+// A ship is built on stacked decks of an 11x11 grid:
+//   deck 1 = mid, deck 2 = top (deck 0 = legacy bottom, still simulated).
+// The mid deck holds structure (blocks) and reactors; every placed part
+// also feeds the shared energy banks. The top deck holds cockpits,
+// weapons and systems; every cell must sit on a mid-deck part.
 //
 // Design format: { name, parts: [{ id, x, y, deck, rot }] }
 // rot = 0..3 quarter turns clockwise. Local "forward" is -y (grid up).
@@ -12,9 +12,11 @@
 export const GRID = 11;          // grid size per deck
 export const CELL = 18;          // world units per cell
 export const BUDGET = 2000;      // max build cost
-export const BASE_ENERGY = 100;  // energy without any cell
-export const BASE_REGEN = 8;     // energy/s without any cell
+export const BASE_ENERGY = 100;  // hull baseline energy
+export const BASE_REGEN = 8;     // baseline energy/s
 export const BASE_THRUST = 40;   // thrust without any reactor (limp home)
+export const ENERGY_PER_PART = 6;   // every placed block feeds the banks
+export const REGEN_PER_PART = 0.5;  // and trickles a little regen
 
 export const PARTS = {
   // ---- Structure blocks (mid deck) --------------------------------------
@@ -25,9 +27,9 @@ export const PARTS = {
   wedge_std:    { name: 'Std wedge',    kind: 'block', deck: 'mid', shape: 'tri',    cost: 18, mass: 1.3, hp: 65,  color: '#7c8fa6' },
   wedge_heavy:  { name: 'Heavy wedge',  kind: 'block', deck: 'mid', shape: 'tri',    cost: 30, mass: 2.4, hp: 120, color: '#5f7185' },
 
-  // ---- Systems (mid deck) ------------------------------------------------
-  reactor:      { name: 'Reactor',      kind: 'reactor', deck: 'mid', shape: 'reactor', cost: 70, mass: 3.0, hp: 60, thrust: 260, color: '#c97f3d' },
-  energy_cell:  { name: 'Energy cell',  kind: 'cell',    deck: 'mid', shape: 'cell',    cost: 55, mass: 1.5, hp: 45, energyMax: 45, energyRegen: 5, color: '#3dc9a4' },
+  // ---- Systems -----------------------------------------------------------
+  reactor:      { name: 'Reactor',      kind: 'reactor',  deck: 'mid',  shape: 'reactor',  cost: 70,  mass: 3.0, hp: 60, thrust: 260, color: '#c97f3d' },
+  repair_bay:   { name: 'Repair droids', kind: 'droidbay', deck: 'ends', shape: 'droidbay', cost: 120, mass: 1.5, hp: 50, maxDroids: 3, repairRate: 9, color: '#5fd9c9' },
 
   // ---- Cockpits (top/bottom deck) ----------------------------------------
   cockpit_jet:    { name: 'Jet cockpit',    kind: 'cockpit', deck: 'ends', shape: 'jet',    cells: [[0, 0], [0, 1]], cost: 90, mass: 2.0, hp: 110, color: '#57b8ff' },
@@ -35,15 +37,18 @@ export const PARTS = {
 
   // ---- Weapons (top/bottom deck) ------------------------------------------
   machinegun: { name: 'Machine gun', kind: 'weapon', deck: 'ends', shape: 'gun', cost: 65, mass: 1.0, hp: 40, color: '#b8b19a',
-    weapon: { type: 'gun', dmg: 6, rate: 8, range: 500, speed: 640, spread: 0.05 } },
-  beam: { name: 'Energy beam', kind: 'weapon', deck: 'ends', shape: 'beam', cost: 130, mass: 1.5, hp: 45, color: '#e05ce0',
-    weapon: { type: 'beam', dps: 85, range: 420, energyPerSec: 24 } },
+    weapon: { type: 'gun', dmg: 6, rate: 8, range: 800, speed: 640, spread: 0.05 } },
+  // Charge laser: hold fire to charge (drains energy), release to discharge a
+  // single thick, short ray. Full damage anywhere in the first half of the
+  // ray, then it fades (in light and damage) toward the tip.
+  beam: { name: 'Charge laser', kind: 'weapon', deck: 'ends', shape: 'beam', cost: 130, mass: 1.5, hp: 45, color: '#e05ce0',
+    weapon: { type: 'chargebeam', dmg: 150, range: 260, chargeTime: 1.8, energyPerSec: 40, minCharge: 0.2, falloff: 0.6 } },
   missile: { name: 'Missile rack', kind: 'weapon', deck: 'ends', shape: 'missile', cost: 110, mass: 1.5, hp: 45, color: '#d94f4f',
-    weapon: { type: 'missile', dmg: 55, radius: 45, rate: 0.225, speed: 300, turn: 2.6, life: 5 } },
+    weapon: { type: 'missile', dmg: 55, radius: 45, rate: 0.225, speed: 360, turn: 2.05, life: 5, ammo: 5 } },
   rocket: { name: 'Rocket pod', kind: 'weapon', deck: 'ends', shape: 'rocket', cost: 70, mass: 1.2, hp: 40, color: '#d98a4f',
     weapon: { type: 'rocket', dmg: 45, radius: 38, rate: 0.7, speed: 480 } },
   turret: { name: 'Auto turret', kind: 'weapon', deck: 'ends', shape: 'turret', cost: 150, mass: 2.0, hp: 55, color: '#cbd34f',
-    weapon: { type: 'turret', dmg: 8, rate: 3, range: 520, speed: 560 } },
+    weapon: { type: 'turret', dmg: 8, rate: 3, range: 600, speed: 560 } },
   mine_launcher: { name: 'Mine launcher', kind: 'weapon', deck: 'ends', shape: 'mine', cost: 85, mass: 1.5, hp: 45, color: '#8a6dd9',
     weapon: { type: 'mine', dmg: 70, radius: 75, rate: 0.35, maxActive: 4 } },
   flare_launcher: { name: 'Flares', kind: 'weapon', deck: 'ends', shape: 'flare', cost: 45, mass: 0.8, hp: 35, color: '#e8d56a',
@@ -53,7 +58,7 @@ export const PARTS = {
 // Palette ordering for the editor.
 export const PALETTE = {
   Structure: ['block_light', 'block_std', 'block_heavy', 'wedge_light', 'wedge_std', 'wedge_heavy'],
-  Systems: ['reactor', 'energy_cell'],
+  Systems: ['reactor', 'repair_bay'],
   Cockpits: ['cockpit_jet', 'cockpit_sphere'],
   Weapons: ['machinegun', 'beam', 'missile', 'rocket', 'turret', 'mine_launcher', 'flare_launcher'],
 };
@@ -90,8 +95,8 @@ export function computeStats(design) {
     const def = PARTS[p.id];
     if (!def) continue;
     cost += def.cost; mass += def.mass; hp += def.hp;
+    energyMax += ENERGY_PER_PART; energyRegen += REGEN_PER_PART;
     if (def.kind === 'reactor') thrust += def.thrust;
-    if (def.kind === 'cell') { energyMax += def.energyMax; energyRegen += def.energyRegen; }
     if (def.kind === 'cockpit') cockpits++;
     if (def.kind === 'weapon') weapons.push(def.weapon.type);
   }
@@ -175,7 +180,7 @@ export const PREMADE_SHIPS = [
       // mid deck: arrowhead with swept wings and a split twin tail
       P('block_light', 5, 2, 1),
       P('wedge_light', 4, 3, 1, 3), P('block_light', 5, 3, 1), P('wedge_light', 6, 3, 1, 0),
-      P('wedge_light', 3, 4, 1, 3), P('block_light', 4, 4, 1), P('energy_cell', 5, 4, 1), P('block_light', 6, 4, 1), P('wedge_light', 7, 4, 1, 0),
+      P('wedge_light', 3, 4, 1, 3), P('block_light', 4, 4, 1), P('block_light', 5, 4, 1), P('block_light', 6, 4, 1), P('wedge_light', 7, 4, 1, 0),
       P('block_light', 4, 5, 1), P('block_light', 5, 5, 1), P('block_light', 6, 5, 1),
       P('reactor', 4, 6, 1), P('reactor', 6, 6, 1),
       // top deck
@@ -186,20 +191,18 @@ export const PREMADE_SHIPS = [
   },
   {
     name: 'Vanguard',
-    tagline: 'Twin-prow cruiser — spinal beam, guns, belly missiles.',
+    tagline: 'Twin-prow cruiser — charge laser, guns, missiles.',
     parts: [
       // mid deck: pointed twin prow, wing stubs
       P('wedge_std', 4, 2, 1, 3), P('block_std', 5, 2, 1), P('wedge_std', 6, 2, 1, 0),
       P('block_std', 4, 3, 1), P('block_std', 5, 3, 1), P('block_std', 6, 3, 1),
-      P('wedge_light', 3, 4, 1, 3), P('block_std', 4, 4, 1), P('energy_cell', 5, 4, 1), P('block_std', 6, 4, 1), P('wedge_light', 7, 4, 1, 0),
+      P('wedge_light', 3, 4, 1, 3), P('block_std', 4, 4, 1), P('block_std', 5, 4, 1), P('block_std', 6, 4, 1), P('wedge_light', 7, 4, 1, 0),
       P('block_std', 4, 5, 1), P('block_std', 5, 5, 1), P('block_std', 6, 5, 1),
       P('reactor', 4, 6, 1), P('reactor', 6, 6, 1),
       // top deck
       P('beam', 5, 2, 2),
       P('cockpit_sphere', 5, 3, 2),
-      P('machinegun', 4, 4, 2), P('machinegun', 6, 4, 2),
-      // bottom deck
-      P('missile', 5, 4, 0),
+      P('machinegun', 4, 4, 2), P('missile', 5, 4, 2), P('machinegun', 6, 4, 2),
     ],
   },
   {
@@ -208,12 +211,13 @@ export const PREMADE_SHIPS = [
     parts: [
       // mid deck: broad chamfered slab
       P('wedge_heavy', 4, 3, 1, 3), P('block_heavy', 5, 3, 1), P('wedge_heavy', 6, 3, 1, 0),
-      P('block_std', 3, 4, 1), P('block_heavy', 4, 4, 1), P('energy_cell', 5, 4, 1), P('block_heavy', 6, 4, 1), P('block_std', 7, 4, 1),
-      P('wedge_std', 3, 5, 1, 2), P('block_std', 4, 5, 1), P('energy_cell', 5, 5, 1), P('block_std', 6, 5, 1), P('wedge_std', 7, 5, 1, 1),
+      P('block_std', 3, 4, 1), P('block_heavy', 4, 4, 1), P('block_heavy', 5, 4, 1), P('block_heavy', 6, 4, 1), P('block_std', 7, 4, 1),
+      P('wedge_std', 3, 5, 1, 2), P('block_std', 4, 5, 1), P('block_std', 5, 5, 1), P('block_std', 6, 5, 1), P('wedge_std', 7, 5, 1, 1),
       P('reactor', 4, 6, 1), P('reactor', 6, 6, 1),
       // top deck
       P('cockpit_sphere', 5, 4, 2),
       P('turret', 4, 4, 2), P('turret', 6, 4, 2),
+      P('repair_bay', 5, 5, 2),
     ],
   },
   {
@@ -224,14 +228,13 @@ export const PREMADE_SHIPS = [
       P('wedge_light', 3, 2, 1, 3), P('block_light', 4, 2, 1), P('block_light', 6, 2, 1), P('wedge_light', 7, 2, 1, 0),
       P('block_light', 3, 3, 1), P('block_std', 4, 3, 1), P('block_std', 6, 3, 1), P('block_light', 7, 3, 1),
       P('block_light', 3, 4, 1), P('block_std', 4, 4, 1), P('block_std', 5, 4, 1), P('block_std', 6, 4, 1), P('block_light', 7, 4, 1),
-      P('block_std', 4, 5, 1), P('energy_cell', 5, 5, 1), P('block_std', 6, 5, 1),
+      P('block_std', 4, 5, 1), P('block_std', 5, 5, 1), P('block_std', 6, 5, 1),
       P('reactor', 4, 6, 1), P('block_light', 5, 6, 1), P('reactor', 6, 6, 1),
       // top deck
       P('cockpit_jet', 5, 4, 2),
       P('missile', 3, 3, 2), P('missile', 7, 3, 2),
+      P('rocket', 4, 4, 2),
       P('flare_launcher', 5, 6, 2),
-      // bottom deck
-      P('rocket', 5, 4, 0),
     ],
   },
 ];

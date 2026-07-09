@@ -27,37 +27,53 @@ export class AudioFx {
   }
 
   // ——— moteur ———
+  // Deux dents de scie légèrement désaccordées + sous-octave triangle, le tout
+  // derrière un passe-bas qui s'ouvre avec le régime : rond au ralenti, rauque
+  // à fond, sans le côté criard de l'ancien carré.
   engineStart() {
     if (!this.ctx || this.engine) return;
     const c = this.ctx;
-    const osc = c.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 60;
-    const osc2 = c.createOscillator(); osc2.type = 'square'; osc2.frequency.value = 30;
+    const osc = c.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 46;
+    const osc2 = c.createOscillator(); osc2.type = 'sawtooth'; osc2.frequency.value = 46; osc2.detune.value = 14;
+    const sub = c.createOscillator(); sub.type = 'triangle'; sub.frequency.value = 23;
+    // à-coups de ralenti (vibrato lent qui s'estompe avec la vitesse)
+    const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 12;
+    const lfoG = c.createGain(); lfoG.gain.value = 4;
+    lfo.connect(lfoG); lfoG.connect(osc.frequency); lfoG.connect(osc2.frequency);
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 300; f.Q.value = .9;
     const g = c.createGain(); g.gain.value = 0;
-    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700; f.Q.value = 2;
-    osc.connect(f); osc2.connect(f); f.connect(g); g.connect(this.master);
-    osc.start(); osc2.start();
+    const subG = c.createGain(); subG.gain.value = .55;
+    osc.connect(f); osc2.connect(f); sub.connect(subG); subG.connect(f);
+    f.connect(g); g.connect(this.master);
+    osc.start(); osc2.start(); sub.start(); lfo.start();
     // souffle de boost
     const nz = c.createBufferSource(); nz.buffer = this._noiseBuf(); nz.loop = true;
     const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1800; nf.Q.value = .8;
     const ng = c.createGain(); ng.gain.value = 0;
     nz.connect(nf); nf.connect(ng); ng.connect(this.master);
     nz.start();
-    this.engine = { osc, osc2, g, ng };
+    this.engine = { osc, osc2, sub, lfo, lfoG, filter: f, g, ng };
   }
 
   engineUpdate(ratio, boosting, dt) {
     if (!this.engine) return;
     const e = this.engine, t = this.ctx.currentTime;
-    const rpm = 55 + ratio * 165 + (boosting ? 30 : 0);
-    e.osc.frequency.setTargetAtTime(rpm, t, .06);
-    e.osc2.frequency.setTargetAtTime(rpm / 2, t, .06);
-    e.g.gain.setTargetAtTime(.10 + ratio * .10, t, .1);
+    const rpm = 46 + ratio * 98 + (boosting ? 18 : 0);
+    e.osc.frequency.setTargetAtTime(rpm, t, .08);
+    e.osc2.frequency.setTargetAtTime(rpm, t, .1); // le détune fixe crée le battement
+    e.sub.frequency.setTargetAtTime(rpm / 2, t, .08);
+    e.filter.frequency.setTargetAtTime(240 + ratio * 1050 + (boosting ? 500 : 0), t, .09);
+    e.lfoG.gain.setTargetAtTime(4.5 * Math.max(0, 1 - ratio * 1.4), t, .12); // à-coups au ralenti seulement
+    e.g.gain.setTargetAtTime(.09 + ratio * .07, t, .1);
     e.ng.gain.setTargetAtTime(boosting ? .14 : 0, t, .08);
   }
 
   engineStop() {
     if (!this.engine) return;
-    try { this.engine.osc.stop(); this.engine.osc2.stop(); } catch (e) {}
+    try {
+      this.engine.osc.stop(); this.engine.osc2.stop();
+      this.engine.sub.stop(); this.engine.lfo.stop();
+    } catch (e) {}
     this.engine.g.disconnect(); this.engine.ng.disconnect();
     this.engine = null;
   }

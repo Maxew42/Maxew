@@ -28,6 +28,7 @@ export class AIController {
     this.wantRange *= this.cfg.range;
     this.hasMines = types.length === 0 || ship.design.parts.some(p => p.id === 'mine_launcher');
     this.hasFlares = ship.design.parts.some(p => p.id === 'flare_launcher');
+    this.hasScatter = ship.design.parts.some(p => p.id === 'beam');
   }
 
   update(dt, world) {
@@ -93,6 +94,12 @@ export class AIController {
     const aimAt = Math.atan2(t.y + t.vy * lead - ship.y, t.x + t.vx * lead - ship.x);
     const facing = Math.abs(wrapAngle(aimAt + this.aimJitter - ship.angle));
     if (facing < 0.3 && dist < this.wantRange * 1.9) inp.fire = true;
+    // Charge laser loads while fire is held; let go of the trigger to blast
+    // once it is full and the target is point-blank in front of us.
+    if (this.hasScatter && inp.fire) {
+      const charged = ship.parts.some(p => p.alive && p.def.weapon && p.def.weapon.type === 'chargebeam' && p.charge >= 1);
+      if (charged && dist < 300 && facing < 0.35) inp.fire = false;
+    }
     // Missiles home, so a much looser cone is fine.
     if (facing < 0.7 && dist < this.wantRange * 2.2) inp.missile = true;
 

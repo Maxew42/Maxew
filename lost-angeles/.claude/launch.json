@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lost-angeles",
+      "runtimeExecutable": "/usr/bin/python3",
+      "runtimeArgs": ["-I", "-c", "from http.server import HTTPServer, SimpleHTTPRequestHandler; import os; os.chdir('/private/tmp/claude-501/-Users-Novatix-Documents-projects-games-lost-angeles/d9632cd9-f939-4049-ab7d-7894abc6f025/scratchpad/la-serve'); HTTPServer(('127.0.0.1', 8629), SimpleHTTPRequestHandler).serve_forever()"],
+      "port": 8629
+    }
+  ]
+}

@@ -10,6 +10,7 @@ const TAU = Math.PI * 2;
 let VW = innerWidth, VH = innerHeight;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
+const adiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU; return d; };
 const fmtTime = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 // =================== RENDU 3D : BASE ===================
@@ -78,8 +79,9 @@ const cylG = (rt, rb, h, seg = 10) => new THREE.CylinderGeometry(rt, rb, h, seg)
 const coneG = (r, h) => new THREE.ConeGeometry(r, h, 8);
 const boxG = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 
-// =================== DÉCOR : LA CUISINE ===================
-(function buildKitchen() {
+// =================== DÉCOR : LA CUISINE (NIVEAU 1) ===================
+const kitchenGroup = (function buildKitchen() {
+  const grp = new THREE.Group();
   let seed = 1337;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 
@@ -109,13 +111,13 @@ const boxG = (w, h, d) => new THREE.BoxGeometry(w, h, d);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W, WORLD_H), new THREE.MeshLambertMaterial({ map: floorTex }));
   floor.rotation.x = -HALF_PI;
   floor.position.set(WORLD_W / 2, 0, WORLD_H / 2);
-  scene.add(floor);
+  grp.add(floor);
 
   // sol sombre au-delà de la cuisine
   const outer = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshLambertMaterial({ color: 0x241c14 }));
   outer.rotation.x = -HALF_PI;
   outer.position.set(WORLD_W / 2, -1, WORLD_H / 2);
-  scene.add(outer);
+  grp.add(outer);
 
   const parts = [];
   const steel = '#9aa5b1', steelDark = '#7d8994', wallC = '#6d4c41';
@@ -179,7 +181,131 @@ const boxG = (w, h, d) => new THREE.BoxGeometry(w, h, d);
     const mk = propMakers[Math.floor(rnd() * propMakers.length)];
     for (const p of mk(x, z)) parts.push(p);
   }
-  scene.add(new THREE.Mesh(mergeParts(parts), matV));
+  grp.add(new THREE.Mesh(mergeParts(parts), matV));
+  scene.add(grp);
+  return grp;
+})();
+
+// =================== DÉCOR : LA JUNGLE (NIVEAU 2) ===================
+const jungleGroup = (function buildJungle() {
+  const grp = new THREE.Group();
+  grp.visible = false;
+  let seed = 4242;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+  // sol : herbe, terre, et une clairière au centre (où poussent les pastèques)
+  const fc = document.createElement('canvas');
+  fc.width = 1200; fc.height = 900;
+  const b = fc.getContext('2d');
+  b.fillStyle = '#4a7233';
+  b.fillRect(0, 0, fc.width, fc.height);
+  for (let i = 0; i < 260; i++) {
+    b.fillStyle = `rgba(${30 + rnd() * 45 | 0},${70 + rnd() * 55 | 0},${25 + rnd() * 25 | 0},${0.12 + rnd() * 0.25})`;
+    b.beginPath();
+    b.ellipse(rnd() * fc.width, rnd() * fc.height, 20 + rnd() * 70, 12 + rnd() * 40, rnd() * TAU, 0, TAU);
+    b.fill();
+  }
+  for (let i = 0; i < 9; i++) { // plaques de terre
+    b.fillStyle = `rgba(112,86,52,${0.18 + rnd() * 0.2})`;
+    b.beginPath();
+    b.ellipse(rnd() * fc.width, rnd() * fc.height, 40 + rnd() * 90, 20 + rnd() * 45, rnd() * TAU, 0, TAU);
+    b.fill();
+  }
+  b.fillStyle = 'rgba(142,112,66,0.55)';
+  b.beginPath(); b.ellipse(600, 450, 95, 75, 0, 0, TAU); b.fill();
+  b.strokeStyle = 'rgba(62,46,26,0.5)';
+  b.lineWidth = 3;
+  b.beginPath(); b.ellipse(600, 450, 95, 75, 0, 0, TAU); b.stroke();
+  b.strokeStyle = 'rgba(150,205,92,0.32)';
+  b.lineWidth = 2;
+  for (let i = 0; i < 480; i++) { // brins d'herbe
+    const x = rnd() * fc.width, y = rnd() * fc.height;
+    b.beginPath(); b.moveTo(x, y); b.lineTo(x + (rnd() - 0.5) * 6, y - 4 - rnd() * 6); b.stroke();
+  }
+  const tex = new THREE.CanvasTexture(fc);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_W, WORLD_H), new THREE.MeshLambertMaterial({ map: tex }));
+  floor.rotation.x = -HALF_PI;
+  floor.position.set(WORLD_W / 2, 0, WORLD_H / 2);
+  grp.add(floor);
+  const outer = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000), new THREE.MeshLambertMaterial({ color: 0x14210f }));
+  outer.rotation.x = -HALF_PI;
+  outer.position.set(WORLD_W / 2, -1, WORLD_H / 2);
+  grp.add(outer);
+
+  const parts = [];
+  const hedge = '#2a4d1f', hedgeD = '#1a3314';
+  // muraille végétale (même collision que les plans de travail : WALL)
+  parts.push({ geo: boxG(WORLD_W, 70, WALL), color: hedge, x: WORLD_W / 2, y: 35, z: WALL / 2 });
+  parts.push({ geo: boxG(WORLD_W, 70, WALL), color: hedge, x: WORLD_W / 2, y: 35, z: WORLD_H - WALL / 2 });
+  parts.push({ geo: boxG(WALL, 70, WORLD_H), color: hedge, x: WALL / 2, y: 35, z: WORLD_H / 2 });
+  parts.push({ geo: boxG(WALL, 70, WORLD_H), color: hedge, x: WORLD_W - WALL / 2, y: 35, z: WORLD_H / 2 });
+  // rideau de jungle sombre au-delà
+  parts.push({ geo: boxG(WORLD_W + 40, 190, 20), color: hedgeD, x: WORLD_W / 2, y: 95, z: -10 });
+  parts.push({ geo: boxG(WORLD_W + 40, 190, 20), color: hedgeD, x: WORLD_W / 2, y: 95, z: WORLD_H + 10 });
+  parts.push({ geo: boxG(20, 190, WORLD_H + 40), color: hedgeD, x: -10, y: 95, z: WORLD_H / 2 });
+  parts.push({ geo: boxG(20, 190, WORLD_H + 40), color: hedgeD, x: 10 + WORLD_W, y: 95, z: WORLD_H / 2 });
+
+  // troncs + canopée le long de la bordure
+  const treeAt = (x, z) => {
+    parts.push({ geo: cylG(7 + rnd() * 4, 10 + rnd() * 4, 110, 7), color: '#5d4030', x, y: 55, z });
+    parts.push({ geo: sph(34 + rnd() * 22, 8, 6), color: rnd() < 0.5 ? '#2e5d24' : '#3a7030', x: x + (rnd() - 0.5) * 20, y: 115 + rnd() * 30, z: z + (rnd() - 0.5) * 20 });
+    if (rnd() < 0.6) parts.push({ geo: sph(22 + rnd() * 14, 8, 6), color: '#356b2a', x: x + (rnd() - 0.5) * 50, y: 95 + rnd() * 25, z: z + (rnd() - 0.5) * 50 });
+  };
+  for (let x = 100; x < WORLD_W; x += 150 + rnd() * 80) { treeAt(x, WALL / 2 + (rnd() - 0.5) * 30); treeAt(x + 60, WORLD_H - WALL / 2 + (rnd() - 0.5) * 30); }
+  for (let z = 150; z < WORLD_H; z += 150 + rnd() * 80) { treeAt(WALL / 2 + (rnd() - 0.5) * 30, z); treeAt(WORLD_W - WALL / 2 + (rnd() - 0.5) * 30, z + 60); }
+
+  // accessoires du labo posés sur la bordure : fûts chimiques, sacs de coke, caisses de dollars
+  const propMakers = [
+    (x, z) => [ // fût chimique
+      { geo: cylG(14, 14, 30, 10), color: '#1565c0', x, y: 85, z },
+      { geo: cylG(14.5, 14.5, 3, 10), color: '#0d3c70', x, y: 101, z },
+    ],
+    (x, z) => [ // sacs de coke
+      { geo: sph(12, 8, 6), color: '#f2f2ec', x, y: 78, sy: 0.8, z },
+      { geo: sph(9, 8, 6), color: '#e8e8e0', x: x + 14, y: 75, sy: 0.75, z: z + 6 },
+      { geo: cylG(2, 2, 5, 6), color: '#c9a24b', x, y: 89, z },
+    ],
+    (x, z) => [ // caisse de dollars
+      { geo: boxG(34, 20, 24), color: '#7a5230', x, y: 80, z },
+      { geo: boxG(26, 4, 16), color: '#2f9e4f', x, y: 92, z },
+      { geo: boxG(10, 5, 8), color: '#b7e0bd', x: x + 4, y: 95, z: z - 2 },
+    ],
+    (x, z) => [ // rocher moussu
+      { geo: sph(15, 8, 6), color: '#78766a', x, y: 76, sy: 0.7, z },
+      { geo: sph(9, 8, 6), color: '#5f7a4a', x: x + 6, y: 84, sy: 0.5, z: z + 4 },
+    ],
+    (x, z) => [ // marmite du labo (on reste cuistot)
+      { geo: cylG(16, 15, 16, 12), color: '#455a64', x, y: 78, z },
+      { geo: cylG(16.5, 16.5, 2, 12), color: '#37474f', x, y: 87, z },
+      { geo: sph(8, 8, 6), color: '#f2f2ec', x, y: 89, sy: 0.4, z },
+    ],
+    (x, z) => [ // tas de poudre blanche
+      { geo: coneG(15, 14), color: '#f6f6f0', x, y: 77, z },
+      { geo: coneG(9, 9), color: '#ffffff', x: x + 13, y: 74.5, z: z + 7 },
+      { geo: coneG(7, 7), color: '#efefe8', x: x - 12, y: 73.5, z: z - 6 },
+      { geo: sph(5, 8, 6), color: '#f6f6f0', x: x + 4, y: 71, sy: 0.4, z: z - 12 },
+    ],
+  ];
+  for (let i = 0; i < 18; i++) {
+    const side = Math.floor(rnd() * 4);
+    let x, z;
+    if (side === 0) { x = 130 + rnd() * (WORLD_W - 260); z = WALL / 2; }
+    else if (side === 1) { x = 130 + rnd() * (WORLD_W - 260); z = WORLD_H - WALL / 2; }
+    else if (side === 2) { x = WALL / 2; z = 130 + rnd() * (WORLD_H - 260); }
+    else { x = WORLD_W - WALL / 2; z = 130 + rnd() * (WORLD_H - 260); }
+    const mk = propMakers[Math.floor(rnd() * propMakers.length)];
+    for (const p of mk(x, z)) parts.push(p);
+  }
+  // quelques tas de poudre garantis, un par côté
+  const powder = propMakers[propMakers.length - 1];
+  for (const [px, pz] of [
+    [WORLD_W * 0.3, WALL / 2], [WORLD_W * 0.7, WORLD_H - WALL / 2],
+    [WALL / 2, WORLD_H * 0.6], [WORLD_W - WALL / 2, WORLD_H * 0.35],
+  ]) for (const p of powder(px, pz)) parts.push(p);
+  grp.add(new THREE.Mesh(mergeParts(parts), matV));
+  scene.add(grp);
+  return grp;
 })();
 
 // =================== MODÈLES 3D ===================
@@ -224,6 +350,99 @@ const ENEMY_GEOS = {
     { geo: cylG(1.6, 2.2, 20, 6), color: '#455a64', x: -19, y: 20, rz: 0.6 },
   ]),
   ratgeant: rodentGeo('#6e3a34', 2.3, { earC: '#8d5049', tailC: '#a56b64', eyeC: '#ff5252' }),
+  // --- niveau 2 : la jungle ---
+  fourmi: mergeParts([
+    { geo: sph(6), color: '#a63125', x: -7, y: 5, sx: 1.25, sy: 0.85 },
+    { geo: sph(4), color: '#c0392b', y: 5.5, sy: 0.85 },
+    { geo: sph(3.6), color: '#a63125', x: 6.5, y: 6 },
+    { geo: sph(1), color: '#151515', x: 8.5, y: 7, z: 1.8 },
+    { geo: sph(1), color: '#151515', x: 8.5, y: 7, z: -1.8 },
+    { geo: cylG(0.4, 0.4, 7, 5), color: '#5d1f16', x: 9, y: 10, z: 2, rz: 0.9, rx: 0.5 },
+    { geo: cylG(0.4, 0.4, 7, 5), color: '#5d1f16', x: 9, y: 10, z: -2, rz: 0.9, rx: -0.5 },
+  ]),
+  araignee: mergeParts([
+    { geo: sph(8), color: '#33251d', x: -3, y: 8, sy: 0.85 },
+    { geo: sph(5), color: '#4a352a', x: 6, y: 7.5 },
+    { geo: sph(2.4), color: '#c62828', x: -4, y: 13, sx: 0.7, sz: 0.7 },
+    { geo: sph(1.1), color: '#e53935', x: 9.5, y: 9, z: 2 },
+    { geo: sph(1.1), color: '#e53935', x: 9.5, y: 9, z: -2 },
+    { geo: cylG(0.6, 0.6, 15, 5), color: '#2a1c15', x: 4, y: 8, z: 6, rx: 1.05, rz: 0.35 },
+    { geo: cylG(0.6, 0.6, 15, 5), color: '#2a1c15', x: 4, y: 8, z: -6, rx: -1.05, rz: 0.35 },
+    { geo: cylG(0.6, 0.6, 15, 5), color: '#2a1c15', x: 0, y: 8, z: 6.5, rx: 1.15 },
+    { geo: cylG(0.6, 0.6, 15, 5), color: '#2a1c15', x: 0, y: 8, z: -6.5, rx: -1.15 },
+    { geo: cylG(0.6, 0.6, 15, 5), color: '#2a1c15', x: -4, y: 8, z: 6.5, rx: 1.15, rz: -0.2 },
+    { geo: cylG(0.6, 0.6, 15, 5), color: '#2a1c15', x: -4, y: 8, z: -6.5, rx: -1.15, rz: -0.2 },
+    { geo: cylG(0.6, 0.6, 15, 5), color: '#2a1c15', x: -8, y: 8, z: 6, rx: 1.05, rz: -0.4 },
+    { geo: cylG(0.6, 0.6, 15, 5), color: '#2a1c15', x: -8, y: 8, z: -6, rx: -1.05, rz: -0.4 },
+  ]),
+  serpent: mergeParts([
+    { geo: sph(10), color: '#388e3c', y: 8, sx: 1.25, sy: 0.8 },
+    { geo: sph(1.7), color: '#ffee58', x: 8, y: 11.5, z: 3.5 },
+    { geo: sph(1.7), color: '#ffee58', x: 8, y: 11.5, z: -3.5 },
+    { geo: sph(0.9), color: '#151515', x: 9, y: 11.5, z: 3.5 },
+    { geo: sph(0.9), color: '#151515', x: 9, y: 11.5, z: -3.5 },
+    { geo: boxG(7, 0.8, 1.2), color: '#e53935', x: 15, y: 8 },
+  ]),
+  singe: mergeParts([
+    { geo: sph(10), color: '#6d4c41', x: -2, y: 12, sy: 1.15 },
+    { geo: sph(7), color: '#6d4c41', x: 8, y: 22 },
+    { geo: sph(4.5), color: '#d7b899', x: 12, y: 20.5, sz: 0.9 },
+    { geo: sph(2.6), color: '#8d6e63', x: 7, y: 27, z: 5.5 },
+    { geo: sph(2.6), color: '#8d6e63', x: 7, y: 27, z: -5.5 },
+    { geo: sph(1.2), color: '#151515', x: 13.5, y: 23, z: 2.2 },
+    { geo: sph(1.2), color: '#151515', x: 13.5, y: 23, z: -2.2 },
+    { geo: cylG(1.2, 1.2, 20, 6), color: '#5d4037', x: -11, y: 18, rz: 0.8 },
+    { geo: sph(3), color: '#5d4037', x: -18, y: 26 },
+  ]),
+  singemerde: mergeParts([
+    { geo: sph(10), color: '#4e342a', x: -2, y: 12, sy: 1.15 },
+    { geo: sph(7), color: '#4e342a', x: 8, y: 22 },
+    { geo: sph(4.5), color: '#c9a084', x: 12, y: 20.5, sz: 0.9 },
+    { geo: sph(2.6), color: '#6d4c41', x: 7, y: 27, z: 5.5 },
+    { geo: sph(2.6), color: '#6d4c41', x: 7, y: 27, z: -5.5 },
+    { geo: sph(1.2), color: '#e53935', x: 13.5, y: 23, z: 2.2 },
+    { geo: sph(1.2), color: '#e53935', x: 13.5, y: 23, z: -2.2 },
+    { geo: sph(4.2), color: '#5d4023', x: 10, y: 12 }, // munition en main
+    { geo: sph(3), color: '#e57373', x: -9, y: 9 },
+    { geo: cylG(1.2, 1.2, 20, 6), color: '#3e2723', x: -11, y: 18, rz: 0.8 },
+    { geo: sph(3), color: '#3e2723', x: -18, y: 26 },
+  ]),
+  crocodile: mergeParts([
+    { geo: sph(13), color: '#2f5d1e', x: -6, y: 9, sx: 1.9, sy: 0.7 },
+    { geo: boxG(22, 5.5, 9), color: '#3f7d2a', x: 16, y: 9 },
+    { geo: sph(2.4), color: '#ffe082', x: 8, y: 15, z: 4 },
+    { geo: sph(2.4), color: '#ffe082', x: 8, y: 15, z: -4 },
+    { geo: boxG(1.5, 2.4, 1.2), color: '#f5f5f5', x: 24, y: 5.5, z: 3.4 },
+    { geo: boxG(1.5, 2.4, 1.2), color: '#f5f5f5', x: 24, y: 5.5, z: -3.4 },
+    { geo: boxG(1.5, 2.4, 1.2), color: '#f5f5f5', x: 18, y: 5.5, z: 4 },
+    { geo: boxG(1.5, 2.4, 1.2), color: '#f5f5f5', x: 18, y: 5.5, z: -4 },
+    { geo: coneG(2.4, 4.5), color: '#26491a', x: -4, y: 16 },
+    { geo: coneG(2.1, 4), color: '#26491a', x: -12, y: 15 },
+    { geo: coneG(1.8, 3.5), color: '#26491a', x: -19, y: 13 },
+    { geo: coneG(5, 22), color: '#2f5d1e', x: -33, y: 8, rz: HALF_PI },
+  ]),
+  jaguar: mergeParts([
+    { geo: sph(14), color: '#e8a33d', x: -3, y: 14, sx: 1.45, sy: 0.95 },
+    { geo: sph(9), color: '#e8a33d', x: 15, y: 21 },
+    { geo: coneG(3.2, 6), color: '#c98a2b', x: 14, y: 29, z: 5 },
+    { geo: coneG(3.2, 6), color: '#c98a2b', x: 14, y: 29, z: -5 },
+    { geo: sph(2.2), color: '#2e7d32', x: 22, y: 23, z: 3.6 },
+    { geo: sph(2.2), color: '#2e7d32', x: 22, y: 23, z: -3.6 },
+    { geo: sph(2), color: '#37474f', x: 24.5, y: 20 },
+    { geo: sph(2), color: '#5d4023', x: -8, y: 24, z: 6 },
+    { geo: sph(1.8), color: '#5d4023', x: 0, y: 26, z: -7 },
+    { geo: sph(1.8), color: '#5d4023', x: -12, y: 20, z: -9 },
+    { geo: sph(1.6), color: '#5d4023', x: 4, y: 22, z: 9 },
+    { geo: sph(1.6), color: '#5d4023', x: -14, y: 23, z: 3 },
+    { geo: cylG(1.8, 2.4, 22, 6), color: '#c98a2b', x: -21, y: 20, rz: 0.6 },
+  ]),
+  pasteque: mergeParts([
+    { geo: sph(22, 14, 10), color: '#3f9e3f', y: 20, sy: 0.95 },
+    { geo: sph(22.4, 14, 10), color: '#1e661e', y: 20, sx: 0.14, sy: 0.93, sz: 1.02 },
+    { geo: sph(22.4, 14, 10), color: '#1e661e', y: 20, sx: 0.14, sy: 0.93, sz: 1.02, ry: 1.05 },
+    { geo: sph(22.4, 14, 10), color: '#1e661e', y: 20, sx: 0.14, sy: 0.93, sz: 1.02, ry: 2.1 },
+    { geo: cylG(1.2, 1.8, 6, 6), color: '#5d4023', y: 42 },
+  ]),
   raton: mergeParts([
     { geo: sph(12), color: '#78909c', x: -2, y: 11, sx: 1.4, sy: 0.95 },
     { geo: sph(8), color: '#90a4ae', x: 13, y: 15 },
@@ -270,6 +489,17 @@ const panMesh = new THREE.Mesh(panGeo, matV);
 panMesh.scale.setScalar(1.2);
 scene.add(panMesh);
 
+// machette tenue en main au niveau 2
+const macheteGeo = mergeParts([
+  { geo: boxG(24, 1.4, 5.5), color: '#b8c4cc', x: 5 },
+  { geo: boxG(6, 1.6, 7), color: '#9fadb6', x: 18 },
+  { geo: boxG(9, 2.6, 3.2), color: '#4e342e', x: -10 },
+]);
+const macheteMesh = new THREE.Mesh(macheteGeo, matV);
+macheteMesh.scale.setScalar(1.2);
+macheteMesh.visible = false;
+scene.add(macheteMesh);
+
 // le boss : Philippe ChuileBest, chef géant en veste noire
 const bossGeo = mergeParts([
   { geo: sph(3.6), color: '#1a1a1a', x: 3, y: 2.5, z: 4.5, sx: 1.5 },
@@ -297,6 +527,33 @@ bossMesh.scale.setScalar(3.4);
 bossMesh.visible = false;
 scene.add(bossMesh);
 
+// le boss du niveau 2 : l'Hippo de Pablo, avec sa chaîne en or
+const hippoGeo = mergeParts([
+  { geo: cylG(4.5, 5.2, 12, 8), color: '#6f7b8a', x: 7, y: 6, z: 8 },
+  { geo: cylG(4.5, 5.2, 12, 8), color: '#6f7b8a', x: 7, y: 6, z: -8 },
+  { geo: cylG(4.5, 5.2, 12, 8), color: '#6f7b8a', x: -13, y: 6, z: 8 },
+  { geo: cylG(4.5, 5.2, 12, 8), color: '#6f7b8a', x: -13, y: 6, z: -8 },
+  { geo: sph(15), color: '#7d8795', x: -4, y: 19, sx: 1.5, sy: 1.05, sz: 1.15 },
+  { geo: sph(14), color: '#96a0ad', x: -4, y: 15, sx: 1.35, sy: 0.75, sz: 1.05 },
+  { geo: sph(9.5), color: '#7d8795', x: 16, y: 25 },
+  { geo: boxG(13, 9, 13), color: '#8b95a3', x: 25, y: 19 },
+  { geo: sph(2), color: '#e8a0b0', x: 31.5, y: 22.5, z: 3.2 },
+  { geo: sph(2), color: '#e8a0b0', x: 31.5, y: 22.5, z: -3.2 },
+  { geo: cylG(1.6, 1, 5.5, 6), color: '#f5f0dc', x: 30, y: 12.5, z: 4.5 },
+  { geo: cylG(1.6, 1, 5.5, 6), color: '#f5f0dc', x: 30, y: 12.5, z: -4.5 },
+  { geo: sph(1.8), color: '#2b1d20', x: 21, y: 30, z: 4 },
+  { geo: sph(1.8), color: '#2b1d20', x: 21, y: 30, z: -4 },
+  { geo: sph(2.6), color: '#6f7b8a', x: 13, y: 33, z: 5 },
+  { geo: sph(2.6), color: '#6f7b8a', x: 13, y: 33, z: -5 },
+  { geo: new THREE.TorusGeometry(8.5, 1.6, 6, 18), color: '#ffd700', x: 11, y: 22, rx: HALF_PI, rz: 0.45 },
+  { geo: boxG(5, 6, 2), color: '#ffd700', x: 18, y: 15 },
+  { geo: cylG(1.2, 2, 9, 6), color: '#6f7b8a', x: -28, y: 23, rz: 0.7 },
+]);
+const hippoMesh = new THREE.Mesh(hippoGeo, matV);
+hippoMesh.scale.setScalar(3.2);
+hippoMesh.visible = false;
+scene.add(hippoMesh);
+
 // télégraphes du boss
 const slamTeleMesh = new THREE.Mesh(
   new THREE.CircleGeometry(1, 32).rotateX(-HALF_PI),
@@ -316,9 +573,9 @@ chargeTeleMesh.renderOrder = 2;
 chargeTeleMesh.visible = false;
 scene.add(chargeTeleMesh);
 
-// ondes de choc (coup de poêle au sol)
+// ondes de choc (coup de poêle au sol, explosions de grenades)
 const shockPool = [];
-for (let i = 0; i < 3; i++) {
+for (let i = 0; i < 8; i++) {
   const m = new THREE.Mesh(
     new THREE.TorusGeometry(1, 0.08, 6, 40),
     new THREE.MeshBasicMaterial({ color: 0xff5722, transparent: true, opacity: 0.8, depthWrite: false })
@@ -336,6 +593,17 @@ const plateInst = makeInstanced(mergeParts([
   { geo: cylG(6, 6, 1.2, 14), color: '#cfd8dc', y: 1.2 },
 ]), 90);
 
+// projectiles ennemis du niveau 2 : cacas de singe et liasses vomies
+const poopInst = makeInstanced(mergeParts([
+  { geo: sph(6.5), color: '#5d4023' },
+  { geo: sph(4.6), color: '#6d4c2f', y: 4.5 },
+  { geo: sph(2.6), color: '#7a563a', y: 8.5 },
+]), 40);
+const billInst = makeInstanced(mergeParts([
+  { geo: sph(8), color: '#3f9e4c', sx: 1.1 },
+  { geo: cylG(8.6, 8.6, 3.4, 10), color: '#bfe3c2', rz: HALF_PI },
+]), 60);
+
 // bonus : aimant à fromage
 const magnetGeo = mergeParts([
   { geo: boxG(5, 12, 5), color: '#e53935', x: -5.5, y: 8 },
@@ -345,6 +613,14 @@ const magnetGeo = mergeParts([
   { geo: boxG(5, 3.5, 5), color: '#eceff1', x: 5.5, y: 3 },
 ]);
 const magnetInst = makeInstanced(magnetGeo, 8);
+
+// bonus niveau 2 : sachet de coke (boost de vitesse)
+const cokeGeo = mergeParts([
+  { geo: boxG(13, 9, 10), color: '#f4f4f0', y: 6 },
+  { geo: boxG(13.6, 3.2, 10.6), color: '#c9a24b', y: 6 },
+  { geo: boxG(4, 4, 1), color: '#c62828', y: 7.5, z: 5.2 },
+]);
+const cokeInst = makeInstanced(cokeGeo, 8);
 
 // =================== INSTANCES & POOLS ===================
 const _im = new THREE.Matrix4(), _ip = new THREE.Vector3(), _iq = new THREE.Quaternion(), _is = new THREE.Vector3(), _ie = new THREE.Euler();
@@ -367,7 +643,8 @@ function makeInstanced(geo, cap, material = matV) {
 }
 
 const enemyInst = {};
-for (const t in ENEMY_GEOS) enemyInst[t] = makeInstanced(ENEMY_GEOS[t], t === 'souris' || t === 'rat' || t === 'cafard' ? 360 : 80);
+const SWARM_TYPES = new Set(['souris', 'rat', 'cafard', 'fourmi', 'araignee']);
+for (const t in ENEMY_GEOS) enemyInst[t] = makeInstanced(ENEMY_GEOS[t], SWARM_TYPES.has(t) ? 360 : 80);
 const segInst = makeInstanced(mergeParts([{ geo: sph(8), color: '#7a8c3a', y: 7 }]), 1200);
 
 // ombres portées (disques sombres)
@@ -384,6 +661,15 @@ const soupInst = makeInstanced(mergeParts([
   { geo: cylG(8, 6, 6, 12), color: '#8d6e63', y: 3 },
   { geo: cylG(6.5, 6.5, 1.5, 12), color: '#d84315', y: 6 },
 ]), 40);
+// ramassables niveau 2 : dollars de Pablo et empanadas
+const dollarInst = makeInstanced(mergeParts([
+  { geo: boxG(15, 1.4, 8), color: '#2f9e4f' },
+  { geo: boxG(6.5, 1.8, 4.5), color: '#b7e0bd' },
+]), 420);
+const empanadaInst = makeInstanced(mergeParts([
+  { geo: sph(8, 10, 8), color: '#e2a93e', sx: 1.15, sy: 0.5, y: 4 },
+  { geo: sph(6.6, 10, 8), color: '#c98a2b', x: -1.5, sx: 1.05, sy: 0.42, y: 4.6 },
+]), 40);
 
 // projectiles
 const knifeInst = makeInstanced(mergeParts([
@@ -395,10 +681,21 @@ const corkInst = makeInstanced(mergeParts([
   { geo: sph(3.8), color: '#8d6e4a', x: 4 },
 ]), 20);
 const globInst = makeInstanced(mergeParts([{ geo: sph(6.5), color: '#e64a19' }]), 20);
+// projectiles niveau 2 : fléchettes, balles d'AK, grenades
+const dartInst = makeInstanced(mergeParts([
+  { geo: cylG(0.9, 0.9, 11, 6), color: '#8d6e63', rz: HALF_PI },
+  { geo: coneG(1.8, 4), color: '#66bb6a', x: -5.5, rz: -HALF_PI },
+]), 40);
+const bulletInst = makeInstanced(mergeParts([{ geo: boxG(8, 1.8, 1.8), color: '#ffd54f' }]), 80);
+const nadeInst = makeInstanced(mergeParts([
+  { geo: sph(6.5), color: '#33691e' },
+  { geo: boxG(3.4, 3, 3.4), color: '#9e9e9e', y: 6 },
+  { geo: cylG(0.7, 0.7, 4, 5), color: '#e53935', x: 2.4, y: 8, rz: 0.7 },
+]), 40);
 
-// flaques de sauce
+// flaques de sauce (et de feu, niveau 2)
 const puddlePool = [];
-for (let i = 0; i < 16; i++) {
+for (let i = 0; i < 26; i++) {
   const m = new THREE.Mesh(
     new THREE.CircleGeometry(1, 22),
     new THREE.MeshBasicMaterial({ color: 0xd84315, transparent: true, opacity: 0.55, depthWrite: false })
@@ -433,6 +730,33 @@ for (let k = 0; k < 4; k++) {
 }
 torchGroup.visible = false;
 scene.add(torchGroup);
+
+// lance-flammes (niveau 2) : un seul jet, large, vers la visée
+const flameBeam = new THREE.Mesh(
+  new THREE.ConeGeometry(1, 1, 10),
+  new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false })
+);
+const flameInner = new THREE.Mesh(
+  new THREE.ConeGeometry(0.55, 0.92, 10),
+  new THREE.MeshBasicMaterial({ color: 0xffe082, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false })
+);
+flameBeam.add(flameInner);
+flameBeam.rotation.z = HALF_PI; // pointe (l'embout) vers le joueur, base évasée au loin
+const flameGroup = new THREE.Group();
+flameGroup.add(flameBeam);
+flameGroup.visible = false;
+scene.add(flameGroup);
+
+// fouet (niveau 2) : secteur d'onde de choc au sol
+const whipMesh = new THREE.Mesh(
+  new THREE.CircleGeometry(1, 20, -0.6, 1.2).rotateX(-HALF_PI),
+  new THREE.MeshBasicMaterial({ color: 0xffe0b2, transparent: true, opacity: 0.5, depthWrite: false })
+);
+whipMesh.position.y = 1.2;
+whipMesh.renderOrder = 2;
+whipMesh.visible = false;
+whipMesh.userData.cone = 1.2;
+scene.add(whipMesh);
 
 // éclairs
 const zapPool = [];
@@ -559,6 +883,43 @@ const WEAPON_DEFS = {
     desc: 'Bouchon dévastateur qui traverse tout et ricoche sur les murs.',
     base: { dmg: 65, cd: 2.6, speed: 740, pierce: 7, knock: 450, bounces: 2 },
   },
+  // --- niveau 2 : la jungle ---
+  machette: {
+    lvl: 2, name: 'Machette', icon: '🗡️',
+    desc: 'Taillade tout ce qui passe dans un arc devant vous.',
+    up: 'arc élargi',
+    base: { dmg: 26, cd: 0.8, range: 105, knock: 280, cone: 1.6 },
+  },
+  sarbacane: {
+    lvl: 2, name: 'Sarbacane', icon: '🎯',
+    desc: 'Fléchette qui ralentit et empoisonne les ennemis.',
+    up: '+1 fléchette tous les 2 niveaux',
+    base: { dmg: 9, cd: 1.0, speed: 640, poison: 7, spread: 0.14 },
+  },
+  fouet: {
+    lvl: 2, name: 'Fouet', icon: '🪢',
+    desc: 'Claque en cône court : dégâts et gros recul.',
+    up: 'cône de plus en plus large',
+    base: { dmg: 18, cd: 1.4, range: 150, cone: 1.15, knock: 520 },
+  },
+  ak47: {
+    lvl: 2, name: 'AK-47 « Viva la revolución »', icon: '🔫',
+    desc: 'Rafale à longue portée dans un cône étroit vers la visée.',
+    up: '+1 balle par rafale et par niveau',
+    base: { dmg: 8, cd: 1.6, bullets: 4, spread: 0.12, speed: 950 },
+  },
+  grenade: {
+    lvl: 2, name: 'Grenade de la Liberté', icon: '💣',
+    desc: 'Explose là où vous visez. Évolue : rebonds multiples, puis feu au sol.',
+    up: '+1 direction de rebond, feu au sol au niveau 6',
+    base: { dmg: 42, cd: 2.7, boomR: 105, throwRange: 330, fireDps: 10 },
+  },
+  lanceflamme: {
+    lvl: 2, name: 'Lance-flammes', icon: '🔥',
+    desc: 'Crache un jet de feu continu vers la visée.',
+    up: 'portée de plus en plus longue',
+    base: { dmg: 9, cd: 2.4, len: 170, dur: 1.1, tick: 0.12, cone: 0.55 },
+  },
 };
 const MAX_WEAPON_LEVEL = 8;
 const MAX_WEAPONS = 5;
@@ -574,6 +935,13 @@ function wstat(w) {
   if (w.type === 'batteur') s.orbs = d.orbs + Math.floor((lv - 1) / 2);
   if (w.type === 'couteau') s.pierce = d.pierce + Math.floor((lv - 1) / 3);
   if (w.type === 'electrique') s.jumps = d.jumps + Math.floor((lv - 1) / 2);
+  // niveau 2 : les améliorations changent aussi le motif de l'arme
+  if (w.type === 'machette') s.cone = d.cone + 0.12 * (lv - 1);
+  if (w.type === 'sarbacane') s.darts = 1 + Math.floor((lv - 1) / 2);
+  if (w.type === 'fouet') s.cone = d.cone + 0.09 * (lv - 1);
+  if (w.type === 'ak47') s.bullets = d.bullets + (lv - 1);
+  if (w.type === 'grenade') { s.frags = Math.max(0, lv - 2); s.fire = lv >= 6; }
+  if (w.type === 'lanceflamme') s.len = d.len + 24 * (lv - 1);
   return s;
 }
 
@@ -587,6 +955,16 @@ const ENEMY_DEFS = {
   ratgeant:    { name: 'Rat géant',         icon: '🐀', hp: 380, dmg: 22, speed: 55,  r: 28, xp: 22, t: 320, w: 10 },
   raton:       { name: 'Raton laveur',      icon: '🦝', hp: 850, dmg: 28, speed: 68,  r: 26, xp: 45, t: 440, w: 6,   enrage: true },
   boss:        { name: 'Philippe ChuileBest', icon: '👨‍🍳', hp: 26000, dmg: 30, speed: 78, r: 48, xp: 0, t: 1e9, w: 0, boss: true },
+  // --- niveau 2 : la jungle (sans lvl = niveau 1) ---
+  fourmi:     { lvl: 2, name: 'Fourmi rouge',  icon: '🐜', hp: 14,  dmg: 6,  speed: 118, r: 11, xp: 1,  t: 0,   w: 100, jitter: true },
+  araignee:   { lvl: 2, name: 'Araignée',      icon: '🕷️', hp: 32,  dmg: 10, speed: 128, r: 14, xp: 2,  t: 40,  w: 80 },
+  serpent:    { lvl: 2, name: 'Serpent',       icon: '🐍', hp: 190, dmg: 15, speed: 72,  r: 15, xp: 8,  t: 100, w: 13,  segments: 7 },
+  singe:      { lvl: 2, name: 'Singe',         icon: '🐒', hp: 130, dmg: 17, speed: 112, r: 17, xp: 10, t: 170, w: 16,  dasher: true },
+  singemerde: { lvl: 2, name: 'Singe hurleur', icon: '💩', hp: 110, dmg: 13, speed: 92,  r: 16, xp: 12, t: 250, w: 11,  ranged: true },
+  crocodile:  { lvl: 2, name: 'Crocodile',     icon: '🐊', hp: 520, dmg: 26, speed: 55,  r: 30, xp: 25, t: 340, w: 9,   dasher: true, windup: 0.65, dashT: 0.5, dashMul: 5.6, stalkT: 2 },
+  jaguar:     { lvl: 2, name: 'Jaguar',        icon: '🐆', hp: 980, dmg: 30, speed: 98,  r: 24, xp: 50, t: 450, w: 6,   dasher: true, windup: 0.35, dashT: 0.4, dashMul: 4.6, stalkT: 0.9 },
+  pasteque:   { lvl: 2, name: 'Pastèque',      icon: '🍉', hp: 2200, dmg: 0, speed: 0,   r: 24, xp: 15, t: 1e9, w: 0,   stationary: true, noscale: true },
+  hippo:      { lvl: 2, name: "L'Hippo de Pablo", icon: '🦛', hp: 30000, dmg: 34, speed: 84, r: 55, xp: 0, t: 1e9, w: 0, boss: true },
 };
 const ANNOUNCE_MSGS = {
   rat: '🐀 Les rats infestent la cuisine !',
@@ -595,6 +973,12 @@ const ANNOUNCE_MSGS = {
   chat: '🐈 Un chat de gouttière rôde… méfiance !',
   ratgeant: '🐀 UN RAT GÉANT DÉFONCE LA PORTE !',
   raton: '🦝 Le raton laveur veut sa revanche !',
+  araignee: '🕷️ Des araignées descendent des arbres !',
+  serpent: '🐍 Des serpents glissent entre les lianes !',
+  singe: '🐒 Les singes défendent le labo !',
+  singemerde: '💩 Singes hurleurs ! Gare à leurs projectiles…',
+  crocodile: '🐊 UN CROCODILE SORT DU MARIGOT !',
+  jaguar: '🐆 Le jaguar a senti votre odeur…',
 };
 
 // =================== ÉTAT ===================
@@ -606,6 +990,10 @@ let boss = null, bossProjs = [], bossSpawned = false, bossWarned = false, bonusT
 const BOSS_TIME = 600;
 const SLAM_R = 300;
 let best = parseFloat(localStorage.getItem('cauchemar_best') || '0');
+let best2 = parseFloat(localStorage.getItem('cauchemar_best2') || '0');
+let level2Unlocked = localStorage.getItem('cauchemar_lvl2') === '1';
+let currentLevel = 1;
+let melonTimer = 0;
 const aimWorld = { x: 0, y: 0 };
 
 function xpNeedFor(lv) { return Math.floor(5 + (lv - 1) * 4 + Math.pow(lv - 1, 1.65)); }
@@ -615,8 +1003,8 @@ function initGame() {
     x: WORLD_W / 2, y: WORLD_H / 2, r: 16,
     hp: 100, maxHp: 100, speed: 200, aim: 0,
     level: 1, xp: 0, xpNeed: xpNeedFor(1),
-    weapons: [makeWeapon('poele')],
-    hurtCd: 0, magnetR: 110, moving: false,
+    weapons: [makeWeapon(currentLevel === 2 ? 'machette' : 'poele')],
+    hurtCd: 0, magnetR: 110, moving: false, boostT: 0,
   };
   enemies = []; projectiles = []; puddles = []; effects = [];
   pickups = []; dmgTexts = []; particles = []; announcements = [];
@@ -624,6 +1012,10 @@ function initGame() {
   pendingLevels = 0; announced = {};
   boss = null; bossProjs = []; bossSpawned = false; bossWarned = false;
   bonusTimer = 60 + Math.random() * 40;
+  melonTimer = 8;
+  kitchenGroup.visible = currentLevel === 1;
+  jungleGroup.visible = currentLevel === 2;
+  renderer.setClearColor(currentLevel === 2 ? 0x0c140b : 0x171310);
 }
 
 // =================== ENTRÉES ===================
@@ -931,6 +1323,7 @@ function pickEnemyType() {
   const pool = [];
   for (const key in ENEMY_DEFS) {
     const d = ENEMY_DEFS[key];
+    if ((d.lvl || 1) !== currentLevel) continue;
     if (time >= d.t) { pool.push([key, d.w]); total += d.w; }
   }
   let r = Math.random() * total;
@@ -956,8 +1349,10 @@ function spawnEnemyAt(type, x, y) {
   const d = ENEMY_DEFS[type];
   x = clamp(x, WALL + 25, WORLD_W - WALL - 25);
   y = clamp(y, WALL + 25, WORLD_H - WALL - 25);
-  const hpMul = 1 + time * 0.012 + Math.pow(time / 300, 2) * 0.35;
-  const dmgMul = 1 + time * 0.0022;
+  const hpMul = d.noscale ? 1 : currentLevel === 2
+    ? 1 + time * 0.015 + Math.pow(time / 280, 2) * 0.5
+    : 1 + time * 0.012 + Math.pow(time / 300, 2) * 0.35;
+  const dmgMul = 1 + time * (currentLevel === 2 ? 0.0028 : 0.0022);
   const e = {
     id: nextId++, type, def: d,
     x, y, r: d.r,
@@ -972,31 +1367,40 @@ function spawnEnemyAt(type, x, y) {
     e.segs = [];
     for (let i = 0; i < d.segments; i++) e.segs.push({ x: x, y: y });
   }
-  if (d.dasher) { e.cstate = 'stalk'; e.ct = 1 + Math.random() * 1.5; e.dashAng = 0; }
+  if (d.dasher) { e.cstate = 'stalk'; e.ct = (d.stalkT || 1) + Math.random() * 1.5; e.dashAng = 0; }
   if (d.enrage) { e.et = 5; e.enraged = false; }
   enemies.push(e);
 }
 
-// =================== BOSS : PHILIPPE CHUILEBEST ===================
+// =================== BOSS : PHILIPPE CHUILEBEST / L'HIPPO DE PABLO ===================
 function startBossFight() {
   bossSpawned = true;
-  // la vermine détale, place au chef
+  // la vermine détale, place au boss
   enemies = [];
-  const d = ENEMY_DEFS.boss;
+  bossProjs = [];
+  const key = currentLevel === 2 ? 'hippo' : 'boss';
+  const d = ENEMY_DEFS[key];
   const bx = player.x < WORLD_W / 2 ? player.x + 650 : player.x - 650;
   const by = player.y < WORLD_H / 2 ? player.y + 450 : player.y - 450;
   boss = {
-    id: nextId++, type: 'boss', def: d,
+    id: nextId++, type: key, def: d,
     x: clamp(bx, WALL + d.r, WORLD_W - WALL - d.r),
     y: clamp(by, WALL + d.r, WORLD_H - WALL - d.r),
     r: d.r, hp: d.hp, maxHp: d.hp, dmg: d.dmg, speed: d.speed, xp: 0,
     kvx: 0, kvy: 0, atkCd: 0, hitFlash: 0, beaterCd: 0, slowT: 0,
     vx: 0, vy: 0, dead: false, face: 0, phase: 0,
-    bstate: 'walk', bt: 2.5, lastAtk: '', volleys: 0, pv: 0, dashAng: 0,
+    bstate: 'walk', bt: 2.5, lastAtk: '', volleys: 0, pv: 0, dashAng: 0, healAcc: 0,
   };
   enemies.push(boss);
-  announcements.push({ txt: '👨‍🍳 PHILIPPE CHUILEBEST ENTRE EN CUISINE !', ttl: 5 });
-  announcements.push({ txt: '« ON VA VOIR SI VOUS TENEZ LE SERVICE ! »', ttl: 5 });
+  if (currentLevel === 2) {
+    announcements.push({ txt: "🦛 L'HIPPO DE PABLO DÉBARQUE !", ttl: 5 });
+    announcements.push({ txt: '« PERSONNE NE QUITTE MON LABO ! »', ttl: 5 });
+    announcements.push({ txt: '🍉 Détruisez ses pastèques, sinon il se soigne !', ttl: 7 });
+    melonTimer = 6;
+  } else {
+    announcements.push({ txt: '👨‍🍳 PHILIPPE CHUILEBEST ENTRE EN CUISINE !', ttl: 5 });
+    announcements.push({ txt: '« ON VA VOIR SI VOUS TENEZ LE SERVICE ! »', ttl: 5 });
+  }
   shake = 14;
   beep(80, 40, 1.2, 'sawtooth', 0.15);
   setTimeout(() => beep(60, 35, 1.2, 'sawtooth', 0.15), 400);
@@ -1005,10 +1409,12 @@ function startBossFight() {
 function bossWalkDur() { return 1.4 + Math.random() * 1.2; }
 
 function pickBossAttack(e) {
-  const pool = ['plates', 'charge', 'slam', 'summon'].filter(a => a !== e.lastAtk);
+  const atks = e.type === 'hippo' ? ['vomit', 'charge', 'slam'] : ['plates', 'charge', 'slam', 'summon'];
+  const pool = atks.filter(a => a !== e.lastAtk);
   const atk = pool[Math.floor(Math.random() * pool.length)];
   e.lastAtk = atk;
   if (atk === 'plates') { e.bstate = 'plates'; e.bt = 1.6; e.volleys = 3; e.pv = 0.1; }
+  else if (atk === 'vomit') { e.bstate = 'vomitTele'; e.bt = 0.8; beep(90, 45, 0.6, 'sawtooth', 0.09); }
   else if (atk === 'charge') { e.bstate = 'chargeTele'; e.bt = 0.8; beep(160, 320, 0.4, 'triangle', 0.08); }
   else if (atk === 'slam') { e.bstate = 'slamTele'; e.bt = 1.1; beep(140, 100, 0.5, 'triangle', 0.08); }
   else { e.bstate = 'summon'; e.bt = 0.9; }
@@ -1092,6 +1498,34 @@ function updateBoss(e, dt) {
         beep(70, 30, 0.5, 'square', 0.16);
         if (dist2(player.x, player.y, e.x, e.y) < SLAM_R * SLAM_R) damagePlayer(32);
       }
+      break;
+    case 'vomitTele':
+      e.face = Math.atan2(dy, dx);
+      if (e.bt <= 0) { e.bstate = 'vomit'; e.bt = 1.5; e.volleys = 3; e.pv = 0.1; }
+      break;
+    case 'vomit':
+      e.face = Math.atan2(dy, dx);
+      e.pv -= dt;
+      if (e.pv <= 0 && e.volleys > 0) {
+        e.volleys--;
+        e.pv = 0.45;
+        // boulettes de dollars digérés : elles retombent à distance variable, à esquiver
+        const n = enraged ? 8 : 5;
+        for (let i = 0; i < n; i++) {
+          const a = e.face + (Math.random() - 0.5) * 1.5;
+          const sp = 200 + Math.random() * 180;
+          const ttl = (160 + Math.random() * 320) / sp;
+          bossProjs.push({
+            kind: 'bill',
+            x: e.x + Math.cos(a) * 70, y: e.y + Math.sin(a) * 70,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+            r: 14, dmg: 16, ttl, ttl0: ttl,
+          });
+        }
+        beep(90, 260, 0.25, 'sawtooth', 0.1);
+        splat(e.x + Math.cos(e.face) * 80, e.y + Math.sin(e.face) * 80, '#66bb6a', 5);
+      }
+      if (e.bt <= 0) { e.bstate = 'walk'; e.bt = bossWalkDur(); }
       break;
     case 'summon':
       if (e.bt <= 0) {
@@ -1194,13 +1628,14 @@ function buildOptions() {
       opts.push({
         weight: 10, icon: def.icon, tag: `Niveau ${w.level + 1}`,
         title: def.name,
-        desc: '+22% de dégâts, +7% de cadence' + (w.type === 'batteur' && (w.level % 2 === 0) ? ', +1 fouet' : ''),
+        desc: '+22% de dégâts, +7% de cadence' + (w.type === 'batteur' && (w.level % 2 === 0) ? ', +1 fouet' : '') + (def.up ? ', ' + def.up : ''),
         act: () => w.level++,
       });
     }
   }
   if (player.weapons.length < MAX_WEAPONS) {
     for (const t in WEAPON_DEFS) {
+      if ((WEAPON_DEFS[t].lvl || 1) !== currentLevel) continue;
       if (!player.weapons.some(w => w.type === t)) {
         const def = WEAPON_DEFS[t];
         opts.push({
@@ -1223,7 +1658,8 @@ function buildOptions() {
   });
   if (player.hp < player.maxHp * 0.7) {
     opts.push({
-      weight: 4, icon: '🍲', tag: 'Rare', title: 'Soupe du jour',
+      weight: 4, icon: currentLevel === 2 ? '🥟' : '🍲', tag: 'Rare',
+      title: currentLevel === 2 ? 'Empanada géante' : 'Soupe du jour',
       desc: 'Récupère 50% de vos PV max.',
       act: () => heal(player.maxHp * 0.5),
     });
@@ -1414,6 +1850,145 @@ function fireWeapons(dt) {
         }
         break;
       }
+      case 'machette': {
+        if (w.cd <= 0) {
+          const range = st.range * st.area;
+          if (nearestEnemy(player.x, player.y, range)) {
+            let touched = 0;
+            gridQuery(player.x, player.y, range + 110, e => {
+              if (e.dead) return;
+              if (dist2(e.x, e.y, player.x, player.y) > (range + e.r) * (range + e.r)) return;
+              const ea = Math.atan2(e.y - player.y, e.x - player.x);
+              if (Math.abs(adiff(ea, player.aim)) > st.cone / 2) return;
+              damageEnemy(e, st.dmg, Math.cos(ea) * st.knock, Math.sin(ea) * st.knock, true);
+              touched++;
+            });
+            if (touched) sndHit();
+            effects.push({ kind: 'swing', ang: player.aim, t: 0, dur: 0.16, range });
+            beep(240, 120, 0.07, 'square', 0.05);
+            w.cd = st.cd;
+          } else w.cd = 0.1;
+        }
+        break;
+      }
+      case 'sarbacane': {
+        if (w.cd <= 0) {
+          w.cd = st.cd;
+          for (let i = 0; i < st.darts; i++) {
+            const a = player.aim + (st.darts > 1 ? (i / (st.darts - 1) - 0.5) * st.spread * (st.darts - 1) : 0);
+            projectiles.push({
+              kind: 'dart', x: player.x, y: player.y,
+              vx: Math.cos(a) * st.speed, vy: Math.sin(a) * st.speed,
+              r: 8, dmg: st.dmg, pierce: 0, knock: 40,
+              poison: st.poison * Math.pow(1.18, w.level - 1),
+              ttl: 1.1, hit: new Set(),
+            });
+          }
+          beep(900, 1400, 0.06, 'sine', 0.04);
+        }
+        break;
+      }
+      case 'fouet': {
+        if (w.cd <= 0) {
+          const range = st.range * st.area;
+          // claque automatiquement vers l'ennemi le plus proche
+          const tgt = nearestEnemy(player.x, player.y, range);
+          if (!tgt) { w.cd = 0.1; break; }
+          w.cd = st.cd;
+          const ang = Math.atan2(tgt.y - player.y, tgt.x - player.x);
+          let touched = 0;
+          gridQuery(player.x, player.y, range + 110, e => {
+            if (e.dead) return;
+            if (dist2(e.x, e.y, player.x, player.y) > (range + e.r) * (range + e.r)) return;
+            const ea = Math.atan2(e.y - player.y, e.x - player.x);
+            if (Math.abs(adiff(ea, ang)) > st.cone / 2) return;
+            damageEnemy(e, st.dmg, Math.cos(ea) * st.knock, Math.sin(ea) * st.knock, true);
+            touched++;
+          });
+          if (touched) sndHit();
+          effects.push({ kind: 'whip', ang, t: 0, dur: 0.16, range, cone: st.cone });
+          beep(1500, 90, 0.09, 'square', 0.07);
+          shake = Math.min(8, shake + 1.5);
+        }
+        break;
+      }
+      case 'ak47': {
+        if (w.cd <= 0) {
+          w.cd = st.cd;
+          for (let i = 0; i < st.bullets; i++) {
+            const a = player.aim + (Math.random() - 0.5) * st.spread;
+            const sp = st.speed * (0.9 + Math.random() * 0.2);
+            projectiles.push({
+              kind: 'bullet', x: player.x, y: player.y,
+              vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+              r: 7, dmg: st.dmg, pierce: 0, knock: 90,
+              ttl: 1.6, hit: new Set(), delay: i * 0.05,
+            });
+          }
+          beep(180, 90, 0.12, 'square', 0.07);
+        }
+        break;
+      }
+      case 'grenade': {
+        if (w.cd <= 0) {
+          w.cd = st.cd;
+          const range = Math.max(120, Math.min(st.throwRange, Math.hypot(aimWorld.x - player.x, aimWorld.y - player.y)));
+          const speed = 380;
+          const ttl = range / speed;
+          projectiles.push({
+            kind: 'nade', x: player.x, y: player.y,
+            vx: Math.cos(player.aim) * speed, vy: Math.sin(player.aim) * speed,
+            r: 8, noHit: true, ttl, ttl0: ttl,
+            boom: { r: st.boomR * st.area, dmg: st.dmg, frags: st.frags, fire: st.fire, fireDps: st.fireDps * Math.pow(1.15, w.level - 1), gen: 0 },
+          });
+          beep(500, 300, 0.08, 'triangle', 0.04);
+        }
+        break;
+      }
+      case 'lanceflamme': {
+        if (w.cd <= 0) {
+          w.cd = st.cd;
+          effects.push({ kind: 'flame', t: 0, dur: st.dur, tickT: 0, tick: st.tick, dmg: st.dmg, len: st.len * st.area, cone: st.cone });
+          beep(110, 70, 0.35, 'sawtooth', 0.05);
+        }
+        break;
+      }
+    }
+  }
+}
+
+// explosion de grenade : dégâts de zone, rebonds en éventail, feu au sol
+function explodeNade(p) {
+  p.dead = true;
+  const b = p.boom;
+  effects.push({ kind: 'boom', x: p.x, y: p.y, t: 0, dur: 0.35, range: b.r });
+  splat(p.x, p.y, '#ffab40', 8);
+  shake = Math.min(12, shake + 4);
+  beep(110, 35, 0.3, 'square', 0.1);
+  let touched = false;
+  gridQuery(p.x, p.y, b.r + 120, e => {
+    if (e.dead) return;
+    if (dist2(e.x, e.y, p.x, p.y) < (b.r + e.r) * (b.r + e.r)) {
+      const a = Math.atan2(e.y - p.y, e.x - p.x);
+      damageEnemy(e, b.dmg, Math.cos(a) * 260, Math.sin(a) * 260, true);
+      touched = true;
+    }
+  });
+  if (touched) sndHit();
+  if (b.fire) {
+    puddles.push({ x: p.x, y: p.y, r: b.r * 0.8, ttl: 3.5, dps: b.fireDps, tickT: 0, fire: true, seed: Math.random() * TAU });
+  }
+  if (b.frags > 0 && b.gen === 0) {
+    for (let i = 0; i < b.frags; i++) {
+      const a = (TAU * i) / b.frags + Math.random() * 0.6;
+      const d = 110 + Math.random() * 90;
+      const sp = 330;
+      projectiles.push({
+        kind: 'nade', x: p.x, y: p.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        r: 7, noHit: true, ttl: d / sp, ttl0: d / sp,
+        boom: { r: b.r * 0.7, dmg: b.dmg * 0.6, frags: 0, fire: b.fire, fireDps: b.fireDps, gen: 1 },
+      });
     }
   }
 }
@@ -1425,6 +2000,7 @@ function update(dt) {
   // annonces de nouveaux ennemis
   for (const key in ENEMY_DEFS) {
     const d = ENEMY_DEFS[key];
+    if ((d.lvl || 1) !== currentLevel) continue;
     if (d.t > 0 && time >= d.t && !announced[key]) {
       announced[key] = true;
       announcements.push({ txt: ANNOUNCE_MSGS[key] || `${d.icon} ${d.name} !`, ttl: 3.5 });
@@ -1441,11 +2017,19 @@ function update(dt) {
   if (moveStick.id !== null) { mx = moveStick.dx; my = moveStick.dy; }
   if (padMode && (padMove.x || padMove.y)) { mx = padMove.x; my = padMove.y; }
   player.moving = !!(mx || my);
+  player.boostT = Math.max(0, player.boostT - dt);
   if (player.moving) {
     const n = Math.hypot(mx, my);
-    const sp = player.speed * Math.min(1, n); // joystick analogique : vitesse proportionnelle
+    // joystick analogique : vitesse proportionnelle · coke : gros boost temporaire
+    const sp = player.speed * (player.boostT > 0 ? 1.55 : 1) * Math.min(1, n);
     player.x += (mx / n) * sp * dt;
     player.y += (my / n) * sp * dt;
+    if (player.boostT > 0 && particles.length < 250 && Math.random() < dt * 24) {
+      particles.push({
+        x: player.x, y: player.y, vx: (Math.random() - 0.5) * 30, vy: (Math.random() - 0.5) * 30,
+        h: 10, vh: 30, ttl: 0.35, ttl0: 0.35, color: '#ffffff',
+      });
+    }
   }
   player.x = clamp(player.x, WALL + player.r, WORLD_W - WALL - player.r);
   player.y = clamp(player.y, WALL + player.r, WORLD_H - WALL - player.r);
@@ -1461,26 +2045,49 @@ function update(dt) {
   }
   if (!bossSpawned && time >= BOSS_TIME) startBossFight();
 
+  // --- pastèques : tant qu'il y en a une, l'Hippo de Pablo se régale et se soigne ---
+  if (boss && !boss.dead && boss.type === 'hippo') {
+    const melon = enemies.find(e => e.type === 'pasteque' && !e.dead);
+    if (melon) {
+      const rate = boss.maxHp * 0.013;
+      boss.hp = Math.min(boss.maxHp, boss.hp + rate * dt);
+      boss.healAcc += dt;
+      if (boss.healAcc > 0.6) {
+        boss.healAcc = 0;
+        addDmgText(boss.x, boss.y, '+' + Math.round(rate * 0.6), '#7dde7d', 17);
+      }
+    } else {
+      melonTimer -= dt;
+      if (melonTimer <= 0) {
+        melonTimer = 15;
+        spawnEnemyAt('pasteque', WORLD_W / 2, WORLD_H / 2);
+        announcements.push({ txt: '🍉 Une pastèque pousse au centre — détruisez-la !', ttl: 3.5 });
+        beep(500, 700, 0.2, 'sine', 0.07);
+      }
+    }
+  }
+
   // --- spawn (suspendu pendant le combat de boss) ---
   if (!boss) {
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
-      spawnTimer = Math.max(0.22, 0.8 - time * 0.001);
-      const batch = 2 + Math.floor(time / 65);
+      spawnTimer = currentLevel === 2 ? Math.max(0.2, 0.72 - time * 0.0011) : Math.max(0.22, 0.8 - time * 0.001);
+      const batch = 2 + Math.floor(time / (currentLevel === 2 ? 55 : 65));
       for (let i = 0; i < batch; i++) spawnEnemy();
     }
   }
 
-  // --- bonus (aimant à fromage, etc.) ---
+  // --- bonus (aimant à fromage au niveau 1, sachet de coke au niveau 2) ---
   bonusTimer -= dt;
   if (bonusTimer <= 0) {
     bonusTimer = 55 + Math.random() * 45;
-    if (pickups.filter(p => p.kind === 'aimant').length < 2) {
+    const bonusKind = currentLevel === 2 ? 'coke' : 'aimant';
+    if (pickups.filter(p => p.kind === bonusKind).length < 2) {
       for (let i = 0; i < 6; i++) {
         const x = WALL + 90 + Math.random() * (WORLD_W - 2 * WALL - 180);
         const y = WALL + 90 + Math.random() * (WORLD_H - 2 * WALL - 180);
         if (dist2(x, y, player.x, player.y) > 350 * 350) {
-          pickups.push({ x, y, kind: 'aimant', bob: 0 });
+          pickups.push({ x, y, kind: bonusKind, bob: 0 });
           break;
         }
       }
@@ -1493,10 +2100,22 @@ function update(dt) {
   for (const e of enemies) {
     if (e.dead) continue;
     if (e.def.boss) { updateBoss(e, dt); continue; }
+    if (e.def.stationary) { e.hitFlash = Math.max(0, e.hitFlash - dt); continue; }
     e.atkCd = Math.max(0, e.atkCd - dt);
     e.hitFlash = Math.max(0, e.hitFlash - dt);
     e.beaterCd = Math.max(0, e.beaterCd - dt);
     e.slowT = Math.max(0, e.slowT - dt);
+
+    // poison de sarbacane
+    if (e.poisonT > 0) {
+      e.poisonT -= dt;
+      e.poisonTick = (e.poisonTick || 0) - dt;
+      if (e.poisonTick <= 0) {
+        e.poisonTick = 0.5;
+        damageEnemy(e, e.poisonDps * 0.5, 0, 0, true);
+      }
+      if (e.dead) continue;
+    }
 
     // knockback
     e.x += e.kvx * dt; e.y += e.kvy * dt;
@@ -1525,16 +2144,41 @@ function update(dt) {
     }
 
     if (e.def.dasher) {
+      const D = e.def;
       e.ct -= dt;
       if (e.cstate === 'stalk') {
-        if (e.ct <= 0) { e.cstate = 'windup'; e.ct = 0.45; }
+        if (e.ct <= 0) { e.cstate = 'windup'; e.ct = D.windup || 0.45; }
       } else if (e.cstate === 'windup') {
         sp = 0;
-        if (e.ct <= 0) { e.cstate = 'dash'; e.ct = 0.38; e.dashAng = Math.atan2(dy, dx); }
+        if (e.ct <= 0) { e.cstate = 'dash'; e.ct = D.dashT || 0.38; e.dashAng = Math.atan2(dy, dx); }
       } else { // dash
-        sp = e.speed * 4.2;
+        sp = e.speed * (D.dashMul || 4.2);
         dirx = Math.cos(e.dashAng); diry = Math.sin(e.dashAng);
-        if (e.ct <= 0) { e.cstate = 'stalk'; e.ct = 1.2 + Math.random() * 1.2; }
+        if (e.ct <= 0) { e.cstate = 'stalk'; e.ct = (D.stalkT || 1.2) + Math.random() * 1.2; }
+      }
+    }
+
+    // singe hurleur : garde ses distances et bombarde
+    if (e.def.ranged) {
+      if (dd < 230) { dirx = -dirx; diry = -diry; }
+      else if (dd < 400) {
+        if (!e.strafe) e.strafe = Math.random() < 0.5 ? -1 : 1;
+        const px = -diry, py = dirx;
+        dirx = px * e.strafe; diry = py * e.strafe;
+      }
+      e.shootT = (e.shootT === undefined ? 1 + Math.random() * 1.5 : e.shootT) - dt;
+      if (e.shootT <= 0 && dd < 560) {
+        e.shootT = 2.4 + Math.random();
+        const a = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.25;
+        const psp = 270;
+        const ttl = Math.min(1.8, dd / psp);
+        bossProjs.push({
+          kind: 'poop',
+          x: e.x + Math.cos(a) * 20, y: e.y + Math.sin(a) * 20,
+          vx: Math.cos(a) * psp, vy: Math.sin(a) * psp,
+          r: 12, dmg: e.dmg, ttl, ttl0: ttl,
+        });
+        beep(300, 120, 0.12, 'triangle', 0.05);
       }
     }
 
@@ -1575,9 +2219,9 @@ function update(dt) {
 
   // séparation des ennemis
   for (const e of enemies) {
-    if (e.dead || e.def.boss) continue;
+    if (e.dead || e.def.boss || e.def.stationary) continue;
     gridQuery(e.x, e.y, e.r + 35, o => {
-      if (o.dead || o.id <= e.id || o.def.boss) return;
+      if (o.dead || o.id <= e.id || o.def.boss || o.def.stationary) return;
       const dx = o.x - e.x, dy = o.y - e.y;
       const d = Math.hypot(dx, dy);
       const min = e.r + o.r;
@@ -1595,8 +2239,20 @@ function update(dt) {
 
   // --- projectiles ---
   for (const p of projectiles) {
+    // rafale d'AK : les balles partent l'une après l'autre, depuis le canon
+    if (p.delay) {
+      p.delay -= dt;
+      if (p.delay > 0) continue;
+      p.delay = 0;
+      p.x = player.x; p.y = player.y;
+    }
     p.x += p.vx * dt; p.y += p.vy * dt;
     p.ttl -= dt;
+
+    if (p.kind === 'nade') {
+      if (p.ttl <= 0) explodeNade(p);
+      continue;
+    }
 
     if (p.kind === 'glob') {
       if (p.ttl <= 0) {
@@ -1635,6 +2291,7 @@ function update(dt) {
         p.hit.add(e.id);
         const sp = Math.hypot(p.vx, p.vy) || 1;
         damageEnemy(e, p.dmg, (p.vx / sp) * p.knock, (p.vy / sp) * p.knock);
+        if (p.poison) { e.slowT = Math.max(e.slowT, 1.2); e.poisonT = 3; e.poisonDps = p.poison; }
         p.pierce--;
         if (p.pierce < 0) p.dead = true;
       }
@@ -1642,16 +2299,19 @@ function update(dt) {
   }
   projectiles = projectiles.filter(p => !p.dead);
 
-  // --- assiettes du boss ---
+  // --- projectiles ennemis (assiettes, cacas, boulettes de dollars) ---
   for (const p of bossProjs) {
     p.x += p.vx * dt; p.y += p.vy * dt;
     p.ttl -= dt;
+    // les projectiles en cloche ne touchent qu'à basse altitude (esquivables sous l'arc)
+    const arcH = p.ttl0 ? Math.sin(Math.PI * clamp(1 - p.ttl / p.ttl0, 0, 1)) * 42 : 0;
+    const col = p.kind === 'poop' ? '#6d4c2f' : p.kind === 'bill' ? '#66bb6a' : '#eceff1';
     if (p.ttl <= 0 || p.x < WALL || p.x > WORLD_W - WALL || p.y < WALL || p.y > WORLD_H - WALL) {
       p.dead = true;
-      splat(p.x, p.y, '#eceff1', 4);
-    } else if (dist2(p.x, p.y, player.x, player.y) < (p.r + player.r) * (p.r + player.r)) {
+      splat(p.x, p.y, col, 4);
+    } else if (arcH < 24 && dist2(p.x, p.y, player.x, player.y) < (p.r + player.r) * (p.r + player.r)) {
       damagePlayer(p.dmg);
-      splat(p.x, p.y, '#eceff1', 6);
+      splat(p.x, p.y, col, 6);
       p.dead = true;
     }
   }
@@ -1677,6 +2337,36 @@ function update(dt) {
   // --- effets ---
   for (const fx of effects) {
     fx.t += dt;
+    if (fx.kind === 'flame') {
+      // lance-flammes : cône unique qui suit la visée
+      fx.tickT -= dt;
+      if (fx.tickT <= 0) {
+        fx.tickT = fx.tick;
+        const ca = Math.cos(player.aim), sa = Math.sin(player.aim);
+        const tanC = Math.tan(fx.cone / 2);
+        gridQuery(player.x + ca * fx.len / 2, player.y + sa * fx.len / 2, fx.len / 2 + 140, e => {
+          if (e.dead) return;
+          const rx = e.x - player.x, ry = e.y - player.y;
+          const along = rx * ca + ry * sa;
+          const perp = Math.abs(-rx * sa + ry * ca);
+          if (along > 0 && along < fx.len && perp < along * tanC + e.r * 0.7) {
+            damageEnemy(e, fx.dmg, ca * 40, sa * 40, true);
+          }
+        });
+        if (particles.length < 250) {
+          for (let k = 0; k < 3; k++) {
+            const a = player.aim + (Math.random() - 0.5) * fx.cone;
+            const d = Math.random() * fx.len;
+            particles.push({
+              x: player.x + Math.cos(a) * d, y: player.y + Math.sin(a) * d,
+              vx: (Math.random() - 0.5) * 40, vy: (Math.random() - 0.5) * 40,
+              h: 12, vh: 60 + Math.random() * 60,
+              ttl: 0.35, ttl0: 0.35, color: '#ff8c28',
+            });
+          }
+        }
+      }
+    }
     if (fx.kind === 'torch') {
       fx.tickT -= dt;
       if (fx.tickT <= 0) {
@@ -1727,6 +2417,11 @@ function update(dt) {
       pk.dead = true;
       if (pk.kind === 'cheese') { gainXp(pk.v); sndPickup(); }
       else if (pk.kind === 'soup') { heal(player.maxHp * 0.25); sndPickup(); }
+      else if (pk.kind === 'coke') {
+        player.boostT = 8;
+        announcements.push({ txt: '💊 SNIFF ! Vitesse +55% pendant 8 s !', ttl: 2.5 });
+        beep(600, 1400, 0.3, 'sine', 0.09);
+      }
       else if (pk.kind === 'aimant') {
         let n = 0;
         for (const o of pickups) {
@@ -1781,7 +2476,7 @@ function render3d() {
   chefMesh.position.set(player.x, chefBob, player.y);
   chefMesh.rotation.y = -player.aim;
 
-  // poêle : en main, ou en train de frapper
+  // arme en main (poêle ou machette), ou en train de frapper
   const swing = effects.find(fx => fx.kind === 'swing');
   let panAng, panR, panY;
   if (swing) {
@@ -1794,9 +2489,11 @@ function render3d() {
     panR = 15;
     panY = 20 + chefBob;
   }
-  panMesh.visible = chefMesh.visible;
-  panMesh.position.set(player.x + Math.cos(panAng) * panR, panY, player.y + Math.sin(panAng) * panR);
-  panMesh.rotation.y = -panAng;
+  const heldMesh = currentLevel === 2 ? macheteMesh : panMesh;
+  (currentLevel === 2 ? panMesh : macheteMesh).visible = false;
+  heldMesh.visible = chefMesh.visible;
+  heldMesh.position.set(player.x + Math.cos(panAng) * panR, panY, player.y + Math.sin(panAng) * panR);
+  heldMesh.rotation.y = -panAng;
 
   // --- ennemis (instanciés par type) ---
   const counts = {};
@@ -1835,18 +2532,20 @@ function render3d() {
 
   // --- boss ---
   if (boss && !boss.dead) {
-    bossMesh.visible = true;
-    const tele = boss.bstate === 'chargeTele' || boss.bstate === 'slamTele' || boss.bstate === 'summon';
+    const bMesh = boss.type === 'hippo' ? hippoMesh : bossMesh;
+    (boss.type === 'hippo' ? bossMesh : hippoMesh).visible = false;
+    bMesh.visible = true;
+    const tele = boss.bstate === 'chargeTele' || boss.bstate === 'slamTele' || boss.bstate === 'summon' || boss.bstate === 'vomitTele';
     const ox = tele ? (Math.random() - 0.5) * 7 : 0;
     const oz = tele ? (Math.random() - 0.5) * 7 : 0;
     const stomp = boss.bstate === 'walk' || boss.bstate === 'charge' ? Math.abs(Math.sin(t * 8)) * 5 : 0;
-    bossMesh.position.set(boss.x + ox, stomp, boss.y + oz);
-    bossMesh.rotation.y = -boss.face;
-    bossMesh.rotation.z = boss.bstate === 'stun' ? 0.3 : 0;
+    bMesh.position.set(boss.x + ox, stomp, boss.y + oz);
+    bMesh.rotation.y = -boss.face;
+    bMesh.rotation.z = boss.bstate === 'stun' ? 0.3 : 0;
     const pop = 1 + boss.hitFlash * 0.8;
     const enrPulse = boss.hp < boss.maxHp * 0.3 ? 1 + Math.sin(t * 14) * 0.03 : 1;
-    bossMesh.scale.setScalar(3.4 * pop * enrPulse);
-    if (shadowCount < 890) setInst(shadowInst, shadowCount++, boss.x, 0.5, boss.y, 0, 4.6);
+    bMesh.scale.setScalar((boss.type === 'hippo' ? 3.2 : 3.4) * pop * enrPulse);
+    if (shadowCount < 890) setInst(shadowInst, shadowCount++, boss.x, 0.5, boss.y, 0, boss.type === 'hippo' ? 5.4 : 4.6);
 
     slamTeleMesh.visible = boss.bstate === 'slamTele';
     if (slamTeleMesh.visible) {
@@ -1862,57 +2561,76 @@ function render3d() {
     }
   } else {
     bossMesh.visible = false;
+    hippoMesh.visible = false;
     slamTeleMesh.visible = false;
     chargeTeleMesh.visible = false;
   }
 
-  // ondes de choc
-  const shocks = effects.filter(fx => fx.kind === 'shock');
+  // ondes de choc (boss) et explosions de grenades
+  const shocks = effects.filter(fx => fx.kind === 'shock' || fx.kind === 'boom');
   for (let i = 0; i < shockPool.length; i++) {
     const m = shockPool[i];
     if (i < shocks.length) {
       const fx = shocks[i];
       const pr = fx.t / fx.dur;
       m.visible = true;
+      m.material.color.setHex(fx.kind === 'boom' ? 0xffa726 : 0xff5722);
       m.position.set(fx.x, 3, fx.y);
       m.scale.setScalar(fx.range * (0.15 + 0.85 * pr));
       m.material.opacity = 0.8 * (1 - pr);
     } else m.visible = false;
   }
 
-  // assiettes du boss
-  let plateCount = 0;
+  // projectiles ennemis : assiettes, cacas et boulettes de dollars (en cloche)
+  let plateCount = 0, poopCount = 0, billCount = 0;
   for (const p of bossProjs) {
-    if (plateCount >= plateInst.userData.cap) break;
-    setInst(plateInst, plateCount++, p.x, 18, p.y, t * 7);
+    const h = p.ttl0 ? 12 + Math.sin(Math.PI * clamp(1 - p.ttl / p.ttl0, 0, 1)) * 42 : 18;
+    if (p.kind === 'poop' && poopCount < poopInst.userData.cap) setInst(poopInst, poopCount++, p.x, h, p.y, t * 5);
+    else if (p.kind === 'bill' && billCount < billInst.userData.cap) setInst(billInst, billCount++, p.x, h, p.y, t * 6);
+    else if (!p.kind && plateCount < plateInst.userData.cap) setInst(plateInst, plateCount++, p.x, 18, p.y, t * 7);
   }
   plateInst.count = plateCount;
   plateInst.instanceMatrix.needsUpdate = true;
+  poopInst.count = poopCount;
+  poopInst.instanceMatrix.needsUpdate = true;
+  billInst.count = billCount;
+  billInst.instanceMatrix.needsUpdate = true;
 
-  // --- ramassables ---
-  let cheeseCount = 0, soupCount = 0, magnetCount = 0;
+  // --- ramassables (fromage/soupe en cuisine, dollars/empanadas dans la jungle) ---
+  let cheeseCount = 0, soupCount = 0, magnetCount = 0, dollarCount = 0, empCount = 0, cokeCount = 0;
   for (const pk of pickups) {
     pk.bob += 0.1;
     const by = 2 + Math.sin(pk.bob) * 2.5;
-    if (pk.kind === 'cheese' && cheeseCount < 420) {
-      setInst(cheeseInst, cheeseCount++, pk.x, by, pk.y, pk.bob * 0.5);
+    if (pk.kind === 'cheese') {
+      if (currentLevel === 2) {
+        if (dollarCount < 420) setInst(dollarInst, dollarCount++, pk.x, by + 3, pk.y, pk.bob * 0.5);
+      } else if (cheeseCount < 420) setInst(cheeseInst, cheeseCount++, pk.x, by, pk.y, pk.bob * 0.5);
       if (shadowCount < 890) setInst(shadowInst, shadowCount++, pk.x, 0.5, pk.y, 0, 0.7);
-    } else if (pk.kind === 'soup' && soupCount < 40) {
-      setInst(soupInst, soupCount++, pk.x, by, pk.y, 0);
+    } else if (pk.kind === 'soup') {
+      if (currentLevel === 2) {
+        if (empCount < 40) setInst(empanadaInst, empCount++, pk.x, by, pk.y, pk.bob * 0.3);
+      } else if (soupCount < 40) setInst(soupInst, soupCount++, pk.x, by, pk.y, 0);
       if (shadowCount < 890) setInst(shadowInst, shadowCount++, pk.x, 0.5, pk.y, 0, 0.8);
     } else if (pk.kind === 'aimant' && magnetCount < 8) {
       setInst(magnetInst, magnetCount++, pk.x, 4 + Math.sin(pk.bob) * 3, pk.y, t * 2.2);
+      if (shadowCount < 890) setInst(shadowInst, shadowCount++, pk.x, 0.5, pk.y, 0, 1.1);
+    } else if (pk.kind === 'coke' && cokeCount < 8) {
+      setInst(cokeInst, cokeCount++, pk.x, 4 + Math.sin(pk.bob) * 3, pk.y, t * 2.2);
       if (shadowCount < 890) setInst(shadowInst, shadowCount++, pk.x, 0.5, pk.y, 0, 1.1);
     }
   }
   cheeseInst.count = cheeseCount; cheeseInst.instanceMatrix.needsUpdate = true;
   soupInst.count = soupCount; soupInst.instanceMatrix.needsUpdate = true;
   magnetInst.count = magnetCount; magnetInst.instanceMatrix.needsUpdate = true;
+  dollarInst.count = dollarCount; dollarInst.instanceMatrix.needsUpdate = true;
+  empanadaInst.count = empCount; empanadaInst.instanceMatrix.needsUpdate = true;
+  cokeInst.count = cokeCount; cokeInst.instanceMatrix.needsUpdate = true;
   shadowInst.count = shadowCount; shadowInst.instanceMatrix.needsUpdate = true;
 
   // --- projectiles ---
-  let knifeCount = 0, corkCount = 0, globCount = 0;
+  let knifeCount = 0, corkCount = 0, globCount = 0, dartCount = 0, bulletCount = 0, nadeCount = 0;
   for (const p of projectiles) {
+    if (p.delay > 0) continue; // balles d'AK pas encore parties
     if (p.kind === 'knife' && knifeCount < 60) {
       setInst(knifeInst, knifeCount++, p.x, 16, p.y, -Math.atan2(p.vy, p.vx));
     } else if (p.kind === 'cork' && corkCount < 20) {
@@ -1920,21 +2638,32 @@ function render3d() {
     } else if (p.kind === 'glob' && globCount < 20) {
       const h = Math.sin(Math.PI * (1 - p.ttl / p.ttl0)) * 42;
       setInst(globInst, globCount++, p.x, 8 + h, p.y, 0);
+    } else if (p.kind === 'dart' && dartCount < 40) {
+      setInst(dartInst, dartCount++, p.x, 14, p.y, -Math.atan2(p.vy, p.vx));
+    } else if (p.kind === 'bullet' && bulletCount < 80) {
+      setInst(bulletInst, bulletCount++, p.x, 15, p.y, -Math.atan2(p.vy, p.vx));
+    } else if (p.kind === 'nade' && nadeCount < 40) {
+      const h = Math.sin(Math.PI * (1 - p.ttl / p.ttl0)) * 46;
+      setInst(nadeInst, nadeCount++, p.x, 6 + h, p.y, t * 4);
     }
   }
   knifeInst.count = knifeCount; knifeInst.instanceMatrix.needsUpdate = true;
   corkInst.count = corkCount; corkInst.instanceMatrix.needsUpdate = true;
   globInst.count = globCount; globInst.instanceMatrix.needsUpdate = true;
+  dartInst.count = dartCount; dartInst.instanceMatrix.needsUpdate = true;
+  bulletInst.count = bulletCount; bulletInst.instanceMatrix.needsUpdate = true;
+  nadeInst.count = nadeCount; nadeInst.instanceMatrix.needsUpdate = true;
 
-  // --- flaques ---
+  // --- flaques (sauce piquante ou feu de grenade) ---
   for (let i = 0; i < puddlePool.length; i++) {
     const m = puddlePool[i];
     if (i < puddles.length) {
       const pu = puddles[i];
       m.visible = true;
+      m.material.color.setHex(pu.fire ? 0xff8a3c : 0xd84315);
       m.position.set(pu.x, 0.7 + i * 0.05, pu.y);
       m.scale.setScalar(pu.r);
-      m.material.opacity = 0.55 * Math.min(1, pu.ttl / 0.8);
+      m.material.opacity = (pu.fire ? 0.5 + Math.sin(t * 16 + pu.seed) * 0.1 : 0.55) * Math.min(1, pu.ttl / 0.8);
     } else m.visible = false;
   }
 
@@ -1952,6 +2681,37 @@ function render3d() {
       beam.material.opacity = 0.8 * fade;
     }
   } else torchGroup.visible = false;
+
+  // --- lance-flammes ---
+  const flame = effects.find(fx => fx.kind === 'flame');
+  if (flame) {
+    flameGroup.visible = true;
+    flameGroup.position.set(player.x, 15, player.y);
+    flameGroup.rotation.y = -player.aim;
+    const fade = Math.min(1, (flame.dur - flame.t) * 3, flame.t * 8 + 0.2);
+    const flick = 0.85 + Math.random() * 0.3;
+    const w = Math.tan(flame.cone / 2) * flame.len * flick;
+    flameBeam.scale.set(w, flame.len, w);
+    flameBeam.position.x = flame.len / 2;
+    flameBeam.material.opacity = 0.8 * fade;
+    flameInner.material.opacity = 0.9 * fade;
+  } else flameGroup.visible = false;
+
+  // --- fouet ---
+  const whipFx = effects.find(fx => fx.kind === 'whip');
+  if (whipFx) {
+    if (Math.abs(whipMesh.userData.cone - whipFx.cone) > 0.01) {
+      whipMesh.geometry.dispose();
+      whipMesh.geometry = new THREE.CircleGeometry(1, 20, -whipFx.cone / 2, whipFx.cone).rotateX(-HALF_PI);
+      whipMesh.userData.cone = whipFx.cone;
+    }
+    const pr = whipFx.t / whipFx.dur;
+    whipMesh.visible = true;
+    whipMesh.position.set(player.x, 1.2, player.y);
+    whipMesh.rotation.y = -whipFx.ang;
+    whipMesh.scale.setScalar(whipFx.range * (0.5 + 0.5 * pr));
+    whipMesh.material.opacity = 0.5 * (1 - pr);
+  } else whipMesh.visible = false;
 
   // --- éclairs ---
   const zaps = effects.filter(fx => fx.kind === 'zap');
@@ -2081,10 +2841,10 @@ function drawHUD() {
   }
   hctx.globalAlpha = 1;
 
-  // barre d'XP en haut
+  // barre d'XP en haut (dorée en cuisine, billets verts dans la jungle)
   hctx.fillStyle = 'rgba(0,0,0,0.6)';
   hctx.fillRect(0, 0, VW, 16);
-  hctx.fillStyle = '#ffd54f';
+  hctx.fillStyle = currentLevel === 2 ? '#7ed87e' : '#ffd54f';
   hctx.fillRect(0, 0, VW * clamp(player.xp / player.xpNeed, 0, 1), 16);
   hctx.fillStyle = '#14100c';
   hctx.font = 'bold 12px system-ui';
@@ -2102,14 +2862,15 @@ function drawHUD() {
 
   // barre de vie du boss
   if (boss && !boss.dead) {
+    const bTitle = `${boss.def.icon} ${boss.def.name.toUpperCase()}`;
     const bw = Math.min(520, VW * 0.55), bx = VW / 2 - bw / 2, by = 88;
     hctx.textAlign = 'center';
     hctx.font = 'bold 17px system-ui';
     hctx.strokeStyle = 'rgba(0,0,0,0.8)';
     hctx.lineWidth = 4;
-    hctx.strokeText('👨‍🍳 PHILIPPE CHUILEBEST', VW / 2, by - 12);
+    hctx.strokeText(bTitle, VW / 2, by - 12);
     hctx.fillStyle = '#ff8a65';
-    hctx.fillText('👨‍🍳 PHILIPPE CHUILEBEST', VW / 2, by - 12);
+    hctx.fillText(bTitle, VW / 2, by - 12);
     hctx.fillStyle = 'rgba(0,0,0,0.65)';
     hctx.fillRect(bx - 2, by - 2, bw + 4, 18);
     hctx.fillStyle = boss.hp < boss.maxHp * 0.3 ? '#ff1744' : '#e53935';
@@ -2124,7 +2885,9 @@ function drawHUD() {
   hctx.font = 'bold 16px system-ui';
   hctx.lineWidth = 3;
   const statsX = isTouch ? VW - 132 : VW - 14;
-  const rightLines = [`💀 ${kills}`, `🏆 ${best > 0 ? fmtTime(best) : '—'}`];
+  const bestNow = currentLevel === 2 ? best2 : best;
+  const rightLines = [`💀 ${kills}`, `🏆 ${bestNow > 0 ? fmtTime(bestNow) : '—'}`];
+  if (player.boostT > 0) rightLines.push(`💊 ${Math.ceil(player.boostT)}s`);
   rightLines.forEach((txt, i) => {
     hctx.strokeText(txt, statsX, 40 + i * 26);
     hctx.fillStyle = '#f5e9d0';
@@ -2278,7 +3041,8 @@ const elStart = document.getElementById('start');
 const elGameover = document.getElementById('gameover');
 const elNewRecord = document.getElementById('newrecord');
 
-function startGame() {
+function startGame(lv = currentLevel) {
+  currentLevel = lv;
   initGame();
   releaseSticks();
   tryLockLandscape();
@@ -2290,16 +3054,39 @@ function startGame() {
   beep(330, 660, 0.2, 'sine', 0.06);
 }
 
+function saveRecord() {
+  const prev = currentLevel === 2 ? best2 : best;
+  const isRecord = time > prev;
+  if (isRecord) {
+    if (currentLevel === 2) {
+      best2 = time;
+      localStorage.setItem('cauchemar_best2', String(best2));
+    } else {
+      best = time;
+      localStorage.setItem('cauchemar_best', String(best));
+    }
+  }
+  document.getElementById('bestStart').textContent = best > 0 ? fmtTime(best) : '—';
+  document.getElementById('bestStart2').textContent = best2 > 0 ? fmtTime(best2) : '—';
+  return isRecord;
+}
+
 function victory() {
   state = 'victory';
   boss = null;
   bossProjs = [];
   shake = 18;
-  const isRecord = time > best;
-  if (isRecord) {
-    best = time;
-    localStorage.setItem('cauchemar_best', String(best));
+  const isRecord = saveRecord();
+  if (currentLevel === 1 && !level2Unlocked) {
+    level2Unlocked = true;
+    localStorage.setItem('cauchemar_lvl2', '1');
+    updateLevelButtons();
   }
+  document.getElementById('vTitle').textContent = currentLevel === 2 ? '🌴 LIBRE !' : '🏆 SERVICE VALIDÉ !';
+  document.getElementById('vSub').textContent = currentLevel === 2
+    ? "L'Hippo de Pablo mord la poussière. La jungle est derrière vous : direction la liberté, les poches pleines de dollars !"
+    : "Philippe ChuileBest s'incline… mais vos dettes vous rattrapent : vous voilà Cuisinier d'un labo de coke au fond de la jungle. Il va falloir s'évader.";
+  document.getElementById('btnNext').classList.toggle('hidden', currentLevel !== 1);
   document.getElementById('vTime').textContent = fmtTime(time);
   document.getElementById('vKills').textContent = kills;
   document.getElementById('vLevel').textContent = player.level;
@@ -2313,24 +3100,37 @@ function victory() {
 
 function gameOver() {
   state = 'over';
-  const isRecord = time > best;
-  if (isRecord) {
-    best = time;
-    localStorage.setItem('cauchemar_best', String(best));
-  }
+  const isRecord = saveRecord();
   document.getElementById('goTime').textContent = fmtTime(time);
   document.getElementById('goKills').textContent = kills;
   document.getElementById('goLevel').textContent = player.level;
-  document.getElementById('goBest').textContent = fmtTime(best);
+  document.getElementById('goBest').textContent = fmtTime(currentLevel === 2 ? best2 : best);
   elNewRecord.classList.toggle('hidden', !isRecord);
   elGameover.classList.remove('hidden');
   beep(300, 60, 0.8, 'sawtooth', 0.1);
 }
 
-document.getElementById('btnStart').addEventListener('click', startGame);
-document.getElementById('btnRestart').addEventListener('click', startGame);
-document.getElementById('btnRestart2').addEventListener('click', startGame);
+const btnLevel2 = document.getElementById('btnLevel2');
+function updateLevelButtons() {
+  btnLevel2.textContent = (level2Unlocked ? '🌴' : '🔒') + ' Niveau 2 — La cuisine de Pablo';
+  btnLevel2.classList.toggle('locked', !level2Unlocked);
+}
+document.getElementById('btnStart').addEventListener('click', () => startGame(1));
+btnLevel2.addEventListener('click', () => {
+  // accès secret pour le debug : maintenir H en cliquant
+  if (level2Unlocked || keys.has('KeyH')) { startGame(2); return; }
+  const hint = document.getElementById('lockHint');
+  hint.classList.remove('hidden');
+  clearTimeout(updateLevelButtons._hintT);
+  updateLevelButtons._hintT = setTimeout(() => hint.classList.add('hidden'), 2500);
+  beep(200, 120, 0.15, 'square', 0.06);
+});
+document.getElementById('btnRestart').addEventListener('click', () => startGame());
+document.getElementById('btnRestart2').addEventListener('click', () => startGame());
+document.getElementById('btnNext').addEventListener('click', () => startGame(2));
+updateLevelButtons();
 document.getElementById('bestStart').textContent = best > 0 ? fmtTime(best) : '—';
+document.getElementById('bestStart2').textContent = best2 > 0 ? fmtTime(best2) : '—';
 
 // accès de debug (console)
 window.DEBUG = {
@@ -2339,11 +3139,20 @@ window.DEBUG = {
   godMode: () => { player.maxHp = 99999; player.hp = 99999; },
   boss: () => { time = BOSS_TIME - 0.5; },
   aimant: () => { pickups.push({ x: player.x + 30, y: player.y, kind: 'aimant', bob: 0 }); },
+  coke: () => { pickups.push({ x: player.x + 30, y: player.y, kind: 'coke', bob: 0 }); },
   strong: () => {
     player.weapons = [['poele', 6], ['couteau', 6], ['electrique', 6], ['champagne', 6], ['batteur', 5]]
       .map(([tp, lv]) => { const w = makeWeapon(tp); w.level = lv; return w; });
     player.maxHp = 400; player.hp = 400;
   },
+  level: (lv = 2) => startGame(lv),
+  strong2: () => {
+    player.weapons = [['machette', 6], ['ak47', 6], ['grenade', 6], ['lanceflamme', 5], ['fouet', 5]]
+      .map(([tp, lv]) => { const w = makeWeapon(tp); w.level = lv; return w; });
+    player.maxHp = 400; player.hp = 400;
+  },
+  unlock: () => { level2Unlocked = true; localStorage.setItem('cauchemar_lvl2', '1'); updateLevelButtons(); },
+  killBoss: () => { if (boss) boss.hp = 1; },
   step: (n = 60) => { for (let i = 0; i < n && state === 'play'; i++) update(1 / 60); render3d(); },
   info: () => ({ state, time, kills, enemies: enemies.length, projectiles: projectiles.length, hp: player.hp, level: player.level, weapons: player.weapons.map(w => w.type + ':' + w.level), boss: boss ? { hp: Math.round(boss.hp), state: boss.bstate } : null, aimants: pickups.filter(p => p.kind === 'aimant').length, cheese: pickups.filter(p => p.kind === 'cheese').length }),
 };

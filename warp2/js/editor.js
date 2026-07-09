@@ -77,7 +77,6 @@ export class Editor {
     }
     $('#btn-rotate').addEventListener('click', () => { this.rot = (this.rot + 1) & 3; this.refresh(); });
     $('#btn-erase').addEventListener('click', () => { this.erase = !this.erase; this.refresh(); });
-    $('#btn-flip').addEventListener('click', () => this.flipDecks());
     $('#btn-clear').addEventListener('click', () => { this.design.parts = []; this.refresh(); });
     $('#btn-editor-back').addEventListener('click', () => { this.close(); this.onBack && this.onBack(); });
     $('#btn-save').addEventListener('click', () => this.save());
@@ -115,15 +114,6 @@ export class Editor {
     for (const tab of this.root.querySelectorAll('.deck-tab')) {
       tab.classList.toggle('on', +tab.dataset.deck === d);
     }
-    this.refresh();
-  }
-
-  flipDecks() {
-    for (const p of this.design.parts) {
-      if (p.deck === 0) p.deck = 2;
-      else if (p.deck === 2) p.deck = 0;
-    }
-    if (this.deck !== 1) this.setDeck(this.deck === 0 ? 2 : 0);
     this.refresh();
   }
 
@@ -175,21 +165,34 @@ export class Editor {
     if (!def) return false;
     if (def.deck === 'mid' && this.deck !== 1) return false;
     if (def.deck === 'ends' && this.deck === 1) return false;
-    const stats = computeStats(this.design);
-    if (stats.cost + def.cost > BUDGET) return false;
     const cells = partCells(def, this.rot).map(([dx, dy]) => [x + dx, y + dy]);
+    const replaced = new Set();
     for (const [cx, cy] of cells) {
       if (cx < 0 || cy < 0 || cx >= GRID || cy >= GRID) return false;
-      if (this.partAt(cx, cy, this.deck)) return false;
-      // Top/bottom parts need mid support.
+      const p = this.partAt(cx, cy, this.deck);
+      if (p) replaced.add(p); // occupied cells get replaced, not rejected
+      // Top parts need mid support.
       if (this.deck !== 1 && !this.partAt(cx, cy, 1)) return false;
     }
-    return true;
+    // Budget check accounts for whatever the new part replaces.
+    let cost = computeStats(this.design).cost + def.cost;
+    for (const p of replaced) cost -= PARTS[p.id].cost;
+    return cost <= BUDGET;
   }
 
   placeAt([x, y]) {
     if (!this.canPlace(x, y)) return;
+    const def = PARTS[this.selected];
+    const cells = partCells(def, this.rot).map(([dx, dy]) => [x + dx, y + dy]);
+    // Placing on occupied cells swaps the old part(s) out for the new one.
+    const replaced = new Set();
+    for (const [cx, cy] of cells) {
+      const p = this.partAt(cx, cy, this.deck);
+      if (p) replaced.add(p);
+    }
+    if (replaced.size) this.design.parts = this.design.parts.filter(q => !replaced.has(q));
     this.design.parts.push({ id: this.selected, x, y, deck: this.deck, rot: this.rot });
+    if (this.deck === 1) this.dropUnsupported();
     this.refresh();
   }
 
@@ -197,15 +200,19 @@ export class Editor {
     const p = this.partAt(x, y, this.deck);
     if (!p) return;
     this.design.parts = this.design.parts.filter(q => q !== p);
-    // Removing a mid part drops unsupported top/bottom parts on those cells.
-    if (p.deck === 1) {
-      const gone = new Set(placedCells(p).map(([cx, cy]) => cx + ',' + cy));
-      this.design.parts = this.design.parts.filter(q => {
-        if (q.deck === 1) return true;
-        return !placedCells(q).some(([cx, cy]) => gone.has(cx + ',' + cy));
-      });
-    }
+    // Removing a mid part drops top parts that lost their support.
+    if (p.deck === 1) this.dropUnsupported();
     this.refresh();
+  }
+
+  dropUnsupported() {
+    const mid = new Set();
+    for (const q of this.design.parts) {
+      if (q.deck !== 1) continue;
+      for (const [cx, cy] of placedCells(q)) mid.add(cx + ',' + cy);
+    }
+    this.design.parts = this.design.parts.filter(q =>
+      q.deck === 1 || placedCells(q).every(([cx, cy]) => mid.has(cx + ',' + cy)));
   }
 
   // ---- stats / validation ------------------------------------------------------
@@ -222,7 +229,7 @@ export class Editor {
     $('#stat-thrust').textContent = s.thrust;
     $('#stat-speed').textContent = Math.round(s.topSpeed);
     $('#stat-turn').textContent = s.turnRate.toFixed(1);
-    $('#stat-energy').textContent = `${s.energyMax} (+${s.energyRegen}/s)`;
+    $('#stat-energy').textContent = `${s.energyMax} (+${s.energyRegen.toFixed(1)}/s)`;
     const err = $('#editor-errors');
     err.innerHTML = v.errors.slice(0, 3).map(e => `<div>⚠ ${e}</div>`).join('');
     $('#btn-test').disabled = !v.ok;
@@ -316,8 +323,33 @@ export class Editor {
 }
 
 export function loadSavedShips() {
-  try { return JSON.parse(localStorage.getItem('warp2-ships')) || []; }
-  catch { return []; }
+  try {
+    const ships = JSON.parse(localStorage.getItem('warp2-ships')) || [];
+    ships.forEach(migrateDesign);
+    return ships;
+  } catch { return []; }
+}
+
+// Older designs: energy cells became standard hull (every block now feeds the
+// banks), and the bottom deck was retired — hoist those parts to the top deck
+// where the cell is free, drop them where it isn't.
+function migrateDesign(d) {
+  if (!Array.isArray(d.parts)) return;
+  d.parts = d.parts
+    .map(p => p.id === 'energy_cell' ? { ...p, id: 'block_std' } : p)
+    .filter(p => PARTS[p.id]);
+  const top = new Set();
+  for (const p of d.parts) {
+    if (p.deck !== 2) continue;
+    for (const [x, y] of placedCells(p)) top.add(x + ',' + y);
+  }
+  d.parts = d.parts.filter(p => {
+    if (p.deck !== 0) return true;
+    if (placedCells(p).some(([x, y]) => top.has(x + ',' + y))) return false;
+    p.deck = 2;
+    for (const [x, y] of placedCells(p)) top.add(x + ',' + y);
+    return true;
+  });
 }
 export function deleteSavedShip(name) {
   const saved = loadSavedShips().filter(s => s.name !== name);

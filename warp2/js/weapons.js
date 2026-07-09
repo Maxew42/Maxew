@@ -9,6 +9,7 @@ export class Bullet {
     this.vy = Math.sin(angle) * w.speed + owner.vy * 0.5;
     this.dmg = w.dmg;
     this.life = (w.range || 500) / w.speed;
+    this.color = w.color || '#ffe9b0';
     this.alive = true;
   }
   update(dt, world) {
@@ -35,7 +36,7 @@ export class Bullet {
     }
   }
   render(ctx) {
-    ctx.strokeStyle = '#ffe9b0';
+    ctx.strokeStyle = this.color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(this.x, this.y);
@@ -177,7 +178,8 @@ export class Mine {
       const trig = ship.radius + 34;
       if (d2 < trig * trig) {
         this.alive = false;
-        world.explosion(this.x, this.y, this.w.radius, this.w.dmg, this.owner);
+        // Mines detonate against the hull itself — shields don't stop them.
+        world.explosion(this.x, this.y, this.w.radius, this.w.dmg, this.owner, true);
         return;
       }
     }

@@ -34,10 +34,11 @@ pour l'installation PWA et le multijoueur.)
 |---|---|---|---|---|---|---|
 | **Clavier** | ↑ / W | ↓ / S | ←→ / AD | Espace / Maj | E / Ctrl | C |
 | **Manette** | RT / A | LT / B | Stick / Croix | RB / LB | X / Y | stick droit ↓ (ou L3/R3) |
-| **Tactile** | auto | FREIN | ◀ ▶ | DRIFT | 🎁 (ou la case objet) | 👀 |
+| **Tactile** | auto | FREIN | joystick | DRIFT | 🎁 (ou la case objet) | 👀 |
 
 Échap / Start : quitter la course. Le drift chargé donne un mini-turbo
-(2 paliers).
+(2 paliers). Pendant le décompte, accélérer au bon moment donne un départ
+canon — trop tôt et le moteur se noie.
 
 ## Les 7 pilotes
 
@@ -47,7 +48,7 @@ pour l'installation PWA et le multijoueur.)
 | Max Veramoitiestaplein | monoplace | vitesse max, accélération faible |
 | Nein Nein | taxi jaune NY | robuste, équilibré |
 | Rob Fury | bus blindé | très lourd, pousse tout le monde |
-| Will Nails | berline | polyvalent |
+| Nails Wheels | berline | polyvalent |
 | Lee Tranchey | muscle car | lourd et rapide |
 | Shark Leclair | bolide rouge à aileron | léger et vif |
 
@@ -57,7 +58,7 @@ pour l'installation PWA et le multijoueur.)
 |---|---|---|
 | 🔥 | Nitro | boost de vitesse |
 | 🚀 | Missile téléguidé (rare) | poursuit le 1ᵉʳ le long de la piste, grosse explosion |
-| 🗡️ | Lance explosive | poursuit le kart devant vous |
+| 🗡️ | Lance explosive | file tout droit (vers l'arrière avec le rétroviseur), portée limitée |
 | 📌 | Clous | piège posé au sol → tête-à-queue |
 | 🪚 | Scies latérales | 6 s de scies qui éjectent les voisins |
 | 🪝 | Grappin | tire un crochet tout droit ; s'il accroche un kart (≤ 38 m), téléportation juste derrière lui — sinon c'est raté |
