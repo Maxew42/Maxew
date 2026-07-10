@@ -784,6 +784,18 @@ for (let i = 0; i < 8; i++) {
   zapPool.push(line);
 }
 
+// nuage de fumée du pesticide : bouffées qui gonflent, dérivent et se dissipent
+const puffPool = [];
+for (let i = 0; i < 30; i++) {
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xd4e6c3, transparent: true, opacity: 0.4, depthWrite: false })
+  );
+  m.visible = false;
+  scene.add(m);
+  puffPool.push(m);
+}
+
 // anneaux du hachoir
 const pulsePool = [];
 for (let i = 0; i < 5; i++) {
@@ -851,24 +863,28 @@ function sndHit() { const n = performance.now(); if (n - lastHitSnd < 70) return
 function sndKill() { beep(320, 60, 0.15, 'sawtooth', 0.05); }
 function sndHurt() { beep(130, 60, 0.25, 'sawtooth', 0.12); }
 function sndPickup() { beep(600, 900, 0.09, 'sine', 0.06); }
-function sndSpray() { // pschiiit du pesticide : souffle de bruit blanc filtré
+function sndSpray() { // pschiiit d'aérosol : attaque franche, souffle tenu, puis relâche
   if (muted) return;
   try {
     if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
     if (actx.state === 'suspended') actx.resume();
-    const t = actx.currentTime, dur = 0.25;
+    const t = actx.currentTime, dur = 0.45;
     const buf = actx.createBuffer(1, Math.floor(actx.sampleRate * dur), actx.sampleRate);
     const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     const src = actx.createBufferSource();
     src.buffer = buf;
-    const f = actx.createBiquadFilter();
-    f.type = 'highpass';
-    f.frequency.value = 3000;
+    // bande médium-aiguë large : le "chhh" d'une bombe aérosol
+    const bp = actx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 5200;
+    bp.Q.value = 0.55;
     const g = actx.createGain();
-    g.gain.setValueAtTime(0.14, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.24, t + 0.018);
+    g.gain.setValueAtTime(0.24, t + 0.26);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f).connect(g).connect(actx.destination);
+    src.connect(bp).connect(g).connect(actx.destination);
     src.start(t);
   } catch (e) { /* audio indisponible */ }
 }
@@ -2065,8 +2081,18 @@ function fireWeapons(dt) {
               touched++;
             });
             if (touched) sndHit();
-            effects.push({ kind: 'pulse', t: 0, dur: 0.35, range, color: 0x9ccc65 });
-            splat(player.x, player.y, '#9ccc65', 8);
+            // vraie fumée : bouffées projetées en anneau qui gonflent et se dissipent
+            for (let i = 0; i < 16; i++) {
+              const a = (i / 16) * TAU + Math.random() * 0.5;
+              const sp = range * 3.5 * (0.65 + Math.random() * 0.5);
+              effects.push({
+                kind: 'puff', t: 0, dur: 0.6 + Math.random() * 0.4,
+                x: player.x + Math.cos(a) * 14, y: player.y + Math.sin(a) * 14,
+                h: 6 + Math.random() * 16, vh: 20 + Math.random() * 25,
+                vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                r: 13 + Math.random() * 11,
+              });
+            }
             sndSpray();
           } else w.cd = 0.15;
         }
@@ -2467,6 +2493,13 @@ function update(dt) {
   // --- effets ---
   for (const fx of effects) {
     fx.t += dt;
+    if (fx.kind === 'puff') {
+      // bouffée de fumée : dérive vers l'extérieur en freinant, monte doucement
+      fx.x += fx.vx * dt; fx.y += fx.vy * dt; fx.h += fx.vh * dt;
+      const drag = Math.max(0, 1 - 4.5 * dt);
+      fx.vx *= drag; fx.vy *= drag;
+      continue;
+    }
     if (fx.kind === 'flame') {
       // lance-flammes : cône unique qui suit la visée
       fx.tickT -= dt;
@@ -2881,6 +2914,20 @@ function render3d() {
       line.visible = true;
       line.material.opacity = 1 - fx.t / fx.dur;
     } else line.visible = false;
+  }
+
+  // --- fumée du pesticide ---
+  const puffs = effects.filter(fx => fx.kind === 'puff');
+  for (let i = 0; i < puffPool.length; i++) {
+    const m = puffPool[i];
+    if (i < puffs.length) {
+      const fx = puffs[i];
+      const pr = fx.t / fx.dur;
+      m.visible = true;
+      m.position.set(fx.x, fx.h, fx.y);
+      m.scale.setScalar(fx.r * (0.5 + 1.9 * pr)); // la bouffée gonfle en se dissipant
+      m.material.opacity = 0.45 * (1 - pr * pr);
+    } else m.visible = false;
   }
 
   // --- anneaux du hachoir ---
