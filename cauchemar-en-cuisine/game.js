@@ -587,6 +587,20 @@ for (let i = 0; i < 8; i++) {
   shockPool.push(m);
 }
 
+// zones d'impact des obus de mortier de l'hippo (cercles d'esquive au sol)
+const zonePool = [];
+for (let i = 0; i < 26; i++) {
+  const m = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 24).rotateX(-HALF_PI),
+    new THREE.MeshBasicMaterial({ color: 0xff1430, transparent: true, opacity: 0.3, depthWrite: false })
+  );
+  m.position.y = 0.8;
+  m.renderOrder = 2;
+  m.visible = false;
+  scene.add(m);
+  zonePool.push(m);
+}
+
 // assiettes lancées par le boss
 const plateInst = makeInstanced(mergeParts([
   { geo: cylG(9, 7, 2.2, 14), color: '#eceff1' },
@@ -837,6 +851,27 @@ function sndHit() { const n = performance.now(); if (n - lastHitSnd < 70) return
 function sndKill() { beep(320, 60, 0.15, 'sawtooth', 0.05); }
 function sndHurt() { beep(130, 60, 0.25, 'sawtooth', 0.12); }
 function sndPickup() { beep(600, 900, 0.09, 'sine', 0.06); }
+function sndSpray() { // pschiiit du pesticide : souffle de bruit blanc filtré
+  if (muted) return;
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
+    const t = actx.currentTime, dur = 0.25;
+    const buf = actx.createBuffer(1, Math.floor(actx.sampleRate * dur), actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    const src = actx.createBufferSource();
+    src.buffer = buf;
+    const f = actx.createBiquadFilter();
+    f.type = 'highpass';
+    f.frequency.value = 3000;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.14, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(actx.destination);
+    src.start(t);
+  } catch (e) { /* audio indisponible */ }
+}
 function sndLevel() { beep(440, 440, 0.1, 'sine', 0.08); setTimeout(() => beep(550, 550, 0.1, 'sine', 0.08), 100); setTimeout(() => beep(660, 880, 0.18, 'sine', 0.08), 200); }
 function sndPop() { beep(900, 200, 0.18, 'square', 0.1); }
 function sndZap() { beep(1200, 300, 0.1, 'sawtooth', 0.05); }
@@ -906,7 +941,7 @@ const WEAPON_DEFS = {
     lvl: 2, name: 'AK-47 « Viva la revolución »', icon: '🔫',
     desc: 'Rafale à longue portée dans un cône étroit vers la visée.',
     up: '+1 balle par rafale et par niveau',
-    base: { dmg: 8, cd: 1.6, bullets: 4, spread: 0.12, speed: 950 },
+    base: { dmg: 11, cd: 1.6, bullets: 4, spread: 0.12, speed: 950 },
   },
   grenade: {
     lvl: 2, name: 'Grenade de la Liberté', icon: '💣',
@@ -919,6 +954,12 @@ const WEAPON_DEFS = {
     desc: 'Crache un jet de feu continu vers la visée.',
     up: 'portée de plus en plus longue',
     base: { dmg: 9, cd: 2.4, len: 170, dur: 1.1, tick: 0.12, cone: 0.55 },
+  },
+  pesticide: {
+    lvl: 2, name: 'Maxi Repousse', icon: '🧴',
+    desc: 'Pschiiit ! Nuage de pesticide autour de vous : empoisonne et repousse la vermine (pas les gros).',
+    up: 'nuage de plus en plus large',
+    base: { dmg: 9, cd: 2.3, range: 135, poison: 8, knock: 470 },
   },
 };
 const MAX_WEAPON_LEVEL = 8;
@@ -942,6 +983,7 @@ function wstat(w) {
   if (w.type === 'ak47') s.bullets = d.bullets + (lv - 1);
   if (w.type === 'grenade') { s.frags = Math.max(0, lv - 2); s.fire = lv >= 6; }
   if (w.type === 'lanceflamme') s.len = d.len + 24 * (lv - 1);
+  if (w.type === 'pesticide') s.range = d.range + 13 * (lv - 1);
   return s;
 }
 
@@ -963,7 +1005,7 @@ const ENEMY_DEFS = {
   singemerde: { lvl: 2, name: 'Singe hurleur', icon: '💩', hp: 110, dmg: 13, speed: 92,  r: 16, xp: 12, t: 250, w: 11,  ranged: true },
   crocodile:  { lvl: 2, name: 'Crocodile',     icon: '🐊', hp: 520, dmg: 26, speed: 55,  r: 30, xp: 25, t: 340, w: 9,   dasher: true, windup: 0.65, dashT: 0.5, dashMul: 5.6, stalkT: 2 },
   jaguar:     { lvl: 2, name: 'Jaguar',        icon: '🐆', hp: 980, dmg: 30, speed: 98,  r: 24, xp: 50, t: 450, w: 6,   dasher: true, windup: 0.35, dashT: 0.4, dashMul: 4.6, stalkT: 0.9 },
-  pasteque:   { lvl: 2, name: 'Pastèque',      icon: '🍉', hp: 2200, dmg: 0, speed: 0,   r: 24, xp: 15, t: 1e9, w: 0,   stationary: true, noscale: true },
+  pasteque:   { lvl: 2, name: 'Pastèque',      icon: '🍉', hp: 3300, dmg: 0, speed: 0,   r: 24, xp: 15, t: 1e9, w: 0,   stationary: true, noscale: true },
   hippo:      { lvl: 2, name: "L'Hippo de Pablo", icon: '🦛', hp: 30000, dmg: 34, speed: 84, r: 55, xp: 0, t: 1e9, w: 0, boss: true },
 };
 const ANNOUNCE_MSGS = {
@@ -1395,7 +1437,7 @@ function startBossFight() {
   if (currentLevel === 2) {
     announcements.push({ txt: "🦛 L'HIPPO DE PABLO DÉBARQUE !", ttl: 5 });
     announcements.push({ txt: '« PERSONNE NE QUITTE MON LABO ! »', ttl: 5 });
-    announcements.push({ txt: '🍉 Détruisez ses pastèques, sinon il se soigne !', ttl: 7 });
+    announcements.push({ txt: "🍉 Détruisez ses pastèques avant qu'il ne les dévore !", ttl: 7 });
     melonTimer = 6;
   } else {
     announcements.push({ txt: '👨‍🍳 PHILIPPE CHUILEBEST ENTRE EN CUISINE !', ttl: 5 });
@@ -1435,12 +1477,54 @@ function updateBoss(e, dt) {
   e.bt -= dt * (enraged ? 1.2 : 1);
 
   switch (e.bstate) {
-    case 'walk':
+    case 'walk': {
+      // l'hippo plonge dès qu'une pastèque pousse : il nage la dévorer
+      if (e.type === 'hippo' && enemies.some(o => o.type === 'pasteque' && !o.dead)) {
+        e.bstate = 'swim';
+        e.rippleT = 0;
+        splat(e.x, e.y, '#7fb6c9', 14);
+        beep(220, 55, 0.4, 'sine', 0.11);
+        break;
+      }
       e.face = Math.atan2(dy, dx);
       e.x += (dx / dd) * e.speed * spd * dt;
       e.y += (dy / dd) * e.speed * spd * dt;
       if (e.bt <= 0) pickBossAttack(e);
       break;
+    }
+    case 'swim': {
+      // sous l'eau : invulnérable, seule la tête dépasse, cap sur la pastèque
+      const melon = enemies.find(o => o.type === 'pasteque' && !o.dead);
+      if (!melon) {
+        e.bstate = 'walk';
+        e.bt = bossWalkDur();
+        splat(e.x, e.y, '#7fb6c9', 12);
+        beep(70, 240, 0.35, 'sine', 0.1);
+        break;
+      }
+      const mx = melon.x - e.x, my = melon.y - e.y;
+      const md = Math.hypot(mx, my) || 1;
+      e.face = Math.atan2(my, mx);
+      const swimSp = e.speed * 2.1 * spd;
+      e.x += (mx / md) * swimSp * dt;
+      e.y += (my / md) * swimSp * dt;
+      e.rippleT = (e.rippleT || 0) - dt;
+      if (e.rippleT <= 0) {
+        e.rippleT = 0.3;
+        effects.push({ kind: 'shock', x: e.x, y: e.y, t: 0, dur: 0.7, range: 95, color: 0x9ecfdd });
+      }
+      if (md < e.r + melon.r) {
+        melon.dead = true;
+        const chunk = e.maxHp * 0.09;
+        e.hp = Math.min(e.maxHp, e.hp + chunk);
+        addDmgText(e.x, e.y, '+' + Math.round(chunk), '#7dde7d', 22);
+        announcements.push({ txt: '🦛 MIAM ! La pastèque est engloutie !', ttl: 3 });
+        beep(150, 60, 0.4, 'square', 0.12);
+        e.bstate = 'walk';
+        e.bt = bossWalkDur();
+      }
+      break;
+    }
     case 'plates':
       e.face = Math.atan2(dy, dx);
       e.pv -= dt;
@@ -1470,7 +1554,7 @@ function updateBoss(e, dt) {
       }
       break;
     case 'charge': {
-      const sp = 640 * spd;
+      const sp = (e.type === 'hippo' ? 790 : 640) * spd;
       e.x += Math.cos(e.dashAng) * sp * dt;
       e.y += Math.sin(e.dashAng) * sp * dt;
       const hitWall = e.x <= WALL + e.r || e.x >= WORLD_W - WALL - e.r || e.y <= WALL + e.r || e.y >= WORLD_H - WALL - e.r;
@@ -1509,17 +1593,21 @@ function updateBoss(e, dt) {
       if (e.pv <= 0 && e.volleys > 0) {
         e.volleys--;
         e.pv = 0.45;
-        // boulettes de dollars digérés : elles retombent à distance variable, à esquiver
+        // mortier de boulettes de dollars digérés : chaque obus vise une zone
+        // marquée au sol autour du joueur, à esquiver avant l'impact
         const n = enraged ? 8 : 5;
         for (let i = 0; i < n; i++) {
-          const a = e.face + (Math.random() - 0.5) * 1.5;
-          const sp = 200 + Math.random() * 180;
-          const ttl = (160 + Math.random() * 320) / sp;
+          const a = Math.random() * TAU;
+          const d0 = 40 + Math.random() * 230;
+          const tx = clamp(player.x + Math.cos(a) * d0, WALL + 40, WORLD_W - WALL - 40);
+          const ty = clamp(player.y + Math.sin(a) * d0, WALL + 40, WORLD_H - WALL - 40);
+          const x0 = e.x + Math.cos(e.face) * 70, y0 = e.y + Math.sin(e.face) * 70;
+          const fly = 1.05 + Math.random() * 0.55;
           bossProjs.push({
-            kind: 'bill',
-            x: e.x + Math.cos(a) * 70, y: e.y + Math.sin(a) * 70,
-            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-            r: 14, dmg: 16, ttl, ttl0: ttl,
+            kind: 'bill', mortar: true, zoneR: 62,
+            x: x0, y: y0, tx, ty,
+            vx: (tx - x0) / fly, vy: (ty - y0) / fly,
+            r: 20, dmg: 18, ttl: fly, ttl0: fly,
           });
         }
         beep(90, 260, 0.25, 'sawtooth', 0.1);
@@ -1548,8 +1636,8 @@ function updateBoss(e, dt) {
   e.x = clamp(e.x, WALL + e.r, WORLD_W - WALL - e.r);
   e.y = clamp(e.y, WALL + e.r, WORLD_H - WALL - e.r);
 
-  // contact avec le joueur
-  if (e.atkCd <= 0 && dist2(e.x, e.y, player.x, player.y) < (e.r + player.r) * (e.r + player.r)) {
+  // contact avec le joueur (pas sous l'eau)
+  if (e.bstate !== 'swim' && e.atkCd <= 0 && dist2(e.x, e.y, player.x, player.y) < (e.r + player.r) * (e.r + player.r)) {
     damagePlayer(e.bstate === 'charge' ? e.dmg * 1.4 : e.dmg);
     e.atkCd = 0.8;
   }
@@ -1574,6 +1662,11 @@ function splat(x, y, color, n = 6) {
 
 function damageEnemy(e, dmg, kx = 0, ky = 0, silent = false) {
   if (e.dead) return;
+  if (e.def.boss && e.bstate === 'swim') {
+    // l'hippo sous l'eau est intouchable
+    if (!silent && Math.random() < 0.25) addDmgText(e.x, e.y, 'PLOUF', '#9ecfdd', 13);
+    return;
+  }
   e.hp -= dmg;
   e.hitFlash = 0.1;
   const kb = e.def.boss ? 0.04 : 1; // le boss ne recule presque pas
@@ -1708,7 +1801,7 @@ function openLevelUp() {
 function nearestEnemy(x, y, maxR) {
   let bestE = null, bestD = maxR * maxR;
   for (const e of enemies) {
-    if (e.dead) continue;
+    if (e.dead || (e.def.boss && e.bstate === 'swim')) continue; // pas de visée sur l'hippo sous l'eau
     const d = dist2(x, y, e.x, e.y);
     if (d < bestD) { bestD = d; bestE = e; }
   }
@@ -1950,6 +2043,32 @@ function fireWeapons(dt) {
           w.cd = st.cd;
           effects.push({ kind: 'flame', t: 0, dur: st.dur, tickT: 0, tick: st.tick, dmg: st.dmg, len: st.len * st.area, cone: st.cone });
           beep(110, 70, 0.35, 'sawtooth', 0.05);
+        }
+        break;
+      }
+      case 'pesticide': {
+        if (w.cd <= 0) {
+          const range = st.range * st.area;
+          if (nearestEnemy(player.x, player.y, range)) {
+            w.cd = st.cd;
+            let touched = 0;
+            gridQuery(player.x, player.y, range + 110, e => {
+              if (e.dead) return;
+              if (dist2(e.x, e.y, player.x, player.y) > (range + e.r) * (range + e.r)) return;
+              const ea = Math.atan2(e.y - player.y, e.x - player.x);
+              // les gros (boss, crocodiles, jaguars, pastèques…) ne reculent pas
+              const push = !e.def.boss && e.r < 24 ? st.knock : 0;
+              damageEnemy(e, st.dmg, Math.cos(ea) * push, Math.sin(ea) * push, true);
+              e.slowT = Math.max(e.slowT, 0.8);
+              e.poisonT = 3;
+              e.poisonDps = Math.max(e.poisonDps || 0, st.poison * Math.pow(1.18, w.level - 1));
+              touched++;
+            });
+            if (touched) sndHit();
+            effects.push({ kind: 'pulse', t: 0, dur: 0.35, range, color: 0x9ccc65 });
+            splat(player.x, player.y, '#9ccc65', 8);
+            sndSpray();
+          } else w.cd = 0.15;
         }
         break;
       }
@@ -2303,9 +2422,20 @@ function update(dt) {
   for (const p of bossProjs) {
     p.x += p.vx * dt; p.y += p.vy * dt;
     p.ttl -= dt;
+    const col = p.kind === 'poop' ? '#6d4c2f' : p.kind === 'bill' ? '#66bb6a' : '#eceff1';
+    if (p.mortar) {
+      // obus de mortier : ne blesse qu'à l'atterrissage, sur la zone marquée au sol
+      if (p.ttl <= 0) {
+        p.dead = true;
+        splat(p.tx, p.ty, col, 8);
+        effects.push({ kind: 'boom', x: p.tx, y: p.ty, t: 0, dur: 0.32, range: p.zoneR, color: 0x8bc34a });
+        beep(130, 45, 0.18, 'square', 0.07);
+        if (dist2(p.tx, p.ty, player.x, player.y) < (p.zoneR + player.r * 0.4) * (p.zoneR + player.r * 0.4)) damagePlayer(p.dmg);
+      }
+      continue;
+    }
     // les projectiles en cloche ne touchent qu'à basse altitude (esquivables sous l'arc)
     const arcH = p.ttl0 ? Math.sin(Math.PI * clamp(1 - p.ttl / p.ttl0, 0, 1)) * 42 : 0;
-    const col = p.kind === 'poop' ? '#6d4c2f' : p.kind === 'bill' ? '#66bb6a' : '#eceff1';
     if (p.ttl <= 0 || p.x < WALL || p.x > WORLD_W - WALL || p.y < WALL || p.y > WORLD_H - WALL) {
       p.dead = true;
       splat(p.x, p.y, col, 4);
@@ -2416,7 +2546,7 @@ function update(dt) {
     if (d < 26) {
       pk.dead = true;
       if (pk.kind === 'cheese') { gainXp(pk.v); sndPickup(); }
-      else if (pk.kind === 'soup') { heal(player.maxHp * 0.25); sndPickup(); }
+      else if (pk.kind === 'soup') { heal(currentLevel === 2 ? player.maxHp : player.maxHp * 0.25); sndPickup(); }
       else if (pk.kind === 'coke') {
         player.boostT = 8;
         announcements.push({ txt: '💊 SNIFF ! Vitesse +55% pendant 8 s !', ttl: 2.5 });
@@ -2536,16 +2666,18 @@ function render3d() {
     (boss.type === 'hippo' ? bossMesh : hippoMesh).visible = false;
     bMesh.visible = true;
     const tele = boss.bstate === 'chargeTele' || boss.bstate === 'slamTele' || boss.bstate === 'summon' || boss.bstate === 'vomitTele';
+    const swim = boss.bstate === 'swim';
     const ox = tele ? (Math.random() - 0.5) * 7 : 0;
     const oz = tele ? (Math.random() - 0.5) * 7 : 0;
     const stomp = boss.bstate === 'walk' || boss.bstate === 'charge' ? Math.abs(Math.sin(t * 8)) * 5 : 0;
-    bMesh.position.set(boss.x + ox, stomp, boss.y + oz);
+    // en nage, le corps est immergé : seule la tête (et un bout de dos) émerge
+    bMesh.position.set(boss.x + ox, swim ? -76 + Math.sin(t * 3.2) * 4 : stomp, boss.y + oz);
     bMesh.rotation.y = -boss.face;
     bMesh.rotation.z = boss.bstate === 'stun' ? 0.3 : 0;
     const pop = 1 + boss.hitFlash * 0.8;
     const enrPulse = boss.hp < boss.maxHp * 0.3 ? 1 + Math.sin(t * 14) * 0.03 : 1;
     bMesh.scale.setScalar((boss.type === 'hippo' ? 3.2 : 3.4) * pop * enrPulse);
-    if (shadowCount < 890) setInst(shadowInst, shadowCount++, boss.x, 0.5, boss.y, 0, boss.type === 'hippo' ? 5.4 : 4.6);
+    if (!swim && shadowCount < 890) setInst(shadowInst, shadowCount++, boss.x, 0.5, boss.y, 0, boss.type === 'hippo' ? 5.4 : 4.6);
 
     slamTeleMesh.visible = boss.bstate === 'slamTele';
     if (slamTeleMesh.visible) {
@@ -2574,7 +2706,7 @@ function render3d() {
       const fx = shocks[i];
       const pr = fx.t / fx.dur;
       m.visible = true;
-      m.material.color.setHex(fx.kind === 'boom' ? 0xffa726 : 0xff5722);
+      m.material.color.setHex(fx.color || (fx.kind === 'boom' ? 0xffa726 : 0xff5722));
       m.position.set(fx.x, 3, fx.y);
       m.scale.setScalar(fx.range * (0.15 + 0.85 * pr));
       m.material.opacity = 0.8 * (1 - pr);
@@ -2582,13 +2714,24 @@ function render3d() {
   }
 
   // projectiles ennemis : assiettes, cacas et boulettes de dollars (en cloche)
-  let plateCount = 0, poopCount = 0, billCount = 0;
+  let plateCount = 0, poopCount = 0, billCount = 0, zoneCount = 0;
   for (const p of bossProjs) {
-    const h = p.ttl0 ? 12 + Math.sin(Math.PI * clamp(1 - p.ttl / p.ttl0, 0, 1)) * 42 : 18;
+    const arc = p.ttl0 ? Math.sin(Math.PI * clamp(1 - p.ttl / p.ttl0, 0, 1)) : 0;
+    const h = p.mortar ? 14 + arc * 130 : (p.ttl0 ? 12 + arc * 42 : 18);
     if (p.kind === 'poop' && poopCount < poopInst.userData.cap) setInst(poopInst, poopCount++, p.x, h, p.y, t * 5);
-    else if (p.kind === 'bill' && billCount < billInst.userData.cap) setInst(billInst, billCount++, p.x, h, p.y, t * 6);
+    else if (p.kind === 'bill' && billCount < billInst.userData.cap) setInst(billInst, billCount++, p.x, h, p.y, t * 6, p.mortar ? 1.6 : 1);
     else if (!p.kind && plateCount < plateInst.userData.cap) setInst(plateInst, plateCount++, p.x, 18, p.y, t * 7);
+    // zone d'impact annoncée au sol pour les obus de mortier
+    if (p.mortar && zoneCount < zonePool.length) {
+      const m = zonePool[zoneCount++];
+      const pr = clamp(1 - p.ttl / p.ttl0, 0, 1);
+      m.visible = true;
+      m.position.set(p.tx, 0.8, p.ty);
+      m.scale.setScalar(p.zoneR * (0.45 + 0.55 * pr));
+      m.material.opacity = 0.2 + 0.3 * pr + 0.08 * Math.sin(t * 16);
+    }
   }
+  for (let i = zoneCount; i < zonePool.length; i++) zonePool[i].visible = false;
   plateInst.count = plateCount;
   plateInst.instanceMatrix.needsUpdate = true;
   poopInst.count = poopCount;
@@ -2748,6 +2891,7 @@ function render3d() {
       const fx = pulses[i];
       const pr = fx.t / fx.dur;
       m.visible = true;
+      m.material.color.setHex(fx.color || 0xdde3ea);
       m.position.set(player.x, 3, player.y);
       m.scale.setScalar(fx.range * (0.4 + 0.6 * pr));
       m.material.opacity = 0.7 * (1 - pr);
