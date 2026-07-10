@@ -4,19 +4,31 @@
     {
       "name": "apprentice",
       "runtimeExecutable": "/usr/bin/python3",
-      "runtimeArgs": ["-I", "-c", "from http.server import HTTPServer, SimpleHTTPRequestHandler; import os; os.chdir('/private/tmp/claude-501/-Users-Novatix-Documents-projects-games/f94afb8c-a8ab-4128-a05c-24cdb98e303b/scratchpad/apprentice-serve'); HTTPServer(('127.0.0.1', 8451), SimpleHTTPRequestHandler).serve_forever()"],
+      "runtimeArgs": [
+        "-I",
+        "-c",
+        "from http.server import HTTPServer, SimpleHTTPRequestHandler; import os; os.chdir('/private/tmp/claude-501/-Users-Novatix-Documents-projects-games/f94afb8c-a8ab-4128-a05c-24cdb98e303b/scratchpad/apprentice-serve'); HTTPServer(('127.0.0.1', 8451), SimpleHTTPRequestHandler).serve_forever()"
+      ],
       "port": 8451
     },
     {
       "name": "warp2",
       "runtimeExecutable": "/usr/bin/python3",
-      "runtimeArgs": ["-I", "-c", "from http.server import HTTPServer, SimpleHTTPRequestHandler; import os; os.chdir('/private/tmp/claude-501/-Users-Novatix-Documents-projects-games/270058a6-6c43-4e01-b195-dcc4e05afcd3/scratchpad/warp2-serve'); HTTPServer(('127.0.0.1', 8734), SimpleHTTPRequestHandler).serve_forever()"],
+      "runtimeArgs": [
+        "-I",
+        "-c",
+        "from http.server import HTTPServer, SimpleHTTPRequestHandler; import os; os.chdir('/private/tmp/claude-501/-Users-Novatix-Documents-projects-games/270058a6-6c43-4e01-b195-dcc4e05afcd3/scratchpad/warp2-serve'); HTTPServer(('127.0.0.1', 8734), SimpleHTTPRequestHandler).serve_forever()"
+      ],
       "port": 8734
     },
     {
       "name": "final-frontier",
       "runtimeExecutable": "/usr/bin/python3",
-      "runtimeArgs": ["-I", "-c", "from http.server import HTTPServer, SimpleHTTPRequestHandler; import os; os.chdir('/private/tmp/claude-501/-Users-Novatix-Documents-projects-games-final-frontier/6888d59e-1069-4136-bd40-5aeeb6962050/scratchpad/ff-serve'); HTTPServer(('127.0.0.1', 8571), SimpleHTTPRequestHandler).serve_forever()"],
+      "runtimeArgs": [
+        "-I",
+        "-c",
+        "from http.server import HTTPServer, SimpleHTTPRequestHandler; import os; os.chdir('/private/tmp/claude-501/-Users-Novatix-Documents-projects-games/ee04bd7f-f4cf-49cf-92cd-caf61c341263/scratchpad/ff-serve'); HTTPServer(('127.0.0.1', 8571), SimpleHTTPRequestHandler).serve_forever()"
+      ],
       "port": 8571
     }
   ]

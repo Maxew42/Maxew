@@ -2,918 +2,139 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#17243a">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Final Frontier</title>
-<style>
-  :root {
-    --ink: #263247;
-    --soft-ink: #5d6d82;
-    --paper: #fff8eb;
-    --panel: rgba(255, 250, 235, 0.92);
-    --panel-strong: rgba(255, 250, 235, 0.98);
-    --line: rgba(38, 50, 71, 0.16);
-    --sky: #9fd6ff;
-    --blue: #4478c4;
-    --green: #55a968;
-    --yellow: #efb64c;
-    --red: #db6b65;
-    --violet: #7663bb;
-    --shadow: rgba(32, 40, 60, 0.18);
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; overflow: hidden; }
-  body {
-    background: #b7ddff;
-    color: var(--ink);
-    font-family: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: manipulation;
-  }
-  button, input { font: inherit; }
-  button { color: inherit; cursor: pointer; }
-  canvas { display: block; }
-  .hidden { display: none !important; }
-  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; }
-
-  .btn, .icon-btn {
-    border: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.62);
-    border-radius: 8px;
-    box-shadow: 0 2px 0 rgba(38, 50, 71, 0.1);
-    transition: transform 0.08s, background 0.14s, box-shadow 0.14s;
-  }
-  .btn:hover, .icon-btn:hover { background: rgba(255, 255, 255, 0.9); }
-  .btn:active, .icon-btn:active { transform: translateY(1px); box-shadow: none; }
-  .btn {
-    padding: 10px 14px;
-    font-weight: 800;
-    font-size: 14px;
-  }
-  .btn.primary {
-    background: #f29e4c;
-    color: #351f11;
-    border-color: rgba(143, 75, 22, 0.24);
-  }
-  .btn.primary:hover { background: #ffb566; }
-  .btn.blue {
-    background: #84c5f4;
-    color: #102f4e;
-    border-color: rgba(45, 96, 148, 0.25);
-  }
-  .btn.green {
-    background: #89d690;
-    color: #123818;
-    border-color: rgba(36, 114, 51, 0.25);
-  }
-  .btn.danger {
-    background: rgba(219, 107, 101, 0.12);
-    color: #913731;
-    border-color: rgba(219, 107, 101, 0.35);
-  }
-  .btn:disabled { opacity: 0.46; cursor: not-allowed; }
-  .icon-btn {
-    width: 38px;
-    height: 38px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    font-weight: 900;
-  }
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 28px;
-    padding: 4px 9px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.58);
-    color: var(--soft-ink);
-    font-size: 12px;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-  .meter {
-    height: 10px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: rgba(38, 50, 71, 0.12);
-  }
-  .meter > span {
-    display: block;
-    height: 100%;
-    width: 0%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, #69bd7b, #efb64c, #f29e4c);
-    transition: width 0.28s;
-  }
-
-  /* Menu */
-  #screen-menu {
-    align-items: center;
-    justify-content: center;
-    padding: clamp(16px, 4vw, 42px);
-    background:
-      linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0) 34%),
-      linear-gradient(180deg, #90cffd 0%, #cbeefd 48%, #8dcc86 48%, #79b36c 100%);
-    overflow: auto;
-  }
-  .menu-stars {
-    position: absolute;
-    inset: 0 0 50%;
-    opacity: 0.42;
-    pointer-events: none;
-    background-image:
-      radial-gradient(circle at 12% 28%, #fff 0 1px, transparent 2px),
-      radial-gradient(circle at 24% 18%, #fff 0 1px, transparent 2px),
-      radial-gradient(circle at 71% 24%, #fff 0 1px, transparent 2px),
-      radial-gradient(circle at 86% 13%, #fff 0 1px, transparent 2px),
-      radial-gradient(circle at 53% 8%, #fff 0 1.5px, transparent 2.5px);
-  }
-  .menu-hero {
-    width: min(900px, 100%);
-    min-height: min(610px, calc(100vh - 34px));
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
-    gap: 22px;
-    align-items: end;
-    z-index: 1;
-  }
-  .hero-title {
-    align-self: center;
-    padding-bottom: min(8vh, 60px);
-  }
-  .hero-title h1 {
-    max-width: 640px;
-    font-size: clamp(54px, 12vw, 116px);
-    line-height: 0.88;
-    letter-spacing: 0;
-    color: #1f3150;
-    text-shadow: 0 5px 0 rgba(255,255,255,0.45), 0 18px 36px rgba(48, 74, 106, 0.18);
-  }
-  .hero-title p {
-    max-width: 540px;
-    margin-top: 16px;
-    color: #415d7c;
-    font-size: clamp(15px, 2.3vw, 20px);
-    line-height: 1.45;
-    font-weight: 750;
-  }
-  .menu-card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    box-shadow: 0 22px 50px var(--shadow);
-    padding: 18px;
-  }
-  .menu-card h2 {
-    font-size: 22px;
-    color: #263247;
-    margin-bottom: 8px;
-  }
-  .menu-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 7px 0;
-    border-bottom: 1px solid rgba(38, 50, 71, 0.08);
-    font-size: 14px;
-  }
-  .menu-row:last-child { border-bottom: 0; }
-  .menu-row b { text-align: right; }
-  .goal-box {
-    margin: 12px 0;
-    padding: 12px;
-    border: 1px dashed rgba(68, 120, 196, 0.34);
-    border-radius: 8px;
-    background: rgba(132, 197, 244, 0.18);
-    color: #365676;
-    font-size: 13px;
-    line-height: 1.35;
-    font-weight: 750;
-  }
-  .menu-actions {
-    display: grid;
-    gap: 9px;
-    margin-top: 14px;
-  }
-  .menu-actions .split {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 9px;
-  }
-  .launchpad-preview {
-    position: absolute;
-    left: max(18px, calc((100vw - 900px) / 2));
-    bottom: 0;
-    width: min(480px, 50vw);
-    height: 230px;
-    pointer-events: none;
-  }
-
-  /* Shared top bars */
-  .topbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    min-height: 56px;
-    background: rgba(255, 250, 235, 0.88);
-    border-bottom: 1px solid var(--line);
-    box-shadow: 0 8px 24px rgba(53, 72, 99, 0.08);
-    z-index: 3;
-  }
-  .topbar-title {
-    font-size: 16px;
-    font-weight: 900;
-    color: #263247;
-    white-space: nowrap;
-  }
-  .topbar-spacer { flex: 1; }
-  .text-input {
-    width: min(220px, 32vw);
-    min-width: 116px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 9px 10px;
-    background: rgba(255, 255, 255, 0.72);
-    color: var(--ink);
-    font-weight: 800;
-  }
-  .check {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 12px;
-    font-weight: 850;
-    color: var(--soft-ink);
-    white-space: nowrap;
-  }
-  .check input { width: 16px; height: 16px; accent-color: #4478c4; }
-
-  /* Build */
-  #screen-build {
-    background:
-      linear-gradient(180deg, #b2ddff 0%, #ddf2ff 46%, #d8bf8c 46%, #bf9964 100%);
-  }
-  .build-body {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 250px minmax(0, 1fr) 270px;
-    min-height: 0;
-  }
-  .palette, .stats-panel {
-    min-height: 0;
-    overflow: auto;
-    padding: 12px;
-    background: rgba(255, 250, 235, 0.76);
-    border-color: var(--line);
-  }
-  .palette { border-right: 1px solid var(--line); }
-  .stats-panel { border-left: 1px solid var(--line); }
-  .panel-title {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 10px;
-    font-size: 13px;
-    font-weight: 900;
-    color: #33425a;
-  }
-  .part-group-label {
-    margin: 12px 0 6px;
-    color: #6f7c8e;
-    font-size: 11px;
-    font-weight: 900;
-    text-transform: uppercase;
-    letter-spacing: 0;
-  }
-  .part-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-  .part-card {
-    display: grid;
-    grid-template-rows: 54px auto auto;
-    gap: 3px;
-    min-height: 112px;
-    padding: 7px 5px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: rgba(255,255,255,0.58);
-    text-align: center;
-  }
-  .part-card:hover { border-color: rgba(68, 120, 196, 0.45); background: rgba(255,255,255,0.84); }
-  .part-art {
-    width: 46px;
-    height: 54px;
-    justify-self: center;
-  }
-  .part-name {
-    min-height: 28px;
-    font-size: 11px;
-    line-height: 1.18;
-    font-weight: 900;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .part-meta {
-    color: var(--soft-ink);
-    font-size: 10px;
-    line-height: 1.2;
-  }
-  .build-stage {
-    position: relative;
-    min-width: 0;
-  }
-  #build-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    touch-action: none;
-  }
-  .selection-bar {
-    position: absolute;
-    left: 50%;
-    bottom: 14px;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    max-width: calc(100% - 28px);
-    padding: 7px 8px 7px 12px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--panel-strong);
-    box-shadow: 0 12px 30px var(--shadow);
-  }
-  #selected-name {
-    width: min(190px, 38vw);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 13px;
-    font-weight: 900;
-  }
-  .stats-block {
-    padding: 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: rgba(255,255,255,0.52);
-    margin-bottom: 10px;
-  }
-  .stat-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 4px 0;
-    color: var(--soft-ink);
-    font-size: 13px;
-  }
-  .stat-row b { color: var(--ink); text-align: right; }
-  .stage-card {
-    border: 1px solid rgba(68, 120, 196, 0.16);
-    border-radius: 8px;
-    background: rgba(132, 197, 244, 0.14);
-    padding: 8px;
-    margin-bottom: 7px;
-    font-size: 12px;
-  }
-  .stage-card b { color: #274b73; }
-  .warnings {
-    display: grid;
-    gap: 6px;
-    margin-bottom: 10px;
-  }
-  .warning {
-    padding: 7px 9px;
-    border-radius: 8px;
-    background: rgba(239, 182, 76, 0.18);
-    border: 1px solid rgba(239, 182, 76, 0.35);
-    color: #76521a;
-    font-size: 12px;
-    font-weight: 800;
-  }
-  .stats-actions {
-    display: grid;
-    gap: 8px;
-    margin-top: 12px;
-  }
-  .stats-actions .split {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-  .toast {
-    position: absolute;
-    top: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    max-width: calc(100% - 24px);
-    padding: 9px 13px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--panel-strong);
-    box-shadow: 0 14px 30px var(--shadow);
-    font-size: 13px;
-    font-weight: 850;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.18s;
-    z-index: 4;
-  }
-  .toast.show { opacity: 1; }
-
-  /* Flight */
-  #screen-flight { background: #14243f; }
-  #flight-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    touch-action: none;
-  }
-  .hud {
-    position: absolute;
-    left: max(10px, env(safe-area-inset-left));
-    top: max(10px, env(safe-area-inset-top));
-    display: grid;
-    grid-template-columns: auto auto;
-    gap: 3px 13px;
-    width: 230px;
-    padding: 10px;
-    border: 1px solid rgba(255,255,255,0.28);
-    border-radius: 8px;
-    background: rgba(255, 250, 235, 0.88);
-    box-shadow: 0 14px 34px rgba(0,0,0,0.16);
-    z-index: 2;
-    font-size: 12px;
-  }
-  .hud .key { color: #617084; }
-  .hud .value { text-align: right; font-weight: 950; }
-  .hud .line { grid-column: 1 / 3; height: 1px; background: rgba(38,50,71,0.13); margin: 3px 0; }
-  .top-flight-actions {
-    position: absolute;
-    right: max(10px, env(safe-area-inset-right));
-    top: max(10px, env(safe-area-inset-top));
-    display: flex;
-    gap: 8px;
-    z-index: 2;
-  }
-  .fuel-stack {
-    position: absolute;
-    left: max(10px, env(safe-area-inset-left));
-    bottom: max(96px, calc(env(safe-area-inset-bottom) + 92px));
-    width: 230px;
-    display: grid;
-    gap: 5px;
-    z-index: 2;
-  }
-  .tiny-label {
-    font-size: 10px;
-    font-weight: 950;
-    color: rgba(255,255,255,0.84);
-    text-shadow: 0 1px 3px rgba(0,0,0,0.45);
-  }
-  .fuel-stack .meter {
-    height: 12px;
-    background: rgba(255,255,255,0.26);
-    border: 1px solid rgba(255,255,255,0.18);
-  }
-  .flight-controls {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: max(10px, env(safe-area-inset-bottom));
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 0 14px;
-    pointer-events: none;
-    z-index: 3;
-  }
-  .flight-controls > * { pointer-events: auto; }
-  .control-cluster { display: flex; align-items: end; gap: 8px; }
-  .control-col { display: grid; gap: 8px; }
-  .control-btn {
-    width: 58px;
-    height: 58px;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.38);
-    background: rgba(255,250,235,0.84);
-    color: #263247;
-    box-shadow: 0 4px 0 rgba(38,50,71,0.14);
-    font-size: 22px;
-    font-weight: 950;
-  }
-  .control-btn.small {
-    width: 58px;
-    height: 50px;
-    font-size: 11px;
-    line-height: 1.1;
-  }
-  .control-btn.stage {
-    width: 78px;
-    height: 68px;
-    background: #f29e4c;
-    font-size: 13px;
-  }
-  .control-btn.on { background: #89d690; }
-  .control-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(38,50,71,0.14); }
-
-  /* Outcome and modals */
-  .center-screen {
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-    background:
-      radial-gradient(circle at 50% 20%, rgba(255,255,255,0.22), transparent 34%),
-      linear-gradient(180deg, #2e4a78 0%, #111d34 62%, #0c1324 100%);
-  }
-  .out-card, .modal-card {
-    width: min(480px, 94vw);
-    max-height: 92vh;
-    overflow: auto;
-    padding: 20px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--panel-strong);
-    box-shadow: 0 24px 64px rgba(0,0,0,0.26);
-  }
-  .out-card { text-align: center; }
-  #out-title {
-    font-size: 24px;
-    font-weight: 950;
-    margin-bottom: 12px;
-  }
-  #out-big {
-    font-size: clamp(40px, 11vw, 70px);
-    line-height: 0.98;
-    color: #4478c4;
-    font-weight: 950;
-  }
-  .out-label {
-    color: var(--soft-ink);
-    font-weight: 850;
-    margin-bottom: 14px;
-  }
-  .out-lines {
-    display: grid;
-    gap: 7px;
-    margin: 14px 0;
-    text-align: left;
-  }
-  .out-line {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 9px 11px;
-    border-radius: 8px;
-    background: rgba(68, 120, 196, 0.09);
-    font-size: 13px;
-    color: var(--soft-ink);
-  }
-  .out-line b { color: var(--ink); text-align: right; }
-  .unlock-list {
-    display: grid;
-    gap: 8px;
-    margin: 12px 0;
-  }
-  .unlock-card {
-    padding: 10px;
-    border: 1px solid rgba(85, 169, 104, 0.28);
-    border-radius: 8px;
-    background: rgba(85, 169, 104, 0.14);
-    text-align: left;
-    font-size: 13px;
-    color: #244d2c;
-    font-weight: 850;
-  }
-  .out-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 9px;
-    margin-top: 10px;
-  }
-  .modal {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 18px;
-    background: rgba(24, 38, 62, 0.58);
-    backdrop-filter: blur(4px);
-    z-index: 10;
-  }
-  .modal-card h2 {
-    font-size: 25px;
-    margin-bottom: 8px;
-    color: #263247;
-  }
-  .modal-card p {
-    color: var(--soft-ink);
-    line-height: 1.46;
-    font-size: 14px;
-    font-weight: 700;
-    margin-bottom: 14px;
-  }
-  .modal-card input {
-    width: 100%;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 13px 12px;
-    margin-bottom: 12px;
-    background: #fff;
-    color: var(--ink);
-    font-size: 17px;
-    font-weight: 900;
-    text-align: center;
-  }
-  .tech-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 10px;
-  }
-  .tech-list {
-    display: grid;
-    gap: 9px;
-  }
-  .tech-card {
-    display: grid;
-    gap: 6px;
-    padding: 11px;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    background: rgba(255,255,255,0.58);
-  }
-  .tech-card.locked { opacity: 0.56; }
-  .tech-card h3 {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    font-size: 16px;
-  }
-  .tech-card p {
-    margin: 0;
-    font-size: 13px;
-  }
-  .tech-parts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-  .tech-chip {
-    padding: 3px 7px;
-    border-radius: 999px;
-    background: rgba(68, 120, 196, 0.1);
-    font-size: 11px;
-    font-weight: 850;
-    color: #365676;
-  }
-
-  @media (max-width: 860px) {
-    .menu-hero {
-      grid-template-columns: 1fr;
-      min-height: auto;
-      align-items: center;
-      padding-bottom: 90px;
-    }
-    .hero-title {
-      padding: 28px 0 4px;
-    }
-    .launchpad-preview {
-      width: 100%;
-      left: 0;
-      height: 150px;
-    }
-    .build-body {
-      grid-template-columns: 1fr;
-      grid-template-rows: 132px minmax(0, 1fr) auto;
-    }
-    .palette {
-      border-right: 0;
-      border-bottom: 1px solid var(--line);
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      padding: 9px;
-    }
-    .panel-title { min-width: 142px; align-self: center; }
-    .part-group { display: contents; }
-    .part-group-label { display: none; }
-    .part-grid { display: flex; gap: 8px; }
-    .part-card { width: 92px; flex: 0 0 92px; min-height: 110px; }
-    .stats-panel {
-      max-height: 224px;
-      border-left: 0;
-      border-top: 1px solid var(--line);
-    }
-    .stats-block { margin-bottom: 7px; }
-  }
-
-  @media (max-width: 620px) {
-    .topbar { gap: 7px; padding: 8px; flex-wrap: wrap; }
-    .topbar-title { flex: 1; min-width: 150px; }
-    .text-input { order: 5; flex: 1; width: 100%; }
-    .hud { width: calc(100vw - 20px); max-width: 232px; font-size: 11px; }
-    .top-flight-actions { top: 10px; right: 10px; }
-    .top-flight-actions .btn { padding: 8px 10px; font-size: 12px; }
-    .fuel-stack { width: 174px; bottom: 92px; }
-    .control-btn { width: 50px; height: 52px; }
-    .control-btn.small { width: 52px; height: 44px; }
-    .control-btn.stage { width: 64px; height: 60px; }
-    .flight-controls { padding: 0 8px; gap: 6px; }
-    .control-cluster { gap: 5px; }
-    .menu-actions .split, .out-actions { grid-template-columns: 1fr; }
-  }
-</style>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>">
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<section id="screen-menu" class="screen">
-  <div class="menu-stars"></div>
-  <canvas id="pad-preview" class="launchpad-preview" width="640" height="300"></canvas>
-  <main class="menu-hero">
-    <div class="hero-title">
-      <h1>Final Frontier</h1>
-      <p>Build backyard experiments into real launch vehicles, learn the numbers, and make a little company reach orbit.</p>
+
+<!-- ═══════════ Onboarding ═══════════ -->
+<div id="onboard" class="screen hidden">
+  <div class="stars-bg"></div>
+  <div class="onboard-card">
+    <div class="onboard-rocket">🚀</div>
+    <h1>Final Frontier</h1>
+    <p class="story">You are eight years old. You have a soda bottle, a bicycle pump,
+      and a very serious dream: to run the <b>greatest rocket company the world has ever seen</b>.</p>
+    <p class="story-sub">Every company needs a name. Choose wisely — it goes on all the stickers.</p>
+    <div class="name-row">
+      <input id="companyInput" maxlength="24" placeholder="e.g. Bloo Origin" autocomplete="off">
+      <button id="diceBtn" title="Random name">🎲</button>
     </div>
-    <section class="menu-card">
-      <h2 id="menu-company">Company</h2>
-      <div class="menu-row"><span>Era</span><b id="menu-tier">Backyard</b></div>
-      <div class="menu-row"><span>XP</span><b id="menu-xp">0</b></div>
-      <div class="menu-row"><span>Best altitude</span><b id="menu-best-alt">0 m</b></div>
-      <div class="menu-row"><span>Best orbit</span><b id="menu-best-orbit">Not yet</b></div>
-      <div class="goal-box" id="menu-goal"></div>
-      <div class="meter"><span id="menu-xp-fill"></span></div>
-      <div class="menu-row"><span id="menu-next-label">Next unlock</span><b id="menu-next-xp">0 XP</b></div>
-      <div class="menu-actions">
-        <button class="btn primary" id="btn-open-build">Build and launch</button>
-        <div class="split">
-          <button class="btn blue" id="btn-tech">Tech tree</button>
-          <button class="btn" id="btn-reset">Reset</button>
-        </div>
+    <button id="startBtn" class="btn primary big">Found the company&nbsp;🚀</button>
+  </div>
+</div>
+
+<!-- ═══════════ Builder ═══════════ -->
+<div id="builder" class="screen hidden">
+  <header id="bHeader">
+    <div id="companyBadge"></div>
+    <div id="companyMeta">
+      <div id="companyName"></div>
+      <div id="tierName"></div>
+    </div>
+    <div id="xpWrap" title="XP — earn it by flying high">
+      <div id="xpBar"><div id="xpFill"></div></div>
+      <div id="xpLabel"></div>
+    </div>
+    <div id="bestAlt"></div>
+    <button id="milestonesBtn" class="btn ghost" title="Milestones">🏆</button>
+  </header>
+  <div id="bMain">
+    <aside id="palette">
+      <div id="paletteHeader">
+        <h2>Parts</h2>
+        <label class="toggle"><input type="checkbox" id="showAll"><span>see all parts</span></label>
+      </div>
+      <div id="partList"></div>
+    </aside>
+    <section id="bay">
+      <canvas id="bayCanvas"></canvas>
+      <div id="partActions" class="hidden">
+        <button data-act="up" title="Move up">▲</button>
+        <button data-act="down" title="Move down">▼</button>
+        <button data-act="dup" title="Duplicate">⧉</button>
+        <button data-act="del" title="Remove">✕</button>
       </div>
     </section>
-  </main>
-</section>
-
-<section id="screen-build" class="screen hidden">
-  <div class="topbar">
-    <button class="icon-btn" id="btn-build-back" title="Back">‹</button>
-    <div class="topbar-title">Assembly Yard</div>
-    <span class="pill" id="build-tier-pill">Backyard parts</span>
-    <label class="check"><input type="checkbox" id="toggle-old-parts"> See previous tiers</label>
-    <div class="topbar-spacer"></div>
-    <input class="text-input" id="rocket-name" maxlength="32" autocomplete="off" placeholder="Rocket name">
-  </div>
-  <div class="build-body">
-    <aside class="palette">
-      <div class="panel-title">
-        <span>Parts</span>
-        <span class="pill" id="parts-count">0</span>
+    <aside id="statsPanel">
+      <input id="rocketName" maxlength="22" placeholder="Name this rocket…" autocomplete="off">
+      <div id="statTotals"></div>
+      <div id="stageList"></div>
+      <div id="warnList"></div>
+      <div id="buildActions">
+        <button id="clearBtn" class="btn ghost">Clear</button>
+        <button id="launchBtn" class="btn primary">Launch 🚀</button>
       </div>
-      <div id="parts-list"></div>
     </aside>
-    <main class="build-stage">
-      <canvas id="build-canvas"></canvas>
-      <div class="toast" id="build-toast"></div>
-      <div class="selection-bar hidden" id="selection-bar">
-        <div id="selected-name">Part</div>
-        <button class="icon-btn" id="btn-part-up" title="Move up">↑</button>
-        <button class="icon-btn" id="btn-part-down" title="Move down">↓</button>
-        <button class="icon-btn" id="btn-part-duplicate" title="Duplicate">+</button>
-        <button class="icon-btn" id="btn-part-delete" title="Delete">×</button>
-      </div>
-    </main>
-    <aside class="stats-panel">
-      <div class="panel-title"><span>Engineer notes</span><span class="pill" id="parts-mass">0 t</span></div>
-      <div class="stats-block" id="rocket-stats"></div>
-      <div id="stage-list"></div>
-      <div class="warnings" id="warnings"></div>
-      <div class="stats-actions">
-        <button class="btn primary" id="btn-launch">Launch</button>
-        <div class="split">
-          <button class="btn blue" id="btn-save-blueprint">Save</button>
-          <button class="btn" id="btn-load-blueprint">Load</button>
+  </div>
+</div>
+
+<!-- ═══════════ Flight ═══════════ -->
+<div id="flight" class="screen hidden">
+  <canvas id="flightCanvas"></canvas>
+  <div id="hud">
+    <div id="hudTop">
+      <div id="metWrap"><span id="met">T+ 0s</span><span id="warpLabel">×1</span></div>
+    </div>
+    <div id="instruments">
+      <div class="inst"><label>Altitude</label><span id="iAlt">0 m</span></div>
+      <div class="inst"><label>Speed</label><span id="iSpd">0 m/s</span></div>
+      <div class="inst"><label>V-speed</label><span id="iVspd">0 m/s</span></div>
+      <div class="inst orbital"><label>Apoapsis</label><span id="iAp">—</span></div>
+      <div class="inst orbital"><label>Periapsis</label><span id="iPe">—</span></div>
+      <div class="inst orbital"><label>Δv left</label><span id="iDv">—</span></div>
+    </div>
+    <div id="gauges">
+      <div class="gauge"><label>THR</label><div class="vbar"><div id="thrFill"></div></div></div>
+      <div class="gauge"><label>FUEL</label><div class="vbar"><div id="fuelFill"></div></div></div>
+    </div>
+    <div id="stageInfo"></div>
+    <div id="hudButtons">
+      <button id="mapBtn" class="hbtn" title="Map (M)">🗺</button>
+      <button id="sasBtn" class="hbtn" title="SAS — Stability Assist: holds your current attitude automatically (T)">SAS</button>
+      <button id="pauseBtn" class="hbtn" title="Pause (Esc)">⏸</button>
+    </div>
+    <div id="keyHints">←→ steer · ↑↓ throttle · SPACE stage · P chute · M map · ,/. time warp · T SAS (hold attitude)</div>
+  </div>
+  <div id="pumpGame" class="hidden">
+    <div id="pumpCard">
+      <div id="pumpTitle">🚴 Pressurize the bottle!</div>
+      <div id="pumpZone">
+        <div id="pumpPump">
+          <div id="pumpHandle"></div>
+          <div id="pumpShaft"></div>
+          <div id="pumpBodyBox"></div>
         </div>
-        <button class="btn danger" id="btn-clear">Clear stack</button>
+        <div id="pumpHose"></div>
+        <div id="pumpBar"><div id="pumpDangerZone"></div><div id="pumpFill"></div></div>
       </div>
-    </aside>
-  </div>
-</section>
-
-<section id="screen-flight" class="screen hidden">
-  <canvas id="flight-canvas"></canvas>
-  <div class="hud">
-    <span class="key">Altitude</span><span class="value" id="hud-alt">0 m</span>
-    <span class="key">Speed</span><span class="value" id="hud-speed">0 m/s</span>
-    <span class="key">Vertical</span><span class="value" id="hud-vspeed">0 m/s</span>
-    <span class="key">Horizontal</span><span class="value" id="hud-hspeed">0 m/s</span>
-    <div class="line"></div>
-    <span class="key">Apoapsis</span><span class="value" id="hud-ap">0 m</span>
-    <span class="key">Periapsis</span><span class="value" id="hud-pe">0 m</span>
-    <span class="key">Orbit</span><span class="value" id="hud-orbit">Suborbital</span>
-    <div class="line"></div>
-    <span class="key">Stage</span><span class="value" id="hud-stage">1</span>
-    <span class="key">TWR</span><span class="value" id="hud-twr">0.00</span>
-    <span class="key">dV left</span><span class="value" id="hud-dv">0 m/s</span>
-    <span class="key">Throttle</span><span class="value" id="hud-throttle">100%</span>
-    <span class="key">Pitch</span><span class="value" id="hud-pitch">0 deg</span>
-    <span class="key">Time</span><span class="value" id="hud-time">0:00</span>
-  </div>
-  <div class="top-flight-actions">
-    <button class="btn" id="btn-toggle-map">Map</button>
-    <button class="btn danger" id="btn-end-flight">End flight</button>
-  </div>
-  <div class="fuel-stack">
-    <div class="tiny-label">ACTIVE STAGE FUEL</div>
-    <div class="meter"><span id="hud-fuel-fill"></span></div>
-  </div>
-  <div class="flight-controls">
-    <div class="control-cluster">
-      <button class="control-btn" id="ctl-left" title="Pitch left">‹</button>
-      <button class="control-btn" id="ctl-right" title="Pitch right">›</button>
-    </div>
-    <div class="control-cluster">
-      <button class="control-btn small" id="ctl-sas">SAS<br>ON</button>
-      <button class="control-btn small" id="ctl-warp">WARP<br>x1</button>
-      <button class="control-btn small" id="ctl-chute">CHUTE</button>
-      <button class="control-btn stage" id="ctl-stage">STAGE</button>
-    </div>
-    <div class="control-col">
-      <button class="control-btn" id="ctl-throttle-up">▲</button>
-      <button class="control-btn" id="ctl-throttle-down">▼</button>
+      <div id="pumpLabel">0.0 bar</div>
+      <div id="pumpHint">spam <b>SPACE</b> to pump — past the red zone it might POP!</div>
+      <button id="pumpRelease" class="btn primary" disabled>pump first…</button>
     </div>
   </div>
-</section>
-
-<section id="screen-outcome" class="screen center-screen hidden">
-  <div class="out-card">
-    <div id="out-title">Flight complete</div>
-    <div id="out-big">0 m</div>
-    <div class="out-label">peak altitude</div>
-    <div class="out-lines" id="out-lines"></div>
-    <div class="unlock-list hidden" id="unlock-list"></div>
-    <div class="out-actions">
-      <button class="btn blue" id="btn-out-menu">Menu</button>
-      <button class="btn primary" id="btn-out-build">Build again</button>
+  <div id="touchControls">
+    <div class="tc-group">
+      <button class="tbtn" data-k="left">⟲</button>
+      <button class="tbtn" data-k="right">⟳</button>
+    </div>
+    <div class="tc-group">
+      <button class="tbtn" data-k="thrDown">−</button>
+      <button class="tbtn" data-k="thrUp">＋</button>
+      <button class="tbtn big" data-k="stage">🚀</button>
+      <button class="tbtn" data-k="chute">🪂</button>
+      <button class="tbtn" data-k="warpDown">◂◂</button>
+      <button class="tbtn" data-k="warpUp">▸▸</button>
     </div>
   </div>
-</section>
-
-<div class="modal hidden" id="company-modal">
-  <div class="modal-card">
-    <h2>Name your rocket company</h2>
-    <p>You are starting with tape, bottles, notebooks, and a backyard launch pad. Put a name on the first page before the engines get serious.</p>
-    <input id="company-input" maxlength="30" placeholder="Nova Yard Aerospace" autocomplete="off">
-    <button class="btn primary" id="btn-found-company" style="width: 100%">Found company</button>
-  </div>
+  <div id="toasts"></div>
 </div>
 
-<div class="modal hidden" id="tech-modal">
-  <div class="modal-card">
-    <div class="tech-head">
-      <h2>Tech tree</h2>
-      <button class="icon-btn" id="btn-close-tech" title="Close">×</button>
-    </div>
-    <div class="tech-list" id="tech-list"></div>
-  </div>
-</div>
-
-<div class="modal hidden" id="blueprint-modal">
-  <div class="modal-card">
-    <div class="tech-head">
-      <h2>Blueprints</h2>
-      <button class="icon-btn" id="btn-close-blueprints" title="Close">×</button>
-    </div>
-    <div class="tech-list" id="blueprint-list"></div>
-  </div>
-</div>
+<!-- ═══════════ Modal ═══════════ -->
+<div id="modal" class="hidden"><div id="modalCard"></div></div>
 
 <script type="module" src="js/main.js"></script>
-<script>
-  if ("serviceWorker" in navigator && location.protocol === "https:") {
-    navigator.serviceWorker.register("sw.js");
-  }
-</script>
 </body>
 </html>
