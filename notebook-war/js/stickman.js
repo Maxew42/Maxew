@@ -27,13 +27,16 @@ export class Stickman {
     this.phase = 0;
     this.blockedWall = null;      // tile index of drywall we walked into (AI chews it)
     this.netTarget = null;
-    this.input = { mx: 0, jump: false, jumpP: false, dropP: false, aim: 0, fire: false, fireP: false, swapP: false, throwP: false, pickP: false };
+    this.duck = false;
+    this.stepT = 0;
+    this.input = { mx: 0, jump: false, jumpP: false, dropP: false, down: false, aim: 0, fire: false, fireP: false, swapP: false, throwP: false, pickP: false };
   }
 
   get weapon() { return this.slots[this.cur] || { kind: 'hands', ammo: Infinity }; }
   get wdef() { return WEAPONS[this.weapon.kind]; }
+  get h() { return this.duck ? 32 : MAN_H; }       // collision height (ducking shrinks it)
   get headX() { return this.x + this.facing * 1.5; }
-  get headY() { return this.y - MAN_H + 5; }
+  get headY() { return this.y - this.h + 5; }
 
   giveWeapon(kind, ammo) {
     const slot = { kind, ammo: ammo != null ? ammo : WEAPONS[kind].ammo };
@@ -82,8 +85,11 @@ export class Stickman {
     this.aim = inp.aim;
     this.facing = Math.cos(this.aim) >= 0 ? 1 : -1;
 
+    // Duck: hold down on solid ground (a tap on a platform drops through instead).
+    this.duck = !!inp.down && this.onGround;
+
     // Horizontal.
-    const top = RUN * this.speedMul();
+    const top = RUN * this.speedMul() * (this.duck ? 0.45 : 1);
     const want = clamp(inp.mx, -1, 1) * top;
     const acc = this.onGround ? ACCEL : AIR_ACCEL;
     if (Math.abs(want) > 1) {
@@ -98,7 +104,8 @@ export class Stickman {
     if (inp.jumpP) this.jumpBuf = 0.11;
     if (this.jumpBuf > 0 && (this.onGround || this.coyote > 0)) {
       this.vy = -JUMP_V; this.onGround = false; this.coyote = 0; this.jumpBuf = 0;
-      game.audio?.jump();
+      this.duck = false;
+      game.audio?.jump(game.spatial(this.x, this.y));
     }
     // Jetpack: hold jump in the air.
     if (inp.jump && !this.onGround && this.jetFuel > 0 && this.vy > -330) {
@@ -131,7 +138,7 @@ export class Stickman {
           this.heat = Math.min(1, this.heat + 0.09);
           if (d.push) this.vx -= Math.cos(this.aim) * d.push;
         } else if (inp.fireP) {
-          game.audio?.click();
+          game.audio?.click(game.spatial(this.x, this.y));
         }
       }
     } else if (d.kind === 'thrown') {
@@ -145,7 +152,7 @@ export class Stickman {
         game.placeMine(this);
       }
     }
-    if (inp.swapP) { this.cur = 1 - this.cur; this.fireCd = Math.max(this.fireCd, 0.18); game.audio?.swap(); }
+    if (inp.swapP) { this.cur = 1 - this.cur; this.fireCd = Math.max(this.fireCd, 0.18); game.audio?.swap(game.spatial(this.x, this.y)); }
     if (inp.throwP) game.throwWeapon(this);
   }
 
@@ -173,7 +180,7 @@ export class Stickman {
       const dir = Math.sign(this.vx);
       const edge = nx + dir * hw;
       const c = Math.floor(edge / TILE);
-      const r0 = Math.floor((this.y - MAN_H + 2) / TILE), r1 = Math.floor((this.y - 2) / TILE);
+      const r0 = Math.floor((this.y - this.h + 2) / TILE), r1 = Math.floor((this.y - 2) / TILE);
       for (let r = r0; r <= r1; r++) {
         const t = map.t(c, r);
         if (t === T_SOLID || t === T_WALL) {
@@ -215,11 +222,11 @@ export class Stickman {
       }
     } else if (this.vy < 0) {
       const c0 = Math.floor((this.x - hw) / TILE), c1 = Math.floor((this.x + hw) / TILE);
-      const r = Math.floor((ny - MAN_H) / TILE);
+      const r = Math.floor((ny - this.h) / TILE);
       for (let c = c0; c <= c1; c++) {
         const t = map.t(c, r);
         if (t === T_SOLID || t === T_WALL) {
-          ny = (r + 1) * TILE + MAN_H;
+          ny = (r + 1) * TILE + this.h;
           this.vy = 0;
           break;
         }
@@ -245,14 +252,19 @@ export class Stickman {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    const hipY = -19, neckY = -37, headY = -43.5, headR = 7;
+    const duck = this.duck;
+    const hipY = duck ? -12 : -19, neckY = duck ? -25 : -37, headY = duck ? -31.5 : -43.5, headR = 7;
     const lean = clamp(this.vx / RUN, -1, 1) * 4;
-    const running = this.onGround && Math.abs(this.vx) > 25;
+    const running = this.onGround && Math.abs(this.vx) > 25 && !duck;
     const s = Math.sin(this.phase), c2 = Math.sin(this.phase + Math.PI);
 
     // Legs.
     ctx.beginPath();
-    if (running) {
+    if (duck) {
+      // Squatting: knees out, feet planted.
+      ctx.moveTo(0, hipY); ctx.lineTo(-9, hipY + 6); ctx.lineTo(-6, 0);
+      ctx.moveTo(0, hipY); ctx.lineTo(9, hipY + 6); ctx.lineTo(7, 0);
+    } else if (running) {
       ctx.moveTo(lean * 0.4, hipY);
       ctx.quadraticCurveTo(s * 6 + 3, hipY + 10, s * 11, -Math.max(0, Math.sin(this.phase + 0.6)) * 5);
       ctx.moveTo(lean * 0.4, hipY);
@@ -290,12 +302,19 @@ export class Stickman {
     ctx.arc(hx, headY, headR, 0, Math.PI * 2);
     ctx.fill();
     if (this.helmetHp > 0) {
-      ctx.strokeStyle = '#4a6f43';
-      ctx.lineWidth = 4;
+      // Full helmet: a solid dome over the whole top of the head, with a rim.
+      ctx.fillStyle = '#4a6f43';
       ctx.beginPath();
-      ctx.arc(hx, headY - 1, headR + 2, Math.PI * 1.05, Math.PI * 1.95);
+      ctx.arc(hx, headY + 0.5, headR + 2.5, Math.PI, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 1.6;
       ctx.stroke();
-      ctx.strokeStyle = ink; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hx - headR - 3.5, headY + 1.5); ctx.lineTo(hx + headR + 3.5, headY + 1.5);
+      ctx.stroke();
+      ctx.fillStyle = ink; ctx.lineWidth = 3;
     }
 
     // Burning.
@@ -393,13 +412,19 @@ export class Stickman {
     drawWeapon(ctx, kind, ink);
     ctx.restore();
 
-    // Backpack for flamer / jetpack.
+    // Backpack for flamer / jetpack — glued to the torso, no gap.
     if (kind === 'flamer' || this.jetFuel > 0) {
+      const bx = this.facing > 0 ? shX - 8.5 : shX + 0.5;
       ctx.fillStyle = kind === 'flamer' ? '#7a3520' : '#555c68';
       ctx.beginPath();
-      ctx.roundRect(-this.facing * 10 - 4, neckY + 4, 8, 16, 3);
+      ctx.roundRect(bx, shY - 2, 8, 16, 3);
       ctx.fill();
       ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.stroke();
+      // Strap across the chest.
+      ctx.beginPath();
+      ctx.moveTo(shX + (this.facing > 0 ? -1 : 1), shY);
+      ctx.lineTo(shX + this.facing * 4, shY + 6);
+      ctx.stroke();
       ctx.lineWidth = 3;
     }
   }

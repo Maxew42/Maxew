@@ -155,7 +155,7 @@ export class Input {
   poll(resolveMouseAim) {
     const k = this.keys, kp = this.pressed;
     const out = {
-      mx: 0, jump: false, jumpP: false, dropP: false,
+      mx: 0, jump: false, jumpP: false, dropP: false, down: false,
       aim: null, fire: false, fireP: false,
       swapP: false, throwP: false, pickP: false, score: false,
     };
@@ -166,6 +166,7 @@ export class Input {
     out.jump = k.has('KeyW') || k.has('ArrowUp') || k.has('Space');
     out.jumpP = kp.has('KeyW') || kp.has('ArrowUp') || kp.has('Space');
     out.dropP = kp.has('KeyS') || kp.has('ArrowDown');
+    out.down = k.has('KeyS') || k.has('ArrowDown');
     out.fire = this.mouse.down;
     out.fireP = this.mouse.downP;
     out.swapP = kp.has('KeyQ');
@@ -180,6 +181,7 @@ export class Input {
       out.mx = Math.abs(t.moveX) > 0.22 ? t.moveX : 0;
       if (t.moveY > 0.72 && !(tp.down)) out.dropP = true;
       tp.down = t.moveY > 0.72;
+      if (t.moveY > 0.55) out.down = true;
     } else tp.down = false;
     if (t.jump) { out.jump = true; if (!tp.jump) out.jumpP = true; }
     if (t.swap && !tp.swap) out.swapP = true;
@@ -201,6 +203,7 @@ export class Input {
       if (gp.aim != null) out.aim = gp.aim;
       if (gp.fire) { out.fire = true; if (!prev.fire) out.fireP = true; }
       if (gp.jump) { out.jump = true; if (!prev.jump) out.jumpP = true; }
+      if (gp.downStick) out.down = true;
       if (gp.downStick && !prev.downStick) out.dropP = true;
       if (gp.swap && !prev.swap) out.swapP = true;
       if (gp.throw && !prev.throw) out.throwP = true;

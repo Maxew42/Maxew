@@ -35,7 +35,7 @@ Premier à 10 frags.
 | --- | --- | --- | --- |
 | Bouger | A/D ou ←/→ | Stick gauche | Stick virtuel gauche |
 | Sauter / jetpack | W / Espace (maintenir) | ✕ (maintenir) | SAUT (maintenir) |
-| Descendre d'une plateforme | S | Stick bas | Stick gauche vers le bas |
+| S'accroupir / descendre d'une plateforme | S (maintenir / appuyer) | Stick bas | Stick gauche vers le bas |
 | Viser / tirer | Souris / clic | Stick droit + RT | Stick virtuel droit (étendre = tir) |
 | Ramasser | E | □ | PRENDRE |
 | Changer d'arme | Q | △ | ↔ |
