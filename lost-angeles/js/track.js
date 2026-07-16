@@ -472,6 +472,12 @@ export class Track {
     for (let i = 0; i < N; i++) mg = Math.max(mg, Math.abs(h[(i + 1) % N] - h[i]) / sl);
     const MAXG = .105;
     if (mg > MAXG) { const s = MAXG / mg; for (let i = 0; i < N; i++) h[i] *= s; }
+    // max lissé avec 0 : les creux épousent la plaine (y = -0.12) au lieu de
+    // passer dessous — sinon le sol plat enterre des portions de route
+    for (let i = 0; i < N; i++) {
+      const v = h[i];
+      h[i] = (v + Math.sqrt(v * v + 1)) / 2;
+    }
     // rampe (montée jusqu'au bord de la brèche) et lit de rivière en contrebas
     const j = this.jump;
     j.roadY = h[j.gapF1 % N];
@@ -736,26 +742,6 @@ export class Track {
       this.group.add(m);
     };
     addM(stands); addM(people);
-
-    // banderole au milieu de la zone
-    const mid = Math.round((c.f0 + c.f1) / 2) % N;
-    const pM = this.pts[mid], lM = this.left[mid], tM = this.tan[mid];
-    const pyl = new THREE.MeshLambertMaterial({ color: 0x4a4440 });
-    for (const s of [1, -1]) {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(.3, .4, 8, 8), pyl);
-      m.position.set(pM.x + lM.x * (ROAD_HALF + 1.5) * s, this.h[mid] + 4, pM.z + lM.z * (ROAD_HALF + 1.5) * s);
-      this.group.add(m);
-    }
-    const bTex = canvasTex(512, 64, (g, w, h) => {
-      g.fillStyle = '#3a1010'; g.fillRect(0, 0, w, h);
-      g.fillStyle = '#ff9860'; g.font = '900 italic 38px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText('☠ LA FOSSE AUX FANS ☠', w / 2, h / 2);
-    });
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_HALF * 2 + 3, 2.1),
-      new THREE.MeshBasicMaterial({ map: bTex, side: THREE.DoubleSide }));
-    banner.position.set(pM.x, this.h[mid] + 6.9, pM.z);
-    banner.rotation.y = Math.atan2(tM.x, tM.z) + Math.PI;
-    this.group.add(banner);
   }
 
   // ——— plaques de turbo (chevrons orange pulsants) ———
