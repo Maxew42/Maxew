@@ -4,88 +4,177 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jeux</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2224%22 fill=%22%2317181d%22/><g fill=%22%23ececf0%22><rect x=%2224%22 y=%2224%22 width=%2222%22 height=%2222%22 rx=%226%22/><rect x=%2254%22 y=%2224%22 width=%2222%22 height=%2222%22 rx=%226%22/><rect x=%2224%22 y=%2254%22 width=%2222%22 height=%2222%22 rx=%226%22/><rect x=%2254%22 y=%2254%22 width=%2222%22 height=%2222%22 rx=%226%22/></g></svg>">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  :root {
+    --bg: #0c0d11;
+    --text: #ededf1;
+    --muted: #8b8e99;
+    --faint: #5c5f6a;
+    --line: rgba(255, 255, 255, 0.09);
+  }
+
   html, body {
     min-height: 100%;
-    background: #14100c;
-    color: #f5e9d0;
+    background: var(--bg);
+    color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
 
   body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: clamp(32px, 6vw, 64px) 20px 48px;
+    padding: clamp(40px, 7vw, 88px) 20px 40px;
+    background:
+      radial-gradient(1100px 620px at 50% -8%, rgba(255,255,255,.05), transparent 70%),
+      var(--bg);
   }
 
-  header { text-align: center; margin-bottom: clamp(32px, 5vw, 48px); }
+  /* ---------- Header ---------- */
+  header {
+    text-align: center;
+    margin-bottom: clamp(36px, 6vw, 60px);
+  }
 
   h1 {
-    font-size: clamp(36px, 7vw, 56px);
-    letter-spacing: 3px;
-    color: #ffb347;
-    text-shadow: 0 4px 0 #7a3b12, 0 8px 24px rgba(0,0,0,.6);
+    font-size: clamp(38px, 8vw, 62px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    background: linear-gradient(180deg, #ffffff, #b9bcc6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
   .tagline {
-    margin-top: 10px;
-    font-size: 17px;
-    color: #cbb896;
+    margin: 16px auto 0;
+    font-size: clamp(14px, 2.4vw, 16px);
+    color: var(--muted);
+    letter-spacing: 0.02em;
   }
 
+  .rule {
+    width: 46px;
+    height: 3px;
+    margin: 22px auto 0;
+    border-radius: 3px;
+    background: linear-gradient(90deg, transparent, #6a6d78, transparent);
+  }
+
+  /* ---------- Grid ---------- */
   .games {
     display: grid;
-    gap: 20px;
-    width: min(560px, 100%);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 288px), 1fr));
+    gap: clamp(18px, 2.2vw, 26px);
+    width: min(1080px, 100%);
   }
 
+  /* ---------- Card ---------- */
   .game-card {
-    display: block;
-    padding: 22px 24px;
-    border-radius: 14px;
-    border: 1px solid #5a4630;
-    background: rgba(42, 32, 25, 0.85);
-    color: inherit;
-    text-decoration: none;
-    transition: transform .12s, border-color .12s, box-shadow .12s;
-    box-shadow: 0 6px 20px rgba(0,0,0,.35);
-  }
-
-  .game-card:hover {
-    transform: translateY(-3px);
-    border-color: #ffb347;
-    box-shadow: 0 10px 28px rgba(0,0,0,.5), 0 0 0 1px rgba(255,179,71,.15);
-  }
-
-  .game-card:active { transform: translateY(-1px); }
-
-  .game-title {
+    position: relative;
     display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 22px;
-    font-weight: 700;
-    color: #ffb347;
-    margin-bottom: 8px;
+    flex-direction: column;
+    border-radius: 18px;
+    overflow: hidden;
+    text-decoration: none;
+    color: var(--text);
+    background: var(--card-bg, #16171c);
+    border: 1px solid var(--line);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
   }
 
-  .game-title span:first-child { font-size: 28px; line-height: 1; }
+  .game-card:hover,
+  .game-card:focus-visible {
+    transform: translateY(-5px);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, 0.55),
+      0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+      0 12px 60px -18px var(--glow);
+    outline: none;
+  }
 
-  .game-desc {
-    font-size: 15px;
-    line-height: 1.5;
-    color: #cbb896;
+  .art {
+    position: relative;
+    aspect-ratio: 5 / 3;
+    overflow: hidden;
+  }
+
+  .art svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transition: transform .35s ease;
+  }
+
+  .game-card:hover .art svg,
+  .game-card:focus-visible .art svg {
+    transform: scale(1.045);
+  }
+
+  /* subtle inner shadow blending art into body */
+  .art::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    box-shadow: inset 0 -34px 40px -24px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+  }
+
+  .card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 20px 22px;
+    flex: 1;
+    background: linear-gradient(180deg, transparent, rgba(0,0,0,.14));
+  }
+
+  .kicker {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--accent) 78%, #ffffff);
+    opacity: 0.85;
+  }
+
+  .card-title {
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--accent);
+  }
+
+  .card-desc {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--muted);
   }
 
   footer {
     margin-top: auto;
-    padding-top: 48px;
-    font-size: 14px;
-    color: #7a6a58;
+    padding-top: 52px;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: var(--faint);
+  }
+
+  @media (max-width: 480px) {
+    .card-body { padding: 16px 18px 20px; }
+    .card-title { font-size: 19px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .game-card, .art svg { transition: none; }
+    .game-card:hover { transform: none; }
+    .game-card:hover .art svg { transform: none; }
   }
 </style>
 </head>
@@ -93,30 +182,329 @@
 
 <header>
   <h1>Jeux</h1>
+  <div class="rule"></div>
 </header>
 
 <main class="games">
-  <a class="game-card" href="final-frontier/">
-    <div class="game-title"><span>🚀</span> Final Frontier</div>
-    <p class="game-desc">Kerbal Space Program en 2D, tout doux. Assemblez une fusée pièce par pièce, décollez et pilotez-la : poussée, étages, parachutes. L'altitude rapporte de l'XP qui débloque de nouvelles pièces — du pétard à eau du jardin jusqu'à la Lune, avec Δv, TWR et carte d'orbite pour vraiment se mettre en orbite.</p>
-  </a>
-  <a class="game-card" href="warp2/">
-  <div class="game-title"><span>🚀</span> Warp II</div>
-    <p class="game-desc">Jeu de bataille spatiale 2D. Construisez un vaisseau en pieces modulaires, gerez energie, boucliers, reacteurs et armes, puis combattez des IA ou des joueurs dans des salons multijoueurs avec asteroides.</p>
-  </a>
-  <a class="game-card" href="lost-angeles/">
-    <div class="game-title"><span>🏎️</span> Lost Angeles</div>
-    <p class="game-desc">Course de karts 3D dans un monde post-apocalyptique. 8 pilotes, caisses piégées, missiles et bombes de caca — solo contre les IA ou multijoueur entre potes avec un simple code de salon.</p>
-  </a>
-  <a class="game-card" href="cauchemar-en-cuisine/">
-    <div class="game-title"><span>🍳</span> Cauchemar en Cuisine</div>
-    <p class="game-desc">Bullet hell de survie dans une cuisine de restaurant. Survivez 10 minutes aux vagues de vermine, puis affrontez Philippe ChuileBest.</p>
-  </a>
-  <a class="game-card" href="apprentice/">
-    <div class="game-title"><span>⚔️</span> The Apprentice</div>
-    <p class="game-desc">Combat au sabre laser en 3D dans un Colisée. Duels directionnels façon Mount & Blade, mode Horde contre des droïdes, Force et parades parfaites — solo ou multijoueur P2P.</p>
-  </a>
-</main>
 
+  <!-- ============ FINAL FRONTIER ============ -->
+  <a class="game-card" href="final-frontier/"
+     style="--accent:#ffd166; --glow:rgba(255,209,102,.5); --card-bg:#0e1330;">
+    <div class="art">
+      <svg viewBox="0 0 400 240" role="img" aria-label="Une petite fusée grimpe dans un ciel étoilé vers la Lune">
+        <defs>
+          <linearGradient id="ff-sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#080d2a"/>
+            <stop offset=".55" stop-color="#26386f"/>
+            <stop offset="1" stop-color="#5a7fb8"/>
+          </linearGradient>
+          <radialGradient id="ff-moon" cx="42%" cy="40%" r="62%">
+            <stop offset="0" stop-color="#fff8e0"/>
+            <stop offset="1" stop-color="#f0d3a0"/>
+          </radialGradient>
+          <linearGradient id="ff-flame" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffe08a"/>
+            <stop offset="1" stop-color="#e07a5f"/>
+          </linearGradient>
+        </defs>
+        <rect width="400" height="240" fill="url(#ff-sky)"/>
+        <!-- dawn glow -->
+        <ellipse cx="200" cy="252" rx="240" ry="70" fill="#ffd38a" opacity=".28"/>
+        <!-- stars -->
+        <g fill="#fff">
+          <circle cx="40" cy="40" r="1.6" opacity=".9"/>
+          <circle cx="90" cy="90" r="1.1" opacity=".6"/>
+          <circle cx="150" cy="34" r="1.4" opacity=".8"/>
+          <circle cx="250" cy="120" r="1.1" opacity=".55"/>
+          <circle cx="60" cy="150" r="1.2" opacity=".5"/>
+          <circle cx="210" cy="60" r="1.3" opacity=".7"/>
+          <circle cx="360" cy="150" r="1.2" opacity=".6"/>
+          <circle cx="120" cy="130" r="1" opacity=".45"/>
+        </g>
+        <!-- moon -->
+        <circle cx="312" cy="66" r="40" fill="url(#ff-moon)"/>
+        <g fill="#e6c68d" opacity=".5">
+          <circle cx="300" cy="54" r="7"/>
+          <circle cx="326" cy="78" r="5"/>
+          <circle cx="322" cy="52" r="4"/>
+        </g>
+        <!-- trajectory -->
+        <path d="M120 230 Q130 150 175 108" fill="none" stroke="#ffd166" stroke-width="2"
+              stroke-dasharray="2 8" stroke-linecap="round" opacity=".45"/>
+        <!-- rocket -->
+        <g transform="translate(163 128) rotate(28)">
+          <path d="M-9 30 Q0 66 9 30 Q0 42 -9 30 Z" fill="url(#ff-flame)"/>
+          <path d="M-16 -28 Q0 -58 16 -28 L16 28 L-16 28 Z" fill="#efe7d3"/>
+          <path d="M-16 -28 Q0 -58 16 -28 L16 -12 L-16 -12 Z" fill="#e07a5f"/>
+          <path d="M-16 12 L-31 40 L-16 28 Z" fill="#b95b42"/>
+          <path d="M16 12 L31 40 L16 28 Z" fill="#b95b42"/>
+          <rect x="-16" y="22" width="32" height="6" fill="#e07a5f"/>
+          <circle cx="0" cy="0" r="8.5" fill="#5390d9" stroke="#cfe0ff" stroke-width="3"/>
+        </g>
+      </svg>
+    </div>
+    <div class="card-body">
+      <span class="kicker">Constructeur spatial · 2D</span>
+      <span class="card-title">Final Frontier</span>
+      <p class="card-desc">Kerbal Space Program en 2D, tout en douceur. Assemblez une fusée pièce par pièce, décollez et pilotez : poussée, étages, parachutes. L'altitude rapporte de l'XP qui débloque de nouvelles pièces — du pétard à eau jusqu'à la Lune.</p>
+    </div>
+  </a>
+
+  <!-- ============ WARP II ============ -->
+  <a class="game-card" href="warp2/"
+     style="--accent:#5ecbff; --glow:rgba(94,203,255,.5); --card-bg:#080d17;">
+    <div class="art">
+      <svg viewBox="0 0 400 240" role="img" aria-label="Un vaisseau modulaire vu du dessus, réacteurs cyan allumés, dans l'espace">
+        <defs>
+          <radialGradient id="w-bg" cx="50%" cy="40%" r="78%">
+            <stop offset="0" stop-color="#12233f"/>
+            <stop offset="1" stop-color="#04060c"/>
+          </radialGradient>
+          <radialGradient id="w-eng" cx="50%" cy="50%" r="50%">
+            <stop offset="0" stop-color="#eafaff"/>
+            <stop offset=".4" stop-color="#5ecbff"/>
+            <stop offset="1" stop-color="#5ecbff" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="400" height="240" fill="url(#w-bg)"/>
+        <!-- stars -->
+        <g fill="#cfe6ff">
+          <circle cx="50" cy="50" r="1.3" opacity=".7"/>
+          <circle cx="340" cy="70" r="1.1" opacity=".6"/>
+          <circle cx="300" cy="180" r="1.2" opacity=".5"/>
+          <circle cx="80" cy="190" r="1" opacity=".45"/>
+          <circle cx="150" cy="40" r="1" opacity=".5"/>
+          <circle cx="360" cy="140" r="1.2" opacity=".55"/>
+        </g>
+        <!-- asteroids -->
+        <path d="M56 158 l16 -8 12 8 -4 16 -18 4 -10 -12 z" fill="#3a4152" opacity=".85"/>
+        <path d="M330 44 l12 -5 10 7 -3 12 -14 2 -7 -9 z" fill="#333a49" opacity=".8"/>
+        <!-- shield arc -->
+        <ellipse cx="200" cy="122" rx="118" ry="86" fill="none" stroke="#5ecbff" stroke-opacity=".14" stroke-width="2"/>
+        <ellipse cx="200" cy="122" rx="96" ry="70" fill="none" stroke="#5ecbff" stroke-opacity=".08" stroke-width="1.5"/>
+        <!-- engine glow -->
+        <circle cx="184" cy="176" r="26" fill="url(#w-eng)"/>
+        <circle cx="216" cy="176" r="26" fill="url(#w-eng)"/>
+        <!-- ship (nose up) -->
+        <g transform="translate(200 118)">
+          <path d="M0 -62 L20 -18 L16 46 L-16 46 L-20 -18 Z" fill="#2c3d55" stroke="#5ecbff" stroke-opacity=".55" stroke-width="1.5"/>
+          <path d="M20 -14 L50 18 L44 34 L16 22 Z" fill="#233245" stroke="#5ecbff" stroke-opacity=".4" stroke-width="1.2"/>
+          <path d="M-20 -14 L-50 18 L-44 34 L-16 22 Z" fill="#233245" stroke="#5ecbff" stroke-opacity=".4" stroke-width="1.2"/>
+          <path d="M0 -50 L9 -22 L-9 -22 Z" fill="#9fdcff"/>
+          <line x1="0" y1="-6" x2="0" y2="34" stroke="#5ecbff" stroke-opacity=".5" stroke-width="1.5"/>
+          <circle cx="-16" cy="58" r="6.5" fill="#bff0ff"/>
+          <circle cx="16" cy="58" r="6.5" fill="#bff0ff"/>
+          <circle cx="46" cy="20" r="2.6" fill="#ff6f6f"/>
+          <circle cx="-46" cy="20" r="2.6" fill="#ff6f6f"/>
+        </g>
+      </svg>
+    </div>
+    <div class="card-body">
+      <span class="kicker">Combat spatial · Multi P2P</span>
+      <span class="card-title">Warp II</span>
+      <p class="card-desc">Bataille spatiale 2D. Construisez un vaisseau en pièces modulaires, gérez énergie, boucliers, réacteurs et armes, puis affrontez des IA ou des joueurs dans des salons multijoueurs semés d'astéroïdes.</p>
+    </div>
+  </a>
+
+  <!-- ============ LOST ANGELES ============ -->
+  <a class="game-card" href="lost-angeles/"
+     style="--accent:#ffb347; --glow:rgba(255,179,71,.5); --card-bg:#160f08;">
+    <div class="art">
+      <svg viewBox="0 0 400 240" role="img" aria-label="Un kart soulève la poussière devant un soleil couchant post-apocalyptique">
+        <defs>
+          <linearGradient id="la-sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#2a1608"/>
+            <stop offset=".48" stop-color="#7a3b12"/>
+            <stop offset=".78" stop-color="#e07a2a"/>
+            <stop offset="1" stop-color="#ffbe5c"/>
+          </linearGradient>
+          <radialGradient id="la-sun" cx="50%" cy="50%" r="50%">
+            <stop offset="0" stop-color="#fff0c8"/>
+            <stop offset=".55" stop-color="#ffd28a"/>
+            <stop offset="1" stop-color="#f09a2e"/>
+          </radialGradient>
+        </defs>
+        <rect width="400" height="240" fill="url(#la-sky)"/>
+        <!-- sun -->
+        <circle cx="220" cy="150" r="66" fill="url(#la-sun)"/>
+        <!-- heat-haze bands over the sun -->
+        <g fill="#7a3b12" opacity=".55">
+          <rect x="150" y="128" width="140" height="5"/>
+          <rect x="150" y="142" width="140" height="6"/>
+          <rect x="150" y="158" width="140" height="7"/>
+        </g>
+        <!-- ground -->
+        <rect x="0" y="176" width="400" height="64" fill="#1c130b"/>
+        <rect x="0" y="176" width="400" height="3" fill="#8a4d13" opacity=".7"/>
+        <!-- dust -->
+        <g fill="#cbb896" opacity=".22">
+          <circle cx="96" cy="178" r="26"/>
+          <circle cx="70" cy="188" r="20"/>
+          <circle cx="120" cy="190" r="18"/>
+          <circle cx="52" cy="176" r="13"/>
+        </g>
+        <!-- kart silhouette (3/4) -->
+        <g fill="#100a05">
+          <circle cx="132" cy="198" r="27"/>
+          <circle cx="228" cy="204" r="18"/>
+          <path d="M108 196 L120 168 L176 162 L196 150 L214 150 L222 178 L232 196 Z"/>
+          <path d="M150 164 q4 -22 22 -22 q16 0 18 20 z"/>
+        </g>
+        <!-- rim light -->
+        <g fill="none" stroke="#ffb347" stroke-width="2" opacity=".85" stroke-linecap="round">
+          <path d="M120 168 L176 162 L196 150"/>
+          <path d="M150 164 q4 -22 22 -22"/>
+        </g>
+        <circle cx="132" cy="198" r="9" fill="#2a1c10"/>
+        <circle cx="228" cy="204" r="6" fill="#2a1c10"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <span class="kicker">Course de karts · 3D</span>
+      <span class="card-title">Lost Angeles</span>
+      <p class="card-desc">Course de karts 3D dans un monde post-apocalyptique. 8 pilotes, caisses piégées, missiles et bombes de caca — solo contre les IA ou entre potes avec un simple code de salon.</p>
+    </div>
+  </a>
+
+  <!-- ============ CAUCHEMAR EN CUISINE ============ -->
+  <a class="game-card" href="cauchemar-en-cuisine/"
+     style="--accent:#ffca4a; --glow:rgba(255,150,40,.5); --card-bg:#130d07;">
+    <div class="art">
+      <svg viewBox="0 0 400 240" role="img" aria-label="Une poêle en flammes, des cafards et une pluie de projectiles dans une cuisine sombre">
+        <defs>
+          <linearGradient id="ck-bg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#1b140c"/>
+            <stop offset="1" stop-color="#0b0805"/>
+          </linearGradient>
+          <radialGradient id="ck-glow" cx="46%" cy="100%" r="70%">
+            <stop offset="0" stop-color="#f59a23" stop-opacity=".55"/>
+            <stop offset="1" stop-color="#f59a23" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="ck-flame" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0" stop-color="#ff6b3c"/>
+            <stop offset=".5" stop-color="#ffb347"/>
+            <stop offset="1" stop-color="#ffe680"/>
+          </linearGradient>
+        </defs>
+        <rect width="400" height="240" fill="url(#ck-bg)"/>
+        <!-- tile grid -->
+        <g stroke="#2a2019" stroke-width="1" opacity=".55">
+          <path d="M0 60 H400 M0 120 H400 M0 180 H400"/>
+          <path d="M80 0 V240 M160 0 V240 M240 0 V240 M320 0 V240"/>
+        </g>
+        <!-- stove glow -->
+        <rect width="400" height="240" fill="url(#ck-glow)"/>
+        <!-- roaches -->
+        <g fill="#241812">
+          <g transform="translate(70 66) rotate(-18)">
+            <ellipse cx="0" cy="0" rx="13" ry="8"/>
+            <circle cx="12" cy="0" r="4.5"/>
+            <g stroke="#241812" stroke-width="1.6" stroke-linecap="round">
+              <path d="M-6 -6 L-16 -13 M-2 -8 L-6 -18 M4 -8 L6 -18 M-6 6 L-16 13 M-2 8 L-6 18 M4 8 L6 18"/>
+              <path d="M15 -3 L24 -8 M15 3 L24 8" stroke="#3a281c"/>
+            </g>
+          </g>
+          <g transform="translate(320 150) rotate(150)">
+            <ellipse cx="0" cy="0" rx="11" ry="7"/>
+            <circle cx="10" cy="0" r="4"/>
+            <g stroke="#241812" stroke-width="1.5" stroke-linecap="round">
+              <path d="M-5 -5 L-14 -11 M-1 -7 L-5 -16 M3 -7 L5 -16 M-5 5 L-14 11 M-1 7 L-5 16 M3 7 L5 16"/>
+            </g>
+          </g>
+        </g>
+        <!-- frying pan -->
+        <g transform="translate(196 150) rotate(-12)">
+          <rect x="60" y="-7" width="96" height="13" rx="6" fill="#2c231a"/>
+          <rect x="146" y="-6" width="18" height="11" rx="5" fill="#3a2c20"/>
+          <ellipse cx="0" cy="0" rx="66" ry="22" fill="#0f0b07"/>
+          <ellipse cx="0" cy="-3" rx="60" ry="17" fill="#1c1710"/>
+          <path d="M-30 -6 q-8 -34 8 -52 q-4 26 12 34 q10 -14 4 -34 q22 22 10 52 z"
+                fill="url(#ck-flame)"/>
+          <path d="M8 -6 q-4 -20 8 -30 q-2 16 8 20 q4 -8 2 -20 q14 14 6 30 z"
+                fill="url(#ck-flame)" opacity=".9"/>
+        </g>
+        <!-- bullet-hell projectiles -->
+        <g>
+          <circle cx="300" cy="40" r="5" fill="#ffd700"/>
+          <circle cx="330" cy="70" r="4" fill="#ffca4a"/>
+          <circle cx="270" cy="70" r="3.5" fill="#ffe680"/>
+          <circle cx="360" cy="100" r="4.5" fill="#ffd700"/>
+          <circle cx="110" cy="150" r="4" fill="#ff6b5e"/>
+          <circle cx="140" cy="185" r="3.5" fill="#ff8a5c"/>
+          <circle cx="60" cy="150" r="3" fill="#ffd700"/>
+        </g>
+      </svg>
+    </div>
+    <div class="card-body">
+      <span class="kicker">Bullet hell · Survie</span>
+      <span class="card-title">Cauchemar en Cuisine</span>
+      <p class="card-desc">Bullet hell de survie dans une cuisine de restaurant. Tenez 10 minutes face aux vagues de vermine, puis affrontez le boss : Philippe ChuileBest.</p>
+    </div>
+  </a>
+
+  <!-- ============ THE APPRENTICE ============ -->
+  <a class="game-card" href="apprentice/"
+     style="--accent:#6fc3ff; --glow:rgba(111,195,255,.5); --card-bg:#080b15;">
+    <div class="art">
+      <svg viewBox="0 0 400 240" role="img" aria-label="Deux sabres laser croisés, bleu et rouge, dans une arène sombre">
+        <defs>
+          <radialGradient id="ap-bg" cx="50%" cy="44%" r="72%">
+            <stop offset="0" stop-color="#15243a"/>
+            <stop offset="1" stop-color="#060911"/>
+          </radialGradient>
+          <radialGradient id="ap-vig" cx="50%" cy="50%" r="62%">
+            <stop offset="55%" stop-color="#ff2814" stop-opacity="0"/>
+            <stop offset="100%" stop-color="#ff2814" stop-opacity=".22"/>
+          </radialGradient>
+        </defs>
+        <rect width="400" height="240" fill="url(#ap-bg)"/>
+        <!-- arena arches -->
+        <g fill="#101d30">
+          <path d="M20 200 v-30 a16 16 0 0 1 32 0 v30 z"/>
+          <path d="M66 200 v-34 a16 16 0 0 1 32 0 v34 z"/>
+          <path d="M112 200 v-30 a16 16 0 0 1 32 0 v30 z"/>
+          <path d="M256 200 v-30 a16 16 0 0 1 32 0 v30 z"/>
+          <path d="M302 200 v-34 a16 16 0 0 1 32 0 v34 z"/>
+          <path d="M348 200 v-30 a16 16 0 0 1 32 0 v30 z"/>
+        </g>
+        <rect x="0" y="198" width="400" height="42" fill="#0a1220"/>
+        <rect width="400" height="240" fill="url(#ap-vig)"/>
+        <!-- blue saber (lower-left to upper-right) -->
+        <g stroke-linecap="round">
+          <line x1="150" y1="196" x2="252" y2="58" stroke="#6fc3ff" stroke-width="16" opacity=".18"/>
+          <line x1="150" y1="196" x2="252" y2="58" stroke="#6fc3ff" stroke-width="8" opacity=".55"/>
+          <line x1="155" y1="190" x2="252" y2="58" stroke="#eafaff" stroke-width="3"/>
+        </g>
+        <!-- red saber (lower-right to upper-left) -->
+        <g stroke-linecap="round">
+          <line x1="250" y1="196" x2="148" y2="58" stroke="#ff5f4a" stroke-width="16" opacity=".18"/>
+          <line x1="250" y1="196" x2="148" y2="58" stroke="#ff5f4a" stroke-width="8" opacity=".55"/>
+          <line x1="245" y1="190" x2="148" y2="58" stroke="#ffe0d8" stroke-width="3"/>
+        </g>
+        <!-- hilts -->
+        <g>
+          <rect x="142" y="192" width="10" height="24" rx="3" transform="rotate(-36 147 204)" fill="#9fb2cc"/>
+          <rect x="248" y="192" width="10" height="24" rx="3" transform="rotate(36 253 204)" fill="#9fb2cc"/>
+        </g>
+        <!-- clash sparks -->
+        <g fill="#ffe08a">
+          <circle cx="200" cy="126" r="3.2"/>
+          <circle cx="212" cy="116" r="1.8"/>
+          <circle cx="188" cy="118" r="1.6"/>
+          <circle cx="206" cy="138" r="1.6"/>
+          <circle cx="194" cy="140" r="1.4"/>
+        </g>
+        <line x1="200" y1="126" x2="222" y2="108" stroke="#ffe08a" stroke-width="1.4" opacity=".7"/>
+        <line x1="200" y1="126" x2="180" y2="110" stroke="#ffe08a" stroke-width="1.4" opacity=".7"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <span class="kicker">Combat au sabre · 3D</span>
+      <span class="card-title">The Apprentice</span>
+      <p class="card-desc">Combat au sabre laser en 3D dans un Colisée. Duels directionnels façon Mount &amp; Blade, mode Horde contre des droïdes, Force et parades parfaites — solo ou multijoueur P2P.</p>
+    </div>
+  </a>
+
+</main>
 </body>
 </html>

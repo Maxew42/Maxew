@@ -1,0 +1,71 @@
+name: Deploy to GitHub Pages
+
+# GitHub Pages serves a single site, so a push to either branch rebuilds the
+# whole thing from both branches:
+#   - main    -> site root            (https://maxew42.github.io/Maxew/)
+#   - staging -> /staging/ subpath     (https://maxew42.github.io/Maxew/staging/)
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+# Permissions required by the Pages deployment actions.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Serialize deployments and let an in-progress one finish, so near-simultaneous
+# pushes to main and staging queue instead of clobbering each other mid-publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (all branches)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Assemble site (main at root, staging at /staging/)
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+
+          # Production: main branch at the site root.
+          git archive origin/main | tar -x -C _site
+
+          # Staging: staging branch under /staging/. Skipped until the branch
+          # exists, so this workflow is safe to add before staging is created.
+          if git show-ref --verify --quiet refs/remotes/origin/staging; then
+            echo "staging branch found -> publishing to /staging/"
+            mkdir -p _site/staging
+            git archive origin/staging | tar -x -C _site/staging
+          else
+            echo "no staging branch yet -> skipping /staging/"
+          fi
+
+          # Disable Jekyll so files/dirs beginning with _ or . are served as-is.
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -881,8 +881,8 @@ function sndSpray() { // pschiiit d'aérosol : attaque franche, souffle tenu, pu
     bp.Q.value = 0.55;
     const g = actx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.24, t + 0.018);
-    g.gain.setValueAtTime(0.24, t + 0.26);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.018);
+    g.gain.setValueAtTime(0.09, t + 0.26);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(bp).connect(g).connect(actx.destination);
     src.start(t);
@@ -975,7 +975,7 @@ const WEAPON_DEFS = {
     lvl: 2, name: 'Maxi Repousse', icon: '🧴',
     desc: 'Pschiiit ! Nuage de pesticide autour de vous : empoisonne et repousse la vermine (pas les gros).',
     up: 'nuage de plus en plus large',
-    base: { dmg: 9, cd: 2.3, range: 135, poison: 8, knock: 470 },
+    base: { dmg: 9, cd: 2.3, range: 122, poison: 8, knock: 470 },
   },
 };
 const MAX_WEAPON_LEVEL = 8;
