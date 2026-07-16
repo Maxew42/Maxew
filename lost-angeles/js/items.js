@@ -2,7 +2,7 @@
 // Règle réseau : chaque machine simule tout visuellement, mais n'applique les dégâts
 // qu'aux karts qu'elle possède (son joueur + les IA si elle est hôte).
 import * as THREE from 'three';
-import { clamp } from './util.js';
+import { clamp, lerp } from './util.js';
 
 export const ITEM_DEFS = {
   nitro:   { icon: '🔥', name: 'Nitro' },
@@ -88,6 +88,7 @@ export class ItemWorld {
     this.h = hooks;
     this.projectiles = [];
     this.nails = [];
+    this.crowdShots = [];   // projectiles lancés par la foule
     this.fx = [];
     this.counter = 0;
   }
@@ -153,10 +154,10 @@ export class ItemWorld {
       case 'nails': {
         const data = remote || (() => {
           const bx = kart.x - kart.dirX() * 3.4, bz = kart.z - kart.dirZ() * 3.4;
-          return { k: 'nails', s: kart.slot, id: this.nextId(kart.slot), x: +bx.toFixed(1), z: +bz.toFixed(1) };
+          return { k: 'nails', s: kart.slot, id: this.nextId(kart.slot), x: +bx.toFixed(1), z: +bz.toFixed(1), y: +kart.gY.toFixed(2) };
         })();
         const mesh = nailsMesh();
-        mesh.position.set(data.x, 0, data.z);
+        mesh.position.set(data.x, data.y || 0, data.z);
         this.scene.add(mesh);
         this.nails.push({ id: data.id, x: data.x, z: data.z, mesh, life: 40 });
         if (!remote) this.h.sfx('drop');
@@ -178,14 +179,15 @@ export class ItemWorld {
           }
           if (!target) {
             // le crochet part dans le vide et revient
-            this._grapVfx(kart.x, kart.z, kart.x + dx * RANGE, kart.z + dz * RANGE);
+            this._grapVfx(kart.x, kart.y + 1.2, kart.z, kart.x + dx * RANGE, kart.y + 1.2, kart.z + dz * RANGE);
             this.h.sfx('drop');
             return { k: 'grap', s: kart.slot, t: -1 };
           }
-          this._grapVfx(kart.x, kart.z, target.x, target.z);
+          this._grapVfx(kart.x, kart.y + 1.2, kart.z, target.x, target.y + 1.2, target.z);
           // téléportation juste derrière la cible accrochée
           kart.x = target.x - target.dirX() * (target.radius + kart.radius + 1.2);
           kart.z = target.z - target.dirZ() * (target.radius + kart.radius + 1.2);
+          kart.y = target.y; kart.gY = target.gY; kart.grounded = false; kart.yVel = 0;
           kart.heading = target.heading;
           kart.speed = Math.max(kart.speed, target.speed * 1.05);
           const proj = this.track.project(kart.x, kart.z, target.hintIdx);
@@ -201,9 +203,15 @@ export class ItemWorld {
           const b = remote.t >= 0 ? this.h.kartBySlot(remote.t) : null;
           const ex = b ? b.x : a.x + a.dirX() * RANGE;
           const ez = b ? b.z : a.z + a.dirZ() * RANGE;
-          this._grapVfx(a.x, a.z, ex, ez);
+          this._grapVfx(a.x, a.y + 1.2, a.z, ex, (b ? b.y : a.y) + 1.2, ez);
         }
         this.h.sfx(remote.t >= 0 ? 'grap' : 'drop');
+        return null;
+      }
+      case 'crowd': {
+        // projectile de la foule (événement décidé par l'hôte)
+        this._spawnCrowd(remote);
+        this.h.sfx('lob');
         return null;
       }
       case 'poop': {
@@ -232,14 +240,14 @@ export class ItemWorld {
     }
   }
 
-  _grapVfx(x1, z1, x2, z2) {
+  _grapVfx(x1, y1, z1, x2, y2, z2) {
     const g = new THREE.Group();
     const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(x1, 1.2, z1), new THREE.Vector3(x2, 1.2, z2)]);
+      new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)]);
     g.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffd28a, transparent: true })));
     const tip = new THREE.Mesh(new THREE.SphereGeometry(.3, 6, 5),
       new THREE.MeshBasicMaterial({ color: 0xd0d6dc, transparent: true }));
-    tip.position.set(x2, 1.2, z2);
+    tip.position.set(x2, y2, z2);
     g.add(tip);
     this.scene.add(g);
     this.fx.push({ kind: 'line', mesh: g, life: .4, maxLife: .4 });
@@ -258,10 +266,10 @@ export class ItemWorld {
   // lance : ligne droite en coordonnées monde, portée limitée (~90 u)
   _spawnSpear(data) {
     const mesh = spearMesh();
-    mesh.position.set(data.x, 1.0, data.z);
+    const o = this.h.kartBySlot(data.s);
+    mesh.position.set(data.x, (o ? o.gY : 0) + 1.0, data.z);
     mesh.rotation.y = data.h;
     this.scene.add(mesh);
-    const o = this.h.kartBySlot(data.s);
     this.projectiles.push({
       kind: 'spear', id: data.id, owner: data.s,
       x: data.x, z: data.z, h: data.h, hint: o ? o.hintIdx : 0,
@@ -274,18 +282,61 @@ export class ItemWorld {
     if (i >= 0) { this.scene.remove(this.nails[i].mesh); this.nails.splice(i, 1); }
   }
 
-  explode(x, z, radius, big) {
+  // la foule vise un kart : point de chute anticipé (dispersion incluse),
+  // broadcast pour que toutes les machines voient le même lancer
+  crowdThrow(target) {
+    const track = this.track;
+    const T = .85 + Math.random() * .25;
+    let lx = target.x + target.dirX() * target.speed * T * .92 + (Math.random() - .5) * 6;
+    let lz = target.z + target.dirZ() * target.speed * T * .92 + (Math.random() - .5) * 6;
+    const pr = track.project(lx, lz, target.hintIdx);
+    const lat = clamp(pr.lat, -(track.wallDist - 2), track.wallDist - 2);
+    const c = track.posAt(pr.f), l = track.leftAt(pr.f);
+    lx = c.x + l.x * lat; lz = c.z + l.z * lat;
+    const side = Math.random() < .5 ? 1 : -1;
+    const gy = track.heightAt(pr.f);
+    const data = {
+      k: 'crowd', ty: Math.random() < .13 ? 'spear' : 'poop',
+      x0: +(c.x + l.x * (track.wallDist + 5) * side).toFixed(1),
+      z0: +(c.z + l.z * (track.wallDist + 5) * side).toFixed(1),
+      y0: +(gy + 5).toFixed(1),
+      x1: +lx.toFixed(1), z1: +lz.toFixed(1), y1: +(gy + .15).toFixed(1),
+      t: +T.toFixed(2),
+    };
+    this._spawnCrowd(data);
+    this.h.sfx('lob');
+    this.h.emit(data);
+  }
+
+  _spawnCrowd(d) {
+    const mesh = d.ty === 'spear' ? spearMesh()
+      : new THREE.Mesh(new THREE.SphereGeometry(.42, 8, 6), new THREE.MeshLambertMaterial({ color: 0x6b4226 }));
+    mesh.position.set(d.x0, d.y0, d.z0);
+    this.scene.add(mesh);
+    // marqueur au point d'impact : la seule chance de l'esquiver
+    const marker = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.7, 18),
+      new THREE.MeshBasicMaterial({
+        color: d.ty === 'spear' ? 0xff4020 : 0x9a6a28,
+        transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false,
+      }));
+    marker.rotation.x = -Math.PI / 2;
+    marker.position.set(d.x1, d.y1 + .06, d.z1);
+    this.scene.add(marker);
+    this.crowdShots.push({ ...d, mesh, marker, age: 0 });
+  }
+
+  explode(x, y, z, radius, big) {
     // visuel
     const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8),
       new THREE.MeshBasicMaterial({ color: 0xffa030, transparent: true, opacity: .95, blending: THREE.AdditiveBlending, depthWrite: false }));
-    ball.position.set(x, 1.2, z);
+    ball.position.set(x, y + .2, z);
     this.scene.add(ball);
     this.fx.push({ kind: 'boom', mesh: ball, life: .55, maxLife: .55, radius });
     this.h.sfx(big ? 'boomBig' : 'boom');
     // dégâts sur les karts possédés localement
     for (const k of this.h.ownedKarts()) {
       const d = Math.hypot(k.x - x, k.z - z);
-      if (d < radius && k.blast()) { /* le kart broadcast son état tout seul */ }
+      if (d < radius && Math.abs(k.y - y) < 4 && k.blast()) { /* le kart broadcast son état tout seul */ }
     }
   }
 
@@ -309,21 +360,22 @@ export class ItemWorld {
     for (const p of this.projectiles) {
       if (!p.mesh.parent) continue;
       p.life -= dt;
-      let x, z, boom = false;
+      let x, z, gy = 0, boom = false;
 
       if (p.kind === 'spear') {
         // tout droit, explose sur un kart, un mur ou en bout de course
         p.x += Math.sin(p.h) * p.speed * dt;
         p.z += Math.cos(p.h) * p.speed * dt;
         x = p.x; z = p.z;
-        p.mesh.position.set(x, 1.0, z);
-        p.mesh.rotation.z += dt * 6;
         const proj = track.project(x, z, p.hint);
         p.hint = proj.idx;
+        gy = track.heightAt(proj.f);
+        p.mesh.position.set(x, gy + 1.0, z);
+        p.mesh.rotation.z += dt * 6;
         if (Math.abs(proj.lat) > track.wallDist - .5) boom = true; // mur de tôle
         for (const k of this.h.allKarts()) {
           if (k.slot === p.owner || k.finished) continue;
-          if (Math.hypot(k.x - x, k.z - z) < 2.2) { boom = true; break; }
+          if (Math.hypot(k.x - x, k.z - z) < 2.2 && Math.abs(k.y - gy) < 2.4) { boom = true; break; }
         }
       } else {
         const target = p.target >= 0 ? this.h.kartBySlot(p.target) : null;
@@ -337,7 +389,8 @@ export class ItemWorld {
         const pos = track.posAt(p.f);
         const l = track.leftAt(p.f);
         x = pos.x + l.x * p.lat; z = pos.z + l.z * p.lat;
-        p.mesh.position.set(x, 1.6 + Math.sin(p.life * 9) * .2, z);
+        gy = track.heightAt(p.f);
+        p.mesh.position.set(x, gy + 1.6 + Math.sin(p.life * 9) * .2, z);
         p.mesh.rotation.y = track.headingAt(p.f);
         if (p.mesh.userData.flame) p.mesh.userData.flame.scale.set(1, .7 + Math.random() * .6, 1);
 
@@ -353,18 +406,56 @@ export class ItemWorld {
       }
       if (p.life <= 0) boom = true;
       if (boom) {
-        this.explode(x, z, p.kind === 'missile' ? 9 : 4.5, p.kind === 'missile');
+        this.explode(x, gy + 1, z, p.kind === 'missile' ? 9 : 4.5, p.kind === 'missile');
         this.scene.remove(p.mesh);
       }
     }
     this.projectiles = this.projectiles.filter(p => p.mesh.parent);
+
+    // projectiles de la foule : arc balistique fixé à l'avance, impact au marqueur
+    for (const s of this.crowdShots) {
+      s.age += dt;
+      const u = Math.min(1, s.age / s.t);
+      const arc = 3.2 + Math.abs(s.y0 - s.y1) * .3;
+      s.mesh.position.set(
+        lerp(s.x0, s.x1, u),
+        lerp(s.y0, s.y1, u) + 4 * arc * u * (1 - u),
+        lerp(s.z0, s.z1, u));
+      s.mesh.rotation.x += dt * 7;
+      s.mesh.rotation.y += dt * 3;
+      s.marker.material.opacity = (.2 + .55 * u) * (.65 + .35 * Math.sin(s.age * 18));
+      if (u >= 1) {
+        this.scene.remove(s.mesh);
+        this.scene.remove(s.marker);
+        if (s.ty === 'spear') {
+          this.explode(s.x1, s.y1, s.z1, 4.2, false);
+        } else {
+          this.h.sfx('poop');
+          const dec = new THREE.Mesh(new THREE.CircleGeometry(1.5, 10),
+            new THREE.MeshBasicMaterial({ color: 0x5c3a1a, transparent: true, opacity: .85, depthWrite: false }));
+          dec.rotation.x = -Math.PI / 2;
+          dec.position.set(s.x1, s.y1 + .05, s.z1);
+          this.scene.add(dec);
+          this.fx.push({ kind: 'decal', mesh: dec, life: 6, maxLife: 6 });
+          for (const k of this.h.ownedKarts()) {
+            if (k.finished) continue;
+            if (Math.hypot(k.x - s.x1, k.z - s.z1) < 2.6 && Math.abs(k.y - s.y1) < 2.2) {
+              k.speed *= .45;
+              if (k.slot === this.h.localSlot()) { this.h.splat(); this.h.toast('💩 Touché par la foule !'); }
+              else k.poopT = 4;
+            }
+          }
+        }
+      }
+    }
+    this.crowdShots = this.crowdShots.filter(s => s.age < s.t);
 
     // clous
     for (const n of this.nails) {
       n.life -= dt;
       if (n.life <= 0) { this.scene.remove(n.mesh); continue; }
       for (const k of this.h.ownedKarts()) {
-        if (Math.abs(k.y) > .5 || k.finished) continue;
+        if (k.airH > .5 || k.finished) continue;
         if (Math.hypot(k.x - n.x, k.z - n.z) < 2.0 && k.spinOut()) {
           this.h.sfx('spin');
           this.scene.remove(n.mesh);
@@ -408,6 +499,8 @@ export class ItemWorld {
         }
       } else if (f.kind === 'line') {
         for (const c of f.mesh.children) c.material.opacity = 1 - t;
+      } else if (f.kind === 'decal') {
+        f.mesh.material.opacity = .85 * (1 - t);
       }
       if (f.life <= 0) this.scene.remove(f.mesh);
     }
@@ -417,7 +510,8 @@ export class ItemWorld {
   dispose() {
     for (const p of this.projectiles) this.scene.remove(p.mesh);
     for (const n of this.nails) this.scene.remove(n.mesh);
+    for (const s of this.crowdShots) { this.scene.remove(s.mesh); this.scene.remove(s.marker); }
     for (const f of this.fx) this.scene.remove(f.mesh);
-    this.projectiles = []; this.nails = []; this.fx = [];
+    this.projectiles = []; this.nails = []; this.crowdShots = []; this.fx = [];
   }
 }

@@ -45,6 +45,12 @@ export class Kart {
 
     // état physique
     this.x = 0; this.z = 0; this.y = 0; this.yVel = 0;
+    this.gY = 0;              // hauteur du sol sous le kart
+    this.grounded = true;     // false = en l'air (rampe, explosion, chute)
+    this._groundVy = 0;       // vitesse verticale imprimée par la pente
+    this.justFell = false;    // vient de tomber dans le ravin (lu par game.js)
+    this.fallPos = null;
+    this._landedV = 0;        // vitesse d'impact du dernier atterrissage
     this.heading = 0;
     this.speed = 0;
     this.steerVis = 0;
@@ -140,6 +146,8 @@ export class Kart {
   placeAtGrid() {
     const g = this.track.gridSlot(this.slot);
     this.x = g.pos.x; this.z = g.pos.z;
+    this.y = g.pos.y; this.gY = g.pos.y;
+    this.grounded = true; this.yVel = 0;
     this.heading = g.heading;
     this.totalProgress = g.progress;
     this.lastF = ((g.progress % this.track.N) + this.track.N) % this.track.N;
@@ -155,6 +163,9 @@ export class Kart {
   }
 
   get vulnerable() { return this.armorT <= 0 && this.spinT <= 0 && this.stunT <= 0 && !this.finished; }
+
+  // hauteur au-dessus du sol (0 = roues posées)
+  get airH() { return Math.max(0, this.y - this.gY); }
 
   dirX() { return Math.sin(this.heading); }
   dirZ() { return Math.cos(this.heading); }
@@ -175,7 +186,7 @@ export class Kart {
   blast() {
     if (!this.vulnerable) return false;
     this.stunT = 1.5; this.spinAngle = 0;
-    this.yVel = 7.5;
+    this.yVel = 7.5; this.grounded = false;
     this.speed *= .15;
     this.driftDir = 0; this.driftCharge = 0;
     this.boostT = 0;
@@ -198,7 +209,7 @@ export class Kart {
     const throttle = this.stallT > 0 ? 0 : input.throttle;
     if (controlled) {
       if (throttle > 0) {
-        const a = this.accel * (1 - clamp(this.speed / vm, 0, 1)) + 2;
+        const a = (this.accel * (1 - clamp(this.speed / vm, 0, 1)) + 2) * (this.grounded ? 1 : .15);
         this.speed += a * throttle * dt;
       } else if (this.speed > 0) {
         this.speed = Math.max(0, this.speed - 7 * dt);
@@ -215,7 +226,7 @@ export class Kart {
     if (this.speed > vm) this.speed = Math.max(vm, this.speed - 20 * dt);
 
     // ——— drift ———
-    if (controlled && input.drift && Math.abs(input.steer) > .2 && this.speed > 13 && this.driftDir === 0) {
+    if (controlled && this.grounded && input.drift && Math.abs(input.steer) > .2 && this.speed > 13 && this.driftDir === 0) {
       this.driftDir = Math.sign(input.steer);
       this.driftCharge = 0;
     }
@@ -236,12 +247,12 @@ export class Kart {
       if (this.driftDir !== 0) {
         const align = clamp(input.steer * this.driftDir, -0.4, 1); // module le rayon du drift
         yaw = this.driftDir * this.turnRate * grip * (0.9 + .45 * align);
-        this.driftCharge += dt * (0.85 + .45 * Math.max(0, align));
+        if (this.grounded) this.driftCharge += dt * (0.85 + .45 * Math.max(0, align));
       } else {
         yaw = input.steer * this.turnRate * grip;
       }
       if (this.speed < 0) yaw = -yaw;
-      this.heading += yaw * dt;
+      this.heading += yaw * dt * (this.grounded ? 1 : .35); // en l'air on ne braque presque plus
     }
     this.steerVis = lerp(this.steerVis, controlled ? input.steer : 0, clamp(dt * 10, 0, 1));
 
@@ -254,13 +265,6 @@ export class Kart {
       const slide = -this.driftDir * this.speed * .16 * dt;
       this.x += lx * slide; this.z += lz * slide;
     }
-    // saut/explosion (visuel)
-    if (this.y > 0 || this.yVel !== 0) {
-      this.y += this.yVel * dt;
-      this.yVel -= 26 * dt;
-      if (this.y <= 0) { this.y = 0; this.yVel = 0; }
-    }
-
     // ——— piste : progression, hors-piste, murs ———
     const proj = t.project(this.x, this.z, this.hintIdx);
     this.hintIdx = proj.idx;
@@ -284,6 +288,45 @@ export class Kart {
       this.lat = wallLim * s;
     }
 
+    // ——— relief : suivi du sol, envol (rampe/explosion), gouffre ———
+    const gY = t.heightAt(proj.f);
+    const inG = t.inGap(proj.f);
+    let fell = false;
+    if (this.grounded) {
+      if (inG || gY <= this.y - .5) {
+        // le sol se dérobe : bout de la rampe ou bord du gouffre
+        this.grounded = false;
+        this.yVel = Math.max(0, this._groundVy);
+      } else {
+        this._groundVy = dt > 0 ? (gY - this.y) / dt : 0;
+        this.y = gY;
+      }
+    }
+    if (!this.grounded) {
+      this.y += this.yVel * dt;
+      this.yVel -= 26 * dt;
+      if (this.y <= gY + .01 && this.yVel <= 0) {
+        if (!inG && this.y > gY - .9) {
+          // arrivé par le haut : atterrissage
+          this._landedV = -this.yVel;
+          this.y = gY; this.yVel = 0; this.grounded = true; this._groundVy = 0;
+        } else fell = true; // fond du ravin ou falaise en pleine face
+      }
+    }
+    if (inG && this.y < t.jump.roadY - 2.6) fell = true;
+    this.gY = gY;
+    if (fell) {
+      this.fallPos = { x: this.x, y: this.y, z: this.z };
+      this._respawn();
+    }
+
+    // la pente freine en montée, pousse en descente
+    if (this.grounded && Math.abs(this.speed) > 1.5) {
+      const slope = (t.heightAt(proj.f + 2) - t.heightAt(proj.f - 2)) / (4 * t.segLen);
+      const fwd = this.dirX() * t.tan[proj.idx].x + this.dirZ() * t.tan[proj.idx].z;
+      this.speed -= slope * fwd * 7.5 * dt;
+    }
+
     this.lap = clamp(Math.floor(this.totalProgress / t.N) + 1, 1, 99);
 
     // ——— minuteries d'effets ———
@@ -298,6 +341,30 @@ export class Kart {
     else this.spinAngle = 0;
 
     this.syncVisual();
+  }
+
+  // repêché façon Mario Kart : replacé juste avant le saut, sonné un instant
+  _respawn() {
+    const t = this.track, N = t.N;
+    const f = t.jump.respawnF;
+    const p = t.posAt(f), l = t.leftAt(f);
+    const latOff = ((this.slot % 4) - 1.5) * 2.2; // évite d'empiler les repêchés
+    this.x = p.x + l.x * latOff;
+    this.z = p.z + l.z * latOff;
+    this.heading = t.headingAt(f);
+    this.speed = 0;
+    this.y = t.heightAt(f); this.gY = this.y;
+    this.yVel = 0; this.grounded = true; this._groundVy = 0;
+    this.stunT = Math.max(this.stunT, 1.0);
+    this.boostT = 0; this.driftDir = 0; this.driftCharge = 0;
+    // progression recalée sans casser le compte de tours
+    const cur = ((this.lastF % N) + N) % N;
+    let df = f - cur;
+    if (df > N / 2) df -= N; else if (df < -N / 2) df += N;
+    this.totalProgress += df;
+    this.lastF = f;
+    this.hintIdx = Math.floor(f);
+    this.justFell = true;
   }
 
   // ——— réseau ———
@@ -351,6 +418,7 @@ export class Kart {
     this.hintIdx = proj.idx;
     this.lastF = proj.f;
     this.lat = proj.lat;
+    this.gY = this.track.heightAt(proj.f);
     this.syncVisual();
   }
 
@@ -359,7 +427,9 @@ export class Kart {
     this.group.rotation.y = this.heading + this.spinAngle +
       (this.driftDir !== 0 ? this.driftDir * .35 : 0);
     this.group.rotation.z = -this.steerVis * .07 * clamp(this.speed / this.vmax, 0, 1);
-    this.shadow.material.opacity = this.y > 0 ? clamp(.32 - this.y * .04, .1, .32) : .32;
+    // l'ombre reste plaquée au sol, même en plein vol
+    this.shadow.position.y = (this.gY - this.y) + .04;
+    this.shadow.material.opacity = clamp(.32 - this.airH * .03, .08, .32);
   }
 
   updateVisuals(dt, time) {

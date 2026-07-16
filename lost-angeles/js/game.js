@@ -278,6 +278,9 @@ export class Race {
     if (inRace) {
       this._collisions(dt);
       this._crates();
+      this._pads(dt);
+      this._crowd(dt);
+      this._falls();
       this.items.update(dt);
       this._ranking();
       this._finishes();
@@ -305,6 +308,7 @@ export class Race {
       if (!this._simulated(a) || a.finished) continue;
       for (const b of this.karts) {
         if (a === b || b.finished) continue;
+        if (Math.abs(a.y - b.y) > 2.4) continue; // l'un vole au-dessus de l'autre
         const dx = a.x - b.x, dz = a.z - b.z;
         const d = Math.hypot(dx, dz), min = a.radius + b.radius;
         if (d < min && d > .01) {
@@ -333,7 +337,7 @@ export class Race {
     for (const c of this.track.crates) {
       if (!c.active) continue;
       for (const k of this.karts) {
-        if (k.finished || Math.abs(k.y) > 1.2) continue;
+        if (k.finished || k.airH > 1.2) continue;
         if (Math.hypot(k.x - c.x, k.z - c.z) < 2.3) {
           this.track.breakCrate(c);
           this.items.crateBurst(c.x, 1.2, c.z);
@@ -350,6 +354,67 @@ export class Race {
           }
           break;
         }
+      }
+    }
+  }
+
+  // plaques de turbo : boost au passage (karts simulés localement)
+  _pads(dt) {
+    const N = this.track.N;
+    for (const k of this.karts) {
+      if (k._padCd > 0) k._padCd -= dt;
+      if (!this._simulated(k) || k.finished || !k.grounded || k._padCd > 0) continue;
+      for (const pad of this.track.pads) {
+        let df = k.lastF - pad.f;
+        if (df > N / 2) df -= N; else if (df < -N / 2) df += N;
+        if (Math.abs(df) < pad.len * .6 && Math.abs(k.lat) < pad.halfW) {
+          k._padCd = 1.2;
+          k.startBoost(1.3, 1.38);
+          if (k === this.local) { this.audio.play('boost'); this.input.rumble(90, .4); }
+          break;
+        }
+      }
+    }
+  }
+
+  // la fosse aux fans : l'hôte (ou le solo) décide des lancers, tout le monde les voit
+  _crowd(dt) {
+    const tr = this.track;
+    if (!tr.crowd) return;
+    const inC = this.local && !this.local.finished && tr.inCrowd(this.local.lastF, 8);
+    if (inC && !this._wasInCrowd) {
+      this.audio.play('cheer');
+      if (this.elapsed - (this._lastCrowdToast ?? -99) > 20) {
+        this.hud.toast('🏟️ La foule te bombarde — zigzague !');
+        this._lastCrowdToast = this.elapsed;
+      }
+    }
+    this._wasInCrowd = inC;
+    if (this.net && !this.net.isHost) return;
+    this._crowdT = (this._crowdT ?? 1.5) - dt;
+    if (this._crowdT > 0) return;
+    this._crowdT = .75 + Math.random() * 1.05;
+    const cands = this.karts.filter(k => !k.finished && tr.inCrowd(k.lastF, 16));
+    if (!cands.length) return;
+    this.items.crowdThrow(cands[(Math.random() * cands.length) | 0]);
+  }
+
+  // chutes dans le ravin + atterrissages musclés (retour du kart via justFell/_landedV)
+  _falls() {
+    for (const k of this.karts) {
+      if (k.justFell) {
+        k.justFell = false;
+        if (k.fallPos) this.items.crateBurst(k.fallPos.x, k.fallPos.y + 1, k.fallPos.z);
+        if (k === this.local) {
+          this.audio.play('fall');
+          this.hud.toast('💀 Le ravin ! Repêché avant le saut…');
+          this.camShake = .7;
+          this.input.rumble(350, .8);
+        }
+      }
+      if (k._landedV > 0) {
+        if (k === this.local && k._landedV > 5) { this.audio.play('land'); this.input.rumble(70, .3); }
+        k._landedV = 0;
       }
     }
   }
@@ -495,7 +560,10 @@ export class Race {
     const h = k.heading + (this.lookBack ? Math.PI : 0);
     const tx = k.x - Math.sin(h) * back;
     const tz = k.z - Math.cos(h) * back;
-    const ty = up + k.y * .5;
+    // suit pleinement le relief, mais n'encaisse que la moitié des sauts ;
+    // au-dessus de la brèche on garde le niveau de la route (pas de plongeon caméra)
+    const gY = this.track.inGap(k.lastF) ? this.track.jump.roadY : k.gY;
+    const ty = up + gY + (k.y - gY) * .5;
     if (snap) {
       this.camera.position.set(tx, ty, tz);
     } else {
@@ -509,6 +577,6 @@ export class Race {
       this.camera.position.x += (Math.random() - .5) * this.camShake * 1.1;
       this.camera.position.y += (Math.random() - .5) * this.camShake * .7;
     }
-    this.camera.lookAt(k.x + Math.sin(h) * 5, 1.4 + k.y * .6, k.z + Math.cos(h) * 5);
+    this.camera.lookAt(k.x + Math.sin(h) * 5, gY + 1.4 + (k.y - gY) * .6, k.z + Math.cos(h) * 5);
   }
 }

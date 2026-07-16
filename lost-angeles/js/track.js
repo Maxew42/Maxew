@@ -1,10 +1,13 @@
 // Piste procédurale en boucle fermée + décor post-apocalyptique.
 // Même seed → même piste sur toutes les machines (multijoueur).
+// Relief : profil de hauteur seedé (collines), un pont effondré à sauter
+// (rivière asséchée), une fosse aux fans qui bombarde, des plaques de turbo.
 import * as THREE from 'three';
 import { mulberry32, clamp, lerp, angleDelta } from './util.js';
 
 const ROAD_HALF = 7;      // demi-largeur du bitume
 const WALL_DIST = 16;     // murs infranchissables (zone hors-piste entre les deux)
+const APRON = 34;         // épaulement extérieur qui fond vers la plaine
 const SAMPLES = 560;      // points d'échantillonnage de la boucle
 
 // ————— textures canvas —————
@@ -90,6 +93,62 @@ function groundTex(rng) {
       g.beginPath(); g.arc(rng() * w, rng() * h, 8 + rng() * 24, 0, 7); g.fill();
     }
   }, 40, 40);
+}
+
+function dirtTex(rng) { // accotements entre route et murs
+  return canvasTex(128, 128, (g, w, h) => {
+    g.fillStyle = '#5c4c38'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 900; i++) {
+      const v = rng();
+      g.fillStyle = v < .5 ? 'rgba(70,58,42,.55)' : 'rgba(110,94,68,.5)';
+      g.fillRect(rng() * w, rng() * h, 2 + rng() * 3, 2 + rng() * 3);
+    }
+    for (let i = 0; i < 8; i++) { // traces de pneus
+      g.fillStyle = 'rgba(40,32,24,.3)';
+      g.fillRect(rng() * w, 0, 3 + rng() * 4, h);
+    }
+  }, 2, 1);
+}
+
+function mudTex(rng) { // lit de rivière asséché, boue craquelée
+  return canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#4e4030'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 1200; i++) {
+      g.fillStyle = rng() < .5 ? 'rgba(58,48,36,.6)' : 'rgba(88,74,54,.45)';
+      g.fillRect(rng() * w, rng() * h, 3, 3);
+    }
+    g.strokeStyle = 'rgba(30,24,16,.8)'; g.lineWidth = 2;
+    for (let i = 0; i < 26; i++) { // craquelures
+      let x = rng() * w, y = rng() * h;
+      g.beginPath(); g.moveTo(x, y);
+      for (let s = 0; s < 5; s++) { x += (rng() - .5) * 60; y += (rng() - .5) * 60; g.lineTo(x, y); }
+      g.stroke();
+    }
+  }, 6, 2);
+}
+
+function padTex() { // chevrons de turbo (fond transparent, orange vif)
+  return canvasTex(64, 64, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    for (const [oy, col] of [[4, '#ff7010'], [24, '#ffa030'], [44, '#ffd060']]) {
+      g.fillStyle = col;
+      g.strokeStyle = '#2a1806'; g.lineWidth = 2.5;
+      g.beginPath();
+      g.moveTo(4, oy + 14); g.lineTo(32, oy); g.lineTo(60, oy + 14);
+      g.lineTo(60, oy + 22); g.lineTo(32, oy + 8); g.lineTo(4, oy + 22);
+      g.closePath(); g.fill(); g.stroke();
+    }
+  });
+}
+
+function stripesTex() { // panneau danger rayé jaune/noir
+  return canvasTex(64, 64, (g, w, h) => {
+    g.fillStyle = '#e0b020'; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#191410';
+    for (let i = -2; i < 8; i++) {
+      g.save(); g.translate(i * 16, 0); g.rotate(-.6); g.fillRect(0, -20, 8, 110); g.restore();
+    }
+  });
 }
 
 function crateTex() {
@@ -199,20 +258,28 @@ export class Track {
     }
     this.pts = raw.slice(bestI).concat(raw.slice(0, bestI));
 
-    // tangentes / vecteurs "gauche"
+    // tangentes / vecteurs "gauche" (horizontaux — le relief vient après)
     this.tan = []; this.left = [];
     for (let i = 0; i < this.N; i++) {
       const a = this.pts[(i - 1 + this.N) % this.N], b = this.pts[(i + 1) % this.N];
-      const t = new THREE.Vector3().subVectors(b, a).normalize();
+      const t = new THREE.Vector3(b.x - a.x, 0, b.z - a.z).normalize();
       this.tan.push(t);
       this.left.push(new THREE.Vector3(t.z, 0, -t.x));
     }
     let len = 0;
-    for (let i = 0; i < this.N; i++) len += this.pts[i].distanceTo(this.pts[(i + 1) % this.N]);
+    for (let i = 0; i < this.N; i++) {
+      const a = this.pts[i], b = this.pts[(i + 1) % this.N];
+      len += Math.hypot(b.x - a.x, b.z - a.z);
+    }
     this.length = len;
     this.segLen = len / this.N;
 
+    this._pickZones();
+    this._buildHeights(rng);
     this._buildRoad(rng);
+    this._buildJump(rng);
+    this._buildCrowdZone(rng);
+    this._buildPads();
     this._buildDecor(rng);
     this._buildCrates(rng);
     this._buildSky();
@@ -299,57 +366,194 @@ export class Track {
     return false;
   }
 
-  // ——— géométrie de la route, murs, ligne de départ ———
+  _ringDist(a, b) {
+    const N = this.N;
+    const d = Math.abs(((a - b) % N + N) % N);
+    return Math.min(d, N - d);
+  }
+
+  // ——— zones spéciales : saut, fosse aux fans, plaques de turbo ———
+  // Tout est déterministe (dérivé de la géométrie du tracé), donc identique
+  // sur toutes les machines.
+  _pickZones() {
+    const N = this.N, sl = this.segLen;
+    const hs = this.pts.map((p, i) => {
+      const q = this.pts[(i + 1) % N];
+      return Math.atan2(q.x - p.x, q.z - p.z);
+    });
+    const curv = new Float32Array(N);
+    for (let i = 0; i < N; i++) curv[i] = Math.abs(angleDelta(hs[i], hs[(i + 1) % N]));
+    const winSum = (i, len) => { let s = 0; for (let k = 0; k < len; k++) s += curv[(i + k) % N]; return s; };
+
+    // ——— saut : la fenêtre la plus rectiligne du milieu de parcours ———
+    // turbo → rampe → brèche (rivière asséchée) → atterrissage
+    const mJump = Math.ceil(56 / sl);
+    let bj = Math.floor(N * .25), bs = 1e9;
+    for (let i = Math.floor(N * .22); i < Math.floor(N * .8) - mJump; i++) {
+      const s = winSum(i, mJump);
+      if (s < bs) { bs = s; bj = i; }
+    }
+    const padF = bj + Math.round(6 / sl);
+    const rampF0 = bj + Math.round(26 / sl);
+    const gapF0 = rampF0 + Math.max(3, Math.round(9 / sl));   // bord de la brèche
+    const gapF1 = gapF0 + Math.max(4, Math.round(15 / sl));   // bord d'atterrissage
+    this.jump = {
+      zoneF: bj, padF, rampF0, gapF0, gapF1,
+      center: (gapF0 + gapF1) / 2,
+      respawnF: bj + Math.round(1 / sl),
+      rampH: 2.3, depth: 5, roadY: 0,
+    };
+
+    // ——— fosse aux fans : une autre portion calme, loin du saut et du départ ———
+    const mCrowd = Math.ceil(75 / sl);
+    let bc = -1, bcs = 1e9, alt = Math.floor(N * .5), altD = -1;
+    for (let i = Math.floor(N * .07); i < Math.floor(N * .93) - mCrowd; i++) {
+      const d = this._ringDist(i + mCrowd / 2, this.jump.center);
+      if (d > altD) { altD = d; alt = i; }
+      if (d < mJump + mCrowd) continue;
+      const s = winSum(i, mCrowd);
+      if (s < bcs) { bcs = s; bc = i; }
+    }
+    if (bc < 0) bc = alt; // repli : le plus loin possible du saut
+    this.crowd = { f0: bc, f1: bc + mCrowd };
+
+    // ——— turbos : un devant la rampe (garanti), deux en sortie des virages
+    // les plus serrés (posés sur du plat pour que la plaque ne flotte pas) ———
+    this.pads = [{ f: padF, halfW: 5.4, len: 5 / sl, phase: 0 }];
+    const crowdMid = (this.crowd.f0 + this.crowd.f1) / 2;
+    const smoothC = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      let s = 0;
+      for (let o = -5; o <= 5; o++) s += curv[((i + o) % N + N) % N];
+      smoothC[i] = s;
+    }
+    const usable = i =>
+      this._ringDist(i, this.jump.center) > mJump * 1.5 &&
+      this._ringDist(i, crowdMid) > mCrowd &&
+      this._ringDist(i, 0) > 26 / sl &&
+      this.pads.every(p => this._ringDist(i, p.f) > 60 / sl);
+    for (let n = 0; n < 2; n++) {
+      let best = -1, bv = -1;
+      for (let i = 0; i < N; i++) {
+        const spot = (i + Math.round(12 / sl)) % N; // sortie de virage
+        if (!usable(spot)) continue;
+        if (smoothC[i] > bv) { bv = smoothC[i]; best = spot; }
+      }
+      if (best >= 0) this.pads.push({ f: best, halfW: 4.6, len: 5 / sl, phase: n + 1 });
+    }
+  }
+
+  // ——— relief : collines seedées, plateaux sur les zones spéciales,
+  // rampe et lit de rivière incrustés dans le profil ———
+  _buildHeights(rng) {
+    const N = this.N, sl = this.segLen;
+    const h = new Float32Array(N);
+    const k1 = 2 + Math.floor(rng() * 2), k2 = 4 + Math.floor(rng() * 2), k3 = 7 + Math.floor(rng() * 3);
+    const a1 = 3.2 + rng() * 2.2, a2 = 1.6 + rng() * 1.4, a3 = .5 + rng() * .5;
+    const p1 = rng() * 7, p2 = rng() * 7, p3 = rng() * 7;
+    for (let i = 0; i < N; i++) {
+      const u = i / N * Math.PI * 2;
+      h[i] = a1 * Math.sin(u * k1 + p1) + a2 * Math.sin(u * k2 + p2) + a3 * Math.sin(u * k3 + p3);
+    }
+    // plateaux : départ, saut et tribunes restent plats
+    const flat = (cf, r0m, r1m) => {
+      const c = Math.round(cf), r0 = Math.ceil(r0m / sl), r1 = Math.ceil(r1m / sl);
+      for (let o = -r1; o <= r1; o++) {
+        const i = ((c + o) % N + N) % N;
+        const t = clamp((Math.abs(o) - r0) / (r1 - r0), 0, 1);
+        h[i] *= t * t * (3 - 2 * t);
+      }
+    };
+    flat(0, 20, 48);
+    flat(this.jump.zoneF + 32 / sl, 38, 74);
+    flat((this.crowd.f0 + this.crowd.f1) / 2, 44, 82);
+    // pente plafonnée (arcade : ça grimpe, mais ça ne bloque pas)
+    let mg = 0;
+    for (let i = 0; i < N; i++) mg = Math.max(mg, Math.abs(h[(i + 1) % N] - h[i]) / sl);
+    const MAXG = .105;
+    if (mg > MAXG) { const s = MAXG / mg; for (let i = 0; i < N; i++) h[i] *= s; }
+    // rampe (montée jusqu'au bord de la brèche) et lit de rivière en contrebas
+    const j = this.jump;
+    j.roadY = h[j.gapF1 % N];
+    for (let i = Math.ceil(j.rampF0); i <= j.gapF0; i++) {
+      const t = (i - j.rampF0) / (j.gapF0 - j.rampF0);
+      h[i % N] = j.roadY + j.rampH * t;
+    }
+    for (let i = j.gapF0 + 1; i < j.gapF1; i++) h[i % N] = j.roadY - j.depth;
+    this.h = h;
+    for (let i = 0; i < N; i++) this.pts[i].y = h[i];
+  }
+
+  // le quad i→i+1 du ruban est-il au-dessus du vide ?
+  _quadInGap(i) {
+    return i >= this.jump.gapF0 && i < this.jump.gapF1;
+  }
+
+  // ——— géométrie de la route, accotements, murs, ligne de départ ———
   _buildRoad(rng) {
     const N = this.N;
-    const mkRibbon = (lat0, lat1, y, texture, vRep) => {
-      const pos = new Float32Array((N + 1) * 2 * 3), uv = new Float32Array((N + 1) * 2 * 2), nor = new Float32Array((N + 1) * 2 * 3);
-      const idx = new Uint32Array(N * 6);
+    const gapSkip = i => this._quadInGap(i);
+    // ruban générique : deux bords latéraux, hauteur par sommet, quads
+    // optionnellement sautés (brèche du pont)
+    const mkRibbon = (latA, latB, yFnA, texture, vRep, skipQuad = null, yFnB = null) => {
+      const pos = [], uv = [], nor = [], idx = [];
       for (let i = 0; i <= N; i++) {
         const k = i % N, p = this.pts[k], l = this.left[k];
+        const yA = yFnA(k), yB = (yFnB || yFnA)(k);
         const v = i / N * vRep;
-        pos.set([p.x + l.x * lat0, y, p.z + l.z * lat0, p.x + l.x * lat1, y, p.z + l.z * lat1], i * 6);
-        nor.set([0, 1, 0, 0, 1, 0], i * 6);
-        uv.set([0, v, 1, v], i * 4);
+        pos.push(p.x + l.x * latA, yA, p.z + l.z * latA, p.x + l.x * latB, yB, p.z + l.z * latB);
+        nor.push(0, 1, 0, 0, 1, 0);
+        uv.push(0, v, 1, v);
       }
       for (let i = 0; i < N; i++) {
-        const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
-        idx.set([a, b, c, b, d, c], i * 6); // CCW vu du dessus
+        if (skipQuad && skipQuad(i)) continue;
+        const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+        idx.push(a, b, c, b, d, c); // CCW vu du dessus
       }
       const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-      g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-      g.setIndex(new THREE.BufferAttribute(idx, 1));
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+      g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nor), 3));
+      g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
+      g.setIndex(idx);
       return new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: texture }));
     };
 
-    const road = mkRibbon(ROAD_HALF, -ROAD_HALF, 0.02, asphaltTex(rng), Math.round(this.length / 9));
-    this.group.add(road);
+    const hAt = k => this.h[k];
+    this.group.add(mkRibbon(ROAD_HALF, -ROAD_HALF, k => hAt(k) + .02, asphaltTex(rng), Math.round(this.length / 9), gapSkip));
 
-    // murs de tôle des deux côtés
+    // accotements en terre entre la route et les murs, puis épaulement qui
+    // redescend vers la plaine (sinon la route à flanc de colline flotterait)
+    const dirt = dirtTex(rng);
+    this.group.add(mkRibbon(WALL_DIST, ROAD_HALF, k => hAt(k) - .03, dirt, Math.round(this.length / 7), gapSkip));
+    this.group.add(mkRibbon(-ROAD_HALF, -WALL_DIST, k => hAt(k) - .03, dirt, Math.round(this.length / 7), gapSkip));
+    this.group.add(mkRibbon(WALL_DIST + APRON, WALL_DIST, () => -0.12, dirt, Math.round(this.length / 7), gapSkip, k => hAt(k) - .05));
+    this.group.add(mkRibbon(-WALL_DIST, -(WALL_DIST + APRON), k => hAt(k) - .05, dirt, Math.round(this.length / 7), gapSkip, () => -0.12));
+
+    // murs de tôle des deux côtés (interrompus au-dessus de la rivière)
     const wallT = wallTex(rng);
     for (const side of [1, -1]) {
       const N2 = this.N;
       const pos = new Float32Array((N2 + 1) * 2 * 3), uv = new Float32Array((N2 + 1) * 2 * 2), nor = new Float32Array((N2 + 1) * 2 * 3);
-      const idx = new Uint32Array(N2 * 6);
+      const idx = [];
       for (let i = 0; i <= N2; i++) {
         const k = i % N2, p = this.pts[k], l = this.left[k];
         const x = p.x + l.x * WALL_DIST * side, z = p.z + l.z * WALL_DIST * side;
-        pos.set([x, 0, z, x, 1.7, z], i * 6);
+        const y = this.h[k];
+        pos.set([x, y, z, x, y + 1.7, z], i * 6);
         nor.set([-l.x * side, 0, -l.z * side, -l.x * side, 0, -l.z * side], i * 6);
         const v = i / N2 * Math.round(this.length / 4);
         uv.set([v, 0, v, 1], i * 4);
       }
       for (let i = 0; i < N2; i++) {
+        if (this._quadInGap(i)) continue;
         const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
-        idx.set([a, c, b, b, c, d], i * 6);
+        idx.push(a, c, b, b, c, d);
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
       g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-      g.setIndex(new THREE.BufferAttribute(idx, 1));
+      g.setIndex(idx);
       this.group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: wallT, side: THREE.DoubleSide })));
     }
 
@@ -375,13 +579,13 @@ export class Track {
     line.rotation.order = 'YXZ'; // plat au sol PUIS orienté selon la piste
     line.rotation.y = Math.atan2(t0.x, t0.z);
     line.rotation.x = -Math.PI / 2;
-    line.position.set(p0.x, 0.09, p0.z);
+    line.position.set(p0.x, p0.y + 0.09, p0.z);
     this.group.add(line);
 
     const pyl = new THREE.MeshLambertMaterial({ color: 0x6e4a2a });
     for (const s of [1, -1]) {
       const m = new THREE.Mesh(new THREE.CylinderGeometry(.35, .45, 9, 8), pyl);
-      m.position.set(p0.x + l0.x * (ROAD_HALF + 1.5) * s, 4.5, p0.z + l0.z * (ROAD_HALF + 1.5) * s);
+      m.position.set(p0.x + l0.x * (ROAD_HALF + 1.5) * s, p0.y + 4.5, p0.z + l0.z * (ROAD_HALF + 1.5) * s);
       this.group.add(m);
     }
     const bannerTex = canvasTex(512, 64, (g, w, h) => {
@@ -391,42 +595,237 @@ export class Track {
     });
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_HALF * 2 + 3, 2.2),
       new THREE.MeshBasicMaterial({ map: bannerTex, side: THREE.DoubleSide }));
-    banner.position.set(p0.x, 7.6, p0.z);
+    banner.position.set(p0.x, p0.y + 7.6, p0.z);
     banner.rotation.y = Math.atan2(t0.x, t0.z) + Math.PI; // lisible en arrivant sur la ligne
     this.group.add(banner);
   }
 
-  // distance (approx.) d'un point au centre de la piste — pour placer le décor hors piste
-  _distToTrack(x, z) {
-    let best = 1e9;
+  // ——— le pont effondré : lit de rivière, berges, piliers, panneaux ———
+  _buildJump(rng) {
+    const j = this.jump, N = this.N;
+    const bedY = j.roadY - j.depth;
+    const bedW = WALL_DIST + APRON + 22;
+
+    // lit de rivière asséché qui traverse sous la brèche
+    const pos = [], uv = [], nor = [], idx = [];
+    let n = 0;
+    for (let i = j.gapF0 - 2; i <= j.gapF1 + 2; i++) {
+      const k = ((i % N) + N) % N, p = this.pts[k], l = this.left[k];
+      pos.push(p.x + l.x * bedW, bedY, p.z + l.z * bedW, p.x - l.x * bedW, bedY, p.z - l.z * bedW);
+      nor.push(0, 1, 0, 0, 1, 0);
+      uv.push(0, n * .4, 1, n * .4);
+      if (n) {
+        const a = (n - 1) * 2, b = a + 1, c = a + 2, d = a + 3;
+        idx.push(a, b, c, b, d, c);
+      }
+      n++;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nor), 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv), 2));
+    g.setIndex(idx);
+    this.group.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({ map: mudTex(rng) })));
+
+    // berges en béton sous les deux tronçons coupés
+    const bankMat = new THREE.MeshLambertMaterial({ color: 0x6a6258, side: THREE.DoubleSide });
+    const mkBank = (fI, topY) => {
+      const k = ((fI % N) + N) % N;
+      const p = this.pts[k], t = this.tan[k];
+      const hgt = topY - bedY;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(bedW * 2, hgt), bankMat);
+      m.position.set(p.x, bedY + hgt / 2, p.z);
+      m.rotation.y = Math.atan2(t.x, t.z);
+      this.group.add(m);
+    };
+    mkBank(j.gapF0, j.roadY + j.rampH + .03);
+    mkBank(j.gapF1, j.roadY + .03);
+
+    // piliers du pont effondré + rochers dans le lit
+    const rubb = [];
+    for (let i = 0; i < 2; i++) {
+      const k = Math.round(j.gapF0 + (i + 1) * (j.gapF1 - j.gapF0) / 3) % N;
+      const p = this.pts[k];
+      const pil = tinted(new THREE.BoxGeometry(3.2, j.depth * .8, 2.2), 0x5c554c);
+      place(pil, p.x + (rng() - .5) * 8, bedY + j.depth * .35, p.z + (rng() - .5) * 8, rng() * 7, (rng() - .5) * .18, (rng() - .5) * .18);
+      rubb.push(pil);
+    }
+    for (let i = 0; i < 10; i++) {
+      const k = (j.gapF0 + Math.floor(rng() * (j.gapF1 - j.gapF0))) % N;
+      const p = this.pts[k], l = this.left[k];
+      const off = (rng() - .5) * bedW * 1.6;
+      const rock = new THREE.DodecahedronGeometry(.5 + rng() * 1.4, 0);
+      tinted(rock, rng() < .5 ? 0x4e463a : 0x6a5c48);
+      place(rock, p.x + l.x * off, bedY + .4, p.z + l.z * off, rng() * 7);
+      rubb.push(rock);
+    }
+    this.group.add(new THREE.Mesh(mergeGeoms(rubb, true), new THREE.MeshLambertMaterial({ vertexColors: true })));
+
+    // toute la rampe est peinte en rayures danger (impossible à rater à pleine vitesse)
+    const st = stripesTex();
+    {
+      const pos2 = [], uv2 = [], nor2 = [], idx2 = [];
+      let m = 0;
+      for (let i = j.rampF0; i <= j.gapF0; i++) {
+        const k2 = ((i % N) + N) % N, p2 = this.pts[k2], l2 = this.left[k2];
+        const w = ROAD_HALF - .4, y2 = this.h[k2] + .05;
+        pos2.push(p2.x + l2.x * w, y2, p2.z + l2.z * w, p2.x - l2.x * w, y2, p2.z - l2.z * w);
+        nor2.push(0, 1, 0, 0, 1, 0);
+        uv2.push(0, m * .8, 2.5, m * .8);
+        if (m) {
+          const a = (m - 1) * 2, b = a + 1, c = a + 2, d = a + 3;
+          idx2.push(a, b, c, b, d, c);
+        }
+        m++;
+      }
+      const g2 = new THREE.BufferGeometry();
+      g2.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos2), 3));
+      g2.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nor2), 3));
+      g2.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uv2), 2));
+      g2.setIndex(idx2);
+      this.group.add(new THREE.Mesh(g2, new THREE.MeshLambertMaterial({ map: st, transparent: true, opacity: .9 })));
+    }
+    // panneaux rayés d'avertissement avant la rampe
+    const kW = ((Math.round(j.rampF0 - 10 / this.segLen) % N) + N) % N;
+    const pW = this.pts[kW], lW = this.left[kW], tW = this.tan[kW];
+    for (const s of [1, -1]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.1, .18), new THREE.MeshLambertMaterial({ map: st }));
+      b.position.set(pW.x + lW.x * (ROAD_HALF + 1.7) * s, this.h[kW] + 1.1, pW.z + lW.z * (ROAD_HALF + 1.7) * s);
+      b.rotation.y = Math.atan2(tW.x, tW.z);
+      this.group.add(b);
+    }
+  }
+
+  // ——— la fosse aux fans : tribunes + spectateurs des deux côtés ———
+  _buildCrowdZone(rng) {
+    const N = this.N, c = this.crowd;
+    const stands = [], people = [];
+    const step = Math.max(2, Math.round(3.2 / this.segLen));
+    const cols = [0xd05038, 0x3878c0, 0xd8b040, 0x50a058, 0x9858b8, 0xd07830, 0xc8c8d0];
+    const skins = [0xd8a878, 0xb88858, 0x906848];
+    for (let i = c.f0; i < c.f1; i += step) {
+      const k = ((i % N) + N) % N;
+      const p = this.pts[k], l = this.left[k], t = this.tan[k];
+      const base = this.h[k];
+      const ry = Math.atan2(t.x, t.z);
+      for (const side of [1, -1]) {
+        for (let tier = 0; tier < 3; tier++) {
+          const off = WALL_DIST + 3 + tier * 2.4;
+          const cx = p.x + l.x * off * side, cz = p.z + l.z * off * side;
+          const sg = tinted(new THREE.BoxGeometry(2.4, 1.0, step * this.segLen + .3), 0x54504a);
+          place(sg, cx, base + .5 + tier * 1.0, cz, ry);
+          stands.push(sg);
+          const nP = 1 + Math.floor(rng() * 3);
+          for (let q = 0; q < nP; q++) {
+            const along = (rng() - .5) * step * this.segLen * .8;
+            const px = cx + t.x * along, pz = cz + t.z * along;
+            const body = tinted(new THREE.BoxGeometry(.5, .75, .4), cols[Math.floor(rng() * cols.length)]);
+            place(body, px, base + 1.37 + tier * 1.0, pz, ry + (rng() - .5) * .6);
+            people.push(body);
+            const head = tinted(new THREE.SphereGeometry(.16, 6, 5), skins[Math.floor(rng() * 3)]);
+            place(head, px, base + 1.88 + tier * 1.0, pz, 0);
+            people.push(head);
+          }
+        }
+      }
+    }
+    const addM = geoms => {
+      if (!geoms.length) return;
+      const m = new THREE.Mesh(mergeGeoms(geoms, true), new THREE.MeshLambertMaterial({ vertexColors: true }));
+      m.matrixAutoUpdate = false;
+      this.group.add(m);
+    };
+    addM(stands); addM(people);
+
+    // banderole au milieu de la zone
+    const mid = Math.round((c.f0 + c.f1) / 2) % N;
+    const pM = this.pts[mid], lM = this.left[mid], tM = this.tan[mid];
+    const pyl = new THREE.MeshLambertMaterial({ color: 0x4a4440 });
+    for (const s of [1, -1]) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(.3, .4, 8, 8), pyl);
+      m.position.set(pM.x + lM.x * (ROAD_HALF + 1.5) * s, this.h[mid] + 4, pM.z + lM.z * (ROAD_HALF + 1.5) * s);
+      this.group.add(m);
+    }
+    const bTex = canvasTex(512, 64, (g, w, h) => {
+      g.fillStyle = '#3a1010'; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#ff9860'; g.font = '900 italic 38px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('☠ LA FOSSE AUX FANS ☠', w / 2, h / 2);
+    });
+    const banner = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_HALF * 2 + 3, 2.1),
+      new THREE.MeshBasicMaterial({ map: bTex, side: THREE.DoubleSide }));
+    banner.position.set(pM.x, this.h[mid] + 6.9, pM.z);
+    banner.rotation.y = Math.atan2(tM.x, tM.z) + Math.PI;
+    this.group.add(banner);
+  }
+
+  // ——— plaques de turbo (chevrons orange pulsants) ———
+  _buildPads() {
+    const tex = padTex();
+    for (const pad of this.pads) {
+      const k = Math.round(pad.f) % this.N;
+      const p = this.pts[k], t = this.tan[k];
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(pad.halfW * 2, pad.len * this.segLen),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: .75, depthWrite: false })
+      );
+      m.rotation.order = 'YXZ';
+      m.rotation.y = Math.atan2(t.x, t.z);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(p.x, this.h[k] + .06, p.z);
+      this.group.add(m);
+      pad.mesh = m;
+    }
+  }
+
+  // point le plus proche du tracé (approx.) — pour poser le décor
+  _nearTrack(x, z) {
+    let best = 1e18, bi = 0;
     for (let i = 0; i < this.N; i += 6) {
       const p = this.pts[i];
       const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z);
-      if (d < best) best = d;
+      if (d < best) { best = d; bi = i; }
     }
-    return Math.sqrt(best);
+    return { d: Math.sqrt(best), i: bi };
+  }
+
+  _distToTrack(x, z) { return this._nearTrack(x, z).d; }
+
+  // hauteur du sol hors piste : route → épaulement → plaine
+  groundYApprox(x, z) {
+    const { d, i } = this._nearTrack(x, z);
+    if (d >= WALL_DIST + APRON) return -0.12;
+    if (d <= WALL_DIST) return this.h[i];
+    return lerp(this.h[i], -0.12, (d - WALL_DIST) / APRON);
   }
 
   _buildDecor(rng) {
     const bGeoms = [], wreckGeoms = [], treeGeoms = [], rubbleGeoms = [], poleGeoms = [];
+    const sl = this.segLen;
+    // hauteur du sol à un offset latéral donné du point k
+    const gAt = (k, off) => off <= WALL_DIST ? this.h[k] : lerp(this.h[k], -0.12, Math.min(1, (off - WALL_DIST) / APRON));
+    // près de la rivière ou des tribunes → pas de décor qui flotte/encombre
+    const nearRiver = (k) => this._ringDist(k, this.jump.center) < 30 / sl;
+    const nearStands = (k, off) => this.inCrowd(k, 6) && off < WALL_DIST + 11;
 
     // immeubles en ruine
     for (let i = 0; i < 90; i++) {
       const x = (rng() - .5) * 1300, z = (rng() - .5) * 1300;
-      const d = this._distToTrack(x, z);
+      const { d, i: ni } = this._nearTrack(x, z);
       if (d < WALL_DIST + 18 || d > 420) continue; // pas trop près : la caméra passe derrière sinon
+      if (d < 90 && nearRiver(ni)) continue;       // laisse la rivière respirer
+      const gy = d >= WALL_DIST + APRON ? -0.12 : lerp(this.h[ni], -0.12, Math.max(0, (d - WALL_DIST) / APRON));
       const w = 10 + rng() * 16, h = 8 + rng() * (d > 60 ? 42 : 18), dp = 10 + rng() * 16;
       const g = new THREE.BoxGeometry(w, h, dp);
       // fenêtres à l'échelle
       const uvs = g.attributes.uv;
       for (let k = 0; k < uvs.count; k++) uvs.setXY(k, uvs.getX(k) * Math.max(2, Math.round(w / 6)), uvs.getY(k) * Math.max(2, Math.round(h / 6)));
-      place(g, x, h / 2 - rng() * 2, z, rng() * Math.PI, (rng() - .5) * .06, (rng() - .5) * .06);
+      place(g, x, gy + h / 2 - rng() * 2, z, rng() * Math.PI, (rng() - .5) * .06, (rng() - .5) * .06);
       bGeoms.push(g);
       // débris au pied
       if (rng() < .6) {
         const rb = new THREE.DodecahedronGeometry(1.2 + rng() * 2.2, 0);
         tinted(rb, 0x4a4038);
-        place(rb, x + (rng() - .5) * w * 1.4, .6, z + (rng() - .5) * dp * 1.4, rng() * 7);
+        place(rb, x + (rng() - .5) * w * 1.4, gy + .6, z + (rng() - .5) * dp * 1.4, rng() * 7);
         rubbleGeoms.push(rb);
       }
     }
@@ -438,20 +837,22 @@ export class Track {
       const p = this.pts[k], l = this.left[k];
       const side = rng() < .5 ? 1 : -1;
       const off = WALL_DIST + 2.5 + rng() * 12;
+      if (nearRiver(k) || nearStands(k, off)) continue;
       const x = p.x + l.x * off * side, z = p.z + l.z * off * side;
+      const gy = gAt(k, off);
       const col = wreckCols[Math.floor(rng() * wreckCols.length)];
       if (rng() < .25) {
         // épave retournée : cabine écrasée dessous, châssis en l'air
         const body = tinted(new THREE.BoxGeometry(2, .9, 4.2), col);
-        place(body, x, .85, z, rng() * 7, 0, Math.PI + (rng() - .5) * .3);
+        place(body, x, gy + .85, z, rng() * 7, 0, Math.PI + (rng() - .5) * .3);
         const cab = tinted(new THREE.BoxGeometry(1.6, .35, 1.7), col);
-        place(cab, x + (rng() - .5) * .4, .18, z + (rng() - .5) * .4, rng() * 7);
+        place(cab, x + (rng() - .5) * .4, gy + .18, z + (rng() - .5) * .4, rng() * 7);
         wreckGeoms.push(body, cab);
       } else {
         const body = tinted(new THREE.BoxGeometry(2, .9, 4.2), col);
-        place(body, x, .45, z, rng() * 7, 0, (rng() - .5) * .35);
+        place(body, x, gy + .45, z, rng() * 7, 0, (rng() - .5) * .35);
         const cab = tinted(new THREE.BoxGeometry(1.7, .6, 1.8), col);
-        place(cab, x + (rng() - .5), 1.1, z + (rng() - .5), rng() * 7, 0, (rng() - .5) * .3);
+        place(cab, x + (rng() - .5), gy + 1.1, z + (rng() - .5), rng() * 7, 0, (rng() - .5) * .3);
         wreckGeoms.push(body, cab);
       }
     }
@@ -462,7 +863,9 @@ export class Track {
       const p = this.pts[k], l = this.left[k];
       const side = rng() < .5 ? 1 : -1;
       const off = WALL_DIST + 3 + rng() * 18;
+      if (nearRiver(k) || nearStands(k, off)) continue;
       const cx = p.x + l.x * off * side, cz = p.z + l.z * off * side;
+      const gy = gAt(k, off);
       const n = 3 + Math.floor(rng() * 4);
       for (let j = 0; j < n; j++) {
         const jx = cx + (rng() - .5) * 3.4, jz = cz + (rng() - .5) * 3.4;
@@ -470,16 +873,16 @@ export class Track {
         if (r < .45) {
           const bx = tinted(new THREE.BoxGeometry(.7 + rng() * .9, .5 + rng() * .7, .7 + rng() * .9),
             [0x5a4a38, 0x4a4440, 0x6e5030][Math.floor(rng() * 3)]);
-          place(bx, jx, .3 + rng() * .5, jz, rng() * 7, (rng() - .5) * .5, (rng() - .5) * .5);
+          place(bx, jx, gy + .3 + rng() * .5, jz, rng() * 7, (rng() - .5) * .5, (rng() - .5) * .5);
           rubbleGeoms.push(bx);
         } else if (r < .75) {
           const drum = tinted(new THREE.CylinderGeometry(.34, .34, .95, 7), rng() < .5 ? 0x7a4a20 : 0x505860);
           const tipped = rng() < .4;
-          place(drum, jx, tipped ? .34 : .48, jz, rng() * 7, 0, tipped ? Math.PI / 2 : (rng() - .5) * .15);
+          place(drum, jx, gy + (tipped ? .34 : .48), jz, rng() * 7, 0, tipped ? Math.PI / 2 : (rng() - .5) * .15);
           rubbleGeoms.push(drum);
         } else {
           const tire = tinted(new THREE.TorusGeometry(.5, .2, 6, 10), 0x1c1c1e);
-          place(tire, jx, .22, jz, rng() * 7, Math.PI / 2 + (rng() - .5) * .4);
+          place(tire, jx, gy + .22, jz, rng() * 7, Math.PI / 2 + (rng() - .5) * .4);
           rubbleGeoms.push(tire);
         }
       }
@@ -491,11 +894,13 @@ export class Track {
       const p = this.pts[k], l = this.left[k];
       const side = rng() < .5 ? 1 : -1;
       const off = WALL_DIST + 1.6 + rng() * 5;
+      if (nearRiver(k) || nearStands(k, off)) continue;
       const x = p.x + l.x * off * side, z = p.z + l.z * off * side;
+      const gy = gAt(k, off);
       const nT = 2 + Math.floor(rng() * 3);
       for (let j = 0; j < nT; j++) {
         const tire = tinted(new THREE.TorusGeometry(.55, .22, 6, 10), 0x1c1c1e);
-        place(tire, x + (rng() - .5) * .15, .22 + j * .42, z + (rng() - .5) * .15, rng() * 7, Math.PI / 2);
+        place(tire, x + (rng() - .5) * .15, gy + .22 + j * .42, z + (rng() - .5) * .15, rng() * 7, Math.PI / 2);
         rubbleGeoms.push(tire);
       }
     }
@@ -506,25 +911,29 @@ export class Track {
       const p = this.pts[k], l = this.left[k];
       const side = rng() < .5 ? 1 : -1;
       const off = WALL_DIST + 1.4 + rng() * 9;
+      if (nearRiver(k) || nearStands(k, off)) continue;
+      const gy = gAt(k, off);
       const tipped = rng() < .3;
       const drum = tinted(new THREE.CylinderGeometry(.34, .34, .95, 7), rng() < .6 ? 0x7a4a20 : 0x4a5560);
-      place(drum, p.x + l.x * off * side, tipped ? .34 : .48, p.z + l.z * off * side, rng() * 7, 0, tipped ? Math.PI / 2 : 0);
+      place(drum, p.x + l.x * off * side, gy + (tipped ? .34 : .48), p.z + l.z * off * side, rng() * 7, 0, tipped ? Math.PI / 2 : 0);
       rubbleGeoms.push(drum);
     }
 
     // arbres morts
     for (let i = 0; i < 50; i++) {
       const x = (rng() - .5) * 1200, z = (rng() - .5) * 1200;
-      const d = this._distToTrack(x, z);
+      const { d, i: ni } = this._nearTrack(x, z);
       if (d < WALL_DIST + 4 || d > 380) continue;
+      if (d < 80 && nearRiver(ni)) continue;
+      const gy = d >= WALL_DIST + APRON ? -0.12 : lerp(this.h[ni], -0.12, Math.max(0, (d - WALL_DIST) / APRON));
       const h = 4 + rng() * 5;
       const trunk = tinted(new THREE.CylinderGeometry(.14, .3, h, 5), 0x3d3226);
-      place(trunk, x, h / 2, z, 0, (rng() - .5) * .2, (rng() - .5) * .2);
+      place(trunk, x, gy + h / 2, z, 0, (rng() - .5) * .2, (rng() - .5) * .2);
       treeGeoms.push(trunk);
       for (let b = 0; b < 2 + Math.floor(rng() * 2); b++) {
         const bl = 1.5 + rng() * 2.2;
         const br = tinted(new THREE.CylinderGeometry(.05, .12, bl, 4), 0x3d3226);
-        place(br, x + (rng() - .5) * 1.2, h * (.55 + rng() * .35), z + (rng() - .5) * 1.2, rng() * 7, (rng() - .5) * 1.6, (rng() - .5) * 1.6);
+        place(br, x + (rng() - .5) * 1.2, gy + h * (.55 + rng() * .35), z + (rng() - .5) * 1.2, rng() * 7, (rng() - .5) * 1.6, (rng() - .5) * 1.6);
         treeGeoms.push(br);
       }
     }
@@ -532,15 +941,18 @@ export class Track {
     // lampadaires tordus le long de la piste
     for (let i = 0; i < this.N; i += 28) {
       if (rng() < .35) continue;
+      if (nearRiver(i) || this.inCrowd(i, 6)) continue;
       const p = this.pts[i], l = this.left[i];
       const side = i % 56 ? 1 : -1;
-      const x = p.x + l.x * (WALL_DIST + 1.8) * side, z = p.z + l.z * (WALL_DIST + 1.8) * side;
+      const off = WALL_DIST + 1.8;
+      const x = p.x + l.x * off * side, z = p.z + l.z * off * side;
+      const gy = gAt(i, off);
       const bend = (rng() - .5) * .7;
       const pole = tinted(new THREE.CylinderGeometry(.12, .18, 6.5, 5), 0x2f2f33);
-      place(pole, x, 3.2, z, 0, bend * .4, bend);
+      place(pole, x, gy + 3.2, z, 0, bend * .4, bend);
       poleGeoms.push(pole);
       const arm = tinted(new THREE.CylinderGeometry(.08, .1, 2, 4), 0x2f2f33);
-      place(arm, x - Math.sin(bend) * 2 - l.x * side * 1.2, 6.1, z - l.z * side * 1.2, 0, 0, Math.PI / 2 + bend);
+      place(arm, x - Math.sin(bend) * 2 - l.x * side * 1.2, gy + 6.1, z - l.z * side * 1.2, 0, 0, Math.PI / 2 + bend);
       poleGeoms.push(arm);
     }
 
@@ -550,9 +962,10 @@ export class Track {
       const p = this.pts[k], l = this.left[k];
       const side = rng() < .5 ? 1 : -1;
       const off = ROAD_HALF + 1.5 + rng() * (WALL_DIST - ROAD_HALF - 3);
+      if (nearRiver(k)) continue;
       const g = new THREE.DodecahedronGeometry(.25 + rng() * .5, 0);
       tinted(g, rng() < .5 ? 0x54483a : 0x6a5c48);
-      place(g, p.x + l.x * off * side, .2, p.z + l.z * off * side, rng() * 7);
+      place(g, p.x + l.x * off * side, this.h[k] + .2, p.z + l.z * off * side, rng() * 7);
       rubbleGeoms.push(g);
     }
 
@@ -577,14 +990,17 @@ export class Track {
     const rows = [.09, .21, .33, .46, .58, .71, .84];
     const lats = [-5.1, -1.7, 1.7, 5.1];
     this.cratesGroup = new THREE.Group();
+    const jumpMid = this.jump.zoneF + 32 / this.segLen;
     for (const fr of rows) {
       const i = Math.floor(fr * this.N);
+      if (this._ringDist(i, jumpMid) < 44 / this.segLen) continue; // pas de caisses sur le saut
       const p = this.pts[i], l = this.left[i];
+      const baseY = this.h[i] + 1.15;
       for (const lat of lats) {
         const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex }));
-        mesh.position.set(p.x + l.x * lat, 1.15, p.z + l.z * lat);
+        mesh.position.set(p.x + l.x * lat, baseY, p.z + l.z * lat);
         this.cratesGroup.add(mesh);
-        this.crates.push({ mesh, x: mesh.position.x, z: mesh.position.z, active: true, respawnT: 0, phase: rng() * 7 });
+        this.crates.push({ mesh, x: mesh.position.x, z: mesh.position.z, baseY, active: true, respawnT: 0, phase: rng() * 7 });
       }
     }
     this.group.add(this.cratesGroup);
@@ -663,7 +1079,29 @@ export class Track {
     const i = Math.floor(((idxF % N) + N) % N);
     const fr = ((idxF % N) + N) % N - i;
     const a = this.pts[i], b = this.pts[(i + 1) % N];
-    return new THREE.Vector3(lerp(a.x, b.x, fr), 0, lerp(a.z, b.z, fr));
+    return new THREE.Vector3(lerp(a.x, b.x, fr), lerp(a.y, b.y, fr), lerp(a.z, b.z, fr));
+  }
+
+  // hauteur de la route au point de progression donné
+  heightAt(idxF) {
+    const N = this.N;
+    const f = ((idxF % N) + N) % N;
+    const i = Math.floor(f);
+    return lerp(this.h[i], this.h[(i + 1) % N], f - i);
+  }
+
+  // f est-il au-dessus de la brèche du pont ?
+  inGap(idxF) {
+    const N = this.N;
+    const f = ((idxF % N) + N) % N;
+    return f > this.jump.gapF0 && f < this.jump.gapF1;
+  }
+
+  // f est-il dans la zone des tribunes (élargie de `beforeM` mètres en amont) ?
+  inCrowd(idxF, beforeM = 0) {
+    const N = this.N;
+    const f = ((idxF % N) + N) % N;
+    return f > this.crowd.f0 - beforeM / this.segLen && f < this.crowd.f1;
   }
 
   headingAt(idxF) {
@@ -703,7 +1141,11 @@ export class Track {
         continue;
       }
       c.mesh.rotation.y += dt * 1.2;
-      c.mesh.position.y = 1.15 + Math.sin(t * 2 + c.phase) * .16;
+      c.mesh.position.y = c.baseY + Math.sin(t * 2 + c.phase) * .16;
+    }
+    // chevrons de turbo qui pulsent
+    for (const pad of this.pads) {
+      if (pad.mesh) pad.mesh.material.opacity = .8 + .2 * Math.sin(t * 7 + pad.phase * 2.1);
     }
     // poussière qui dérive, recentrée sur la caméra
     if (camPos) {

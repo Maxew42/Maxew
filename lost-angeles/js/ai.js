@@ -43,6 +43,15 @@ export class AIDriver {
     }
     targetLat = clamp(targetLat, -(t.halfW - 1.2), t.halfW - 1.2);
 
+    // le saut approche : recentré, plein gaz, surtout pas de frein
+    let jumpAhead = false;
+    if (t.jump) {
+      let dj = t.jump.gapF1 - k.lastF;
+      if (dj > t.N / 2) dj -= t.N; else if (dj < -t.N / 2) dj += t.N;
+      jumpAhead = dj > 0 && dj < 46 / t.segLen;
+      if (jumpAhead) targetLat = clamp(targetLat, -3, 3);
+    }
+
     const aheadF = k.lastF + lookM / t.segLen;
     const pos = t.posAt(aheadF);
     const left = t.leftAt(aheadF);
@@ -59,6 +68,7 @@ export class AIDriver {
     let throttle = 1, brake = 0;
     if (turnAhead > .75 && k.speed > k.vmax * .62) { throttle = .25; brake = .35; }
     else if (turnAhead > .45 && k.speed > k.vmax * .8) throttle = .55;
+    if (jumpAhead) { throttle = 1; brake = 0; }
 
     // élastique : rattrape le meneur humain, se calme devant
     const gap = world.pacerProgress - k.totalProgress; // >0 = en retard
