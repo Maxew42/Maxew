@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#f6f2e3">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Notebook War</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: #f6f2e3;
+    color: #22262e;
+    font-family: "Segoe Print", "Comic Sans MS", "Chalkboard SE", cursive, system-ui;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+  /* Ruled-paper background for the menus. */
+  .paper {
+    background:
+      repeating-linear-gradient(transparent, transparent 27px, rgba(96,138,190,0.25) 27px, rgba(96,138,190,0.25) 28px),
+      linear-gradient(90deg, transparent 54px, rgba(200,70,70,0.35) 54px, rgba(200,70,70,0.35) 56px, transparent 56px),
+      #f6f2e3;
+  }
+
+  /* ---- Menu ---- */
+  #screen-menu { align-items: center; justify-content: center; gap: 12px; overflow-y: auto; }
+  #screen-menu h1 {
+    font-size: clamp(40px, 9vw, 84px);
+    letter-spacing: 0.04em;
+    color: #16181d;
+    transform: rotate(-2deg);
+    text-shadow: 2px 2px 0 rgba(179, 35, 42, 0.25);
+  }
+  #screen-menu .subtitle { color: #b3232a; margin-bottom: 14px; letter-spacing: 0.2em; font-size: 13px; transform: rotate(-1deg); }
+  .menu-btn {
+    width: min(320px, 82vw); padding: 13px; font-size: 17px; font-weight: 700; letter-spacing: 0.05em;
+    background: #fdfbf3; color: #22262e;
+    border: 2.5px solid #22262e; border-radius: 10px;
+    box-shadow: 3px 3px 0 rgba(34,38,46,0.7);
+    transition: transform 0.08s;
+  }
+  .menu-btn:hover { transform: translate(-1px, -1px) rotate(-0.5deg); }
+  .menu-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(34,38,46,0.7); }
+  .menu-row { display: flex; gap: 10px; align-items: center; font-size: 14px; color: #4a4f58; flex-wrap: wrap; justify-content: center; }
+  input[type="text"], select {
+    padding: 8px 10px; border-radius: 8px; border: 2px solid #22262e;
+    background: #fdfbf3; color: #22262e; font-size: 14px; font-family: inherit;
+  }
+  .hint { color: #7a7f88; font-size: 12px; margin-top: 20px; text-align: center; line-height: 1.8; padding: 0 16px; max-width: 640px; }
+  .hint b { color: #4a4f58; background: rgba(34,38,46,0.07); border: 1px solid rgba(34,38,46,0.25); border-radius: 5px; padding: 1px 6px; font-weight: 700; }
+
+  /* ---- Lobby ---- */
+  #screen-lobby { align-items: center; justify-content: center; gap: 16px; }
+  .lobby-box {
+    background: #fdfbf3; border: 2.5px solid #22262e; box-shadow: 4px 4px 0 rgba(34,38,46,0.6);
+    border-radius: 14px; padding: 26px; width: min(400px, 92vw); display: flex; flex-direction: column; gap: 14px;
+  }
+  .btn {
+    padding: 9px 14px; border-radius: 8px; font-size: 14px; font-weight: 700;
+    background: #fdfbf3; color: #22262e; border: 2px solid #22262e;
+    box-shadow: 2px 2px 0 rgba(34,38,46,0.6);
+  }
+  .btn:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 rgba(34,38,46,0.6); }
+  .btn.primary { background: #b3232a; color: #fdfbf3; border-color: #7a1519; }
+  .btn.danger { color: #b3232a; }
+  #room-code-display { font-size: 34px; font-weight: 900; letter-spacing: 0.35em; color: #b3232a; text-align: center; transform: rotate(-1deg); }
+  .lobby-row { padding: 8px 10px; background: rgba(96,138,190,0.12); border-radius: 8px; font-size: 14px; }
+  #lobby-players { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+  #lobby-wait { color: #7a7f88; font-size: 13px; text-align: center; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > input { flex: 1; min-width: 0; }
+
+  /* ---- Game ---- */
+  #screen-game { background: #f6f2e3; }
+  #game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  #btn-exit-game { position: absolute; top: max(10px, env(safe-area-inset-top)); left: 12px; z-index: 5; font-size: 12px; padding: 5px 10px; opacity: 0.85; }
+  #killfeed { position: absolute; top: max(44px, env(safe-area-inset-top)); right: 12px; z-index: 4;
+    display: flex; flex-direction: column; gap: 3px; align-items: flex-end; pointer-events: none; }
+  #killfeed div { background: rgba(253, 251, 243, 0.9); border: 1.5px solid #22262e; padding: 3px 10px; border-radius: 6px;
+    font-size: 12px; color: #22262e; }
+  #killfeed .feed-w { color: #7a7f88; }
+  #game-msg { position: absolute; top: 26%; left: 0; right: 0; text-align: center; font-size: 20px;
+    font-weight: 800; color: #b3232a; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 0.3s;
+    text-shadow: 1px 1px 0 #fdfbf3; }
+  #scoreboard { position: absolute; top: 12%; left: 50%; transform: translateX(-50%) rotate(-0.6deg); z-index: 8;
+    background: #fdfbf3; border: 2.5px solid #22262e; box-shadow: 5px 5px 0 rgba(34,38,46,0.5);
+    border-radius: 12px; padding: 16px 20px; min-width: min(340px, 88vw); }
+  #scoreboard h3 { margin-bottom: 10px; color: #b3232a; }
+  .sb-row { display: flex; justify-content: space-between; gap: 24px; font-size: 14px; padding: 3px 0;
+    border-bottom: 1px dashed rgba(34,38,46,0.25); }
+  .sb-row.me { color: #b3232a; font-weight: 700; }
+  #game-over { position: absolute; inset: 0; background: rgba(246, 242, 227, 0.92); z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+  #game-over h2 { font-size: clamp(40px, 9vw, 76px); letter-spacing: 0.1em; font-weight: 900; transform: rotate(-2deg); }
+  #game-over h2.win { color: #2d7a35; text-shadow: 2px 2px 0 rgba(45,122,53,0.25); }
+  #game-over h2.lose { color: #b3232a; text-shadow: 2px 2px 0 rgba(179,35,42,0.25); }
+  #game-over-sub { color: #4a4f58; }
+  #final-scores { background: #fdfbf3; border: 2px solid #22262e; border-radius: 10px; padding: 12px 18px; min-width: min(320px, 86vw); }
+  #game-over .btn { width: 240px; padding: 12px; font-size: 15px; }
+
+  /* ---- Touch UI ---- */
+  .touch-ui { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+  .stick-zone { position: absolute; bottom: 0; width: 42%; height: 60%; pointer-events: auto; }
+  .stick-left { left: 0; }
+  .stick-right { right: 0; }
+  .stick-base { position: absolute; width: 104px; height: 104px; border-radius: 50%;
+    border: 2px solid rgba(34,38,46,0.5); background: rgba(34,38,46,0.06); display: none; }
+  .stick-base.on { display: block; }
+  .stick-knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px;
+    border-radius: 50%; background: rgba(34,38,46,0.4); }
+  .tbtns { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(12px, env(safe-area-inset-bottom));
+    display: flex; gap: 10px; pointer-events: auto; }
+  .tbtn { min-width: 64px; height: 52px; border-radius: 12px; border: 2px solid rgba(34,38,46,0.55);
+    background: rgba(253, 251, 243, 0.7); color: #22262e; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; padding: 0 10px; }
+  .tbtn.on { background: rgba(179, 35, 42, 0.5); color: #fff; }
+  .tbtn-jump { min-width: 84px; border-color: rgba(179,35,42,0.6); color: #b3232a; }
+</style>
+<script type="importmap">
+{ "imports": { "trystero": "./lib/trystero-nostr.min.js" } }
+</script>
+</head>
+<body>
+
+<!-- ============================ MENU ============================ -->
+<div id="screen-menu" class="screen paper">
+  <h1>NOTEBOOK WAR ✎</h1>
+  <div class="subtitle">DEATHMATCH AU STYLO BILLE · 10 FRAGS</div>
+  <div class="menu-row">
+    Pseudo : <input type="text" id="player-name" maxlength="14" style="width:150px">
+  </div>
+  <div class="menu-row">
+    Bots : <select id="bot-count"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+    Difficulté :
+    <select id="bot-diff"><option value="easy">Faciles</option><option value="normal" selected>Normaux</option><option value="hard">Sadiques</option></select>
+  </div>
+  <button id="btn-solo" class="menu-btn">SOLO CONTRE LES BOTS</button>
+  <button id="btn-multi" class="menu-btn">MULTIJOUEUR</button>
+  <div class="hint">
+    <b>A/D</b> bouger · <b>W / Espace</b> sauter (maintenir = jetpack) · <b>S</b> descendre · <b>souris</b> viser/tirer ·
+    <b>E</b> ramasser · <b>Q</b> changer d'arme · <b>G</b> lancer son arme · <b>Tab</b> scores<br>
+    Manette : <b>stick G</b> bouger · <b>stick D</b> viser · <b>RT</b> tirer · <b>✕</b> saut · <b>□</b> ramasser · <b>△</b> changer · <b>○</b> lancer<br>
+    Les murs en placo se détruisent. Les munitions ne se ramassent pas : change d'arme ou balance-la !
+  </div>
+</div>
+
+<!-- ============================ LOBBY ============================ -->
+<div id="screen-lobby" class="screen paper hidden">
+  <div id="lobby-join" class="lobby-box">
+    <h3>Multijoueur (P2P)</h3>
+    <button id="btn-create-room" class="btn primary">Créer un salon</button>
+    <div class="row">
+      <input type="text" id="room-code-input" maxlength="6" placeholder="CODE" style="text-transform:uppercase">
+      <button id="btn-join-room" class="btn">Rejoindre</button>
+    </div>
+    <button id="btn-lobby-back" class="btn">← Retour</button>
+  </div>
+  <div id="lobby-room" class="lobby-box hidden">
+    <h3>Salon</h3>
+    <div id="room-code-display">----</div>
+    <div style="color:#7a7f88;font-size:12px;text-align:center">Partage ce code avec tes collègues</div>
+    <div id="lobby-players"></div>
+    <div id="lobby-bots-row" class="row" style="justify-content:center;color:#4a4f58;font-size:13px">
+      Bots : <select id="lobby-bots"><option>0</option><option selected>1</option><option>2</option><option>3</option></select>
+    </div>
+    <button id="btn-start-match" class="btn primary hidden">LANCER LA PARTIE</button>
+    <div id="lobby-wait">En attente de l'hôte…</div>
+    <button id="btn-room-leave" class="btn">← Quitter le salon</button>
+  </div>
+</div>
+
+<!-- ============================ GAME ============================ -->
+<div id="screen-game" class="screen hidden">
+  <canvas id="game-canvas"></canvas>
+  <button id="btn-exit-game" class="btn">✕ Quitter</button>
+  <div id="killfeed"></div>
+  <div id="game-msg"></div>
+  <div id="scoreboard" class="hidden"></div>
+  <div id="game-over" class="hidden">
+    <h2 class="win">VICTOIRE</h2>
+    <div id="game-over-sub"></div>
+    <div id="final-scores"></div>
+    <button id="btn-rematch" class="btn primary">REVANCHE</button>
+    <button id="btn-exit-over" class="btn">MENU</button>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+<script>
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
+</body>
+</html>
