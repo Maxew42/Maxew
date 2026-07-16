@@ -34,9 +34,21 @@ export class AIController {
     this.strafeT = 0;
     this.reactT = 0;
     this.fireT = 0;
+    this.pause = 0.3;
     this.stuckT = 0;
     this.aimJit = 0;
     this.target = null;
+    this.hunt = null;          // last known position of whoever shot us
+    this.huntT = 0;
+  }
+
+  // Getting shot from the dark: remember where it came from and go look.
+  onHurt(byId, game) {
+    const attacker = game.manById(byId);
+    if (!attacker || attacker === this.man) return;
+    this.hunt = { x: attacker.x, y: attacker.y };
+    this.huntT = 7;
+    this.reactT = Math.min(this.reactT, 0.12);
   }
 
   update(dt, game) {
@@ -100,9 +112,12 @@ export class AIController {
         const tooClose = wd.rocket && dd < 160;
         if (!tooClose && dd < (wd.range || 700) * 1.05) {
           if (wd.kind === 'gun') {
-            if (this.fireT <= 0) this.fireT = -(this.d.burst);           // burst window
-            inp.fire = this.fireT < 0 && this.fireT > -this.d.burst;
-            if (this.fireT < -this.d.burst) this.fireT = 0.25 + Math.random() * 0.5;
+            // Fire cycle: hold the trigger for `burst`, breathe for `pause`.
+            if (this.fireT <= 0) {
+              this.pause = 0.2 + Math.random() * 0.5;
+              this.fireT = this.d.burst + this.pause;
+            }
+            inp.fire = this.fireT > this.pause;
           } else if (wd.kind === 'thrown') {
             if (dd > 120 && dd < 420 && Math.random() < 0.9 * dt * 2) inp.fireP = true;
           } else if (wd.kind === 'placed') {
@@ -114,14 +129,25 @@ export class AIController {
       this.navigate(dt, game, t.x, t.y, inp, true);
       return;
     }
+    if (this.target) {
+      // Spotted, still reacting: square up on the threat instead of wandering off.
+      const t = this.target;
+      inp.aim = Math.atan2((t.y - 34) - (m.y - 30), t.x - m.x);
+      return;
+    }
 
-    // --- wander -----------------------------------------------------------
-    if (!this.wander || this.wanderT <= 0 || dist(m.x, m.y, this.wander.x, this.wander.y) < 40) {
+    // --- hunt the last shooter, else wander --------------------------------
+    this.huntT -= dt;
+    if (this.hunt && this.huntT > 0) {
+      if (dist(m.x, m.y, this.hunt.x, this.hunt.y) < 60) { this.hunt = null; this.huntT = 0; }
+    } else this.hunt = null;
+    if (!this.hunt && (!this.wander || this.wanderT <= 0 || dist(m.x, m.y, this.wander.x, this.wander.y) < 40)) {
       const pads = [...game.map.weaponPads, ...game.map.itemPads, ...game.map.spawns];
       this.wander = pads[Math.floor(Math.random() * pads.length)];
       this.wanderT = 12 + Math.random() * 8;
     }
-    const wx = this.wander.x, wy = this.wander.y;
+    const goal = this.hunt || this.wander;
+    const wx = goal.x, wy = goal.y;
     inp.aim = m.facing > 0 ? 0 : Math.PI;
     this.navigate(dt, game, wx, wy, inp, false);
     if (Math.abs(inp.mx) > 0.1) inp.aim = inp.mx > 0 ? 0 : Math.PI;

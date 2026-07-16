@@ -53,6 +53,7 @@ export class Game {
     this.particles = [];
     this.rings = [];
     this.corpses = [];
+    this.pings = [];           // off-screen shot indicators around the player
     this.scores = new Map();   // id -> kills
     this.deaths = new Map();
     this.names = new Map();
@@ -139,6 +140,32 @@ export class Game {
   manById(id) { return this.men.find(m => m.id === id); }
   nameOf(id) { return this.names.get(id) || '???'; }
 
+  // Stereo placement of a world sound relative to the player's ears.
+  spatial(x, y, reach = 950) {
+    const d = dist(x, y, this.me.x, this.me.y);
+    return {
+      pan: clamp((x - this.me.x) / 480, -1, 1) * 0.9,
+      vol: clamp(1 - d / reach, 0, 1),
+    };
+  }
+
+  // A shot rang out near the player but out of sight: show where it came from.
+  addPing(x, y) {
+    if (!this.me.alive) return;
+    const d = dist(x, y, this.me.x, this.me.y);
+    if (d > 1250 || d < 130) return;
+    if (this.canSee(x, y)) return;
+    this.pings.push({ a: Math.atan2(y - (this.me.y - 34), x - this.me.x), d, t: 0 });
+    if (this.pings.length > 8) this.pings.shift();
+  }
+
+  pingFrom(man) {
+    if (man === this.me) return;
+    if (this.time - (man.pingT || 0) < 0.35) return;   // one ping per burst, not per bullet
+    man.pingT = this.time;
+    this.addPing(man.x, man.y - 30);
+  }
+
   // ---------------------------------------------------------------------------
   // Networking
   // ---------------------------------------------------------------------------
@@ -176,7 +203,7 @@ export class Game {
       x: Math.round(man.x * 10) / 10, y: Math.round(man.y * 10) / 10,
       vx: Math.round(man.vx), vy: Math.round(man.vy),
       a: Math.round(man.aim * 500) / 500,
-      f: (man.input.fire ? 1 : 0) | (man.onGround ? 2 : 0) | (man.alive ? 4 : 0),
+      f: (man.input.fire ? 1 : 0) | (man.onGround ? 2 : 0) | (man.alive ? 4 : 0) | (man.duck ? 8 : 0),
       hp: Math.round(man.hp), ar: Math.round(man.armor), he: man.helmetHp > 0 ? 1 : 0,
       w: WKEYS.indexOf(man.weapon.kind),
       j: man.jetFuel > 0 ? 1 : 0, dr: man.drugT > 0 ? 1 : 0,
@@ -188,6 +215,7 @@ export class Game {
     man.netAim = s.a;
     man.netFire = !!(s.f & 1);
     man.onGround = !!(s.f & 2);
+    man.duck = !!(s.f & 8);
     man.hp = s.hp; man.armor = s.ar; man.helmetHp = s.he ? 1 : 0;
     man.jetFuel = s.j ? 1 : 0; man.drugT = s.dr ? 1 : 0;
     const alive = !!(s.f & 4);
@@ -305,11 +333,12 @@ export class Game {
     if (me.alive && !this.matchOver) {
       me.input.mx = inp.mx;
       me.input.jump = inp.jump; me.input.jumpP = inp.jumpP; me.input.dropP = inp.dropP;
+      me.input.down = inp.down;
       if (inp.aim != null) me.input.aim = inp.aim;
       me.input.fire = inp.fire; me.input.fireP = inp.fireP;
       me.input.swapP = inp.swapP; me.input.throwP = inp.throwP; me.input.pickP = inp.pickP;
     } else {
-      me.input.mx = 0; me.input.fire = false; me.input.fireP = false;
+      me.input.mx = 0; me.input.fire = false; me.input.fireP = false; me.input.down = false;
       me.input.jump = me.input.jumpP = me.input.swapP = me.input.throwP = me.input.pickP = false;
     }
 
@@ -331,6 +360,18 @@ export class Game {
     // Auto pickups + manual weapon pickups for authority men.
     for (const m of this.men) if (m.authority && m.alive) this.checkPickups(m);
 
+    // Footsteps, in stereo (yours are quieter in your own ears).
+    for (const m of this.men) {
+      if (!m.alive || !m.onGround || Math.abs(m.vx) < 70) { m.stepT = 0; continue; }
+      m.stepT = (m.stepT || 0) + Math.abs(m.vx) * dt;
+      if (m.stepT > 68) {
+        m.stepT = 0;
+        const sp = this.spatial(m.x, m.y, 620);
+        if (m === this.me) sp.vol *= 0.35;
+        this.audio.step(sp);
+      }
+    }
+
     this.updateBullets(dt);
     this.updateLobbed(dt);
     this.updateMines(dt);
@@ -340,6 +381,8 @@ export class Game {
     this.updateCorpses(dt);
     for (const r of this.rings) r.t += dt;
     this.rings = this.rings.filter(r => r.t < r.dur);
+    for (const p of this.pings) p.t += dt;
+    this.pings = this.pings.filter(p => p.t < 1.0);
 
     // Host: refill spawn pads.
     if (!this.net || this.net.isHost) this.updateSpawners(dt);
@@ -382,10 +425,12 @@ export class Game {
         if (d.kind === 'gun' && !d.rocket) {
           m.remoteCd = 1 / d.rate;
           this.spawnBullets(m, d, true);
-          if (this.canSee(m.x, m.y - 30)) this.audio.shoot(m.weapon.kind);
+          this.audio.shoot(m.weapon.kind, this.spatial(m.x, m.y));
+          this.pingFrom(m);
         } else if (d.kind === 'melee') {
           m.remoteCd = 1 / d.rate;
           m.swingT = 0.22;
+          this.audio.swing(this.spatial(m.x, m.y));
         }
       }
     }
@@ -395,7 +440,8 @@ export class Game {
   // Combat
   // ---------------------------------------------------------------------------
   fireGun(man, def) {
-    this.audio.shoot(man.weapon.kind);
+    this.audio.shoot(man.weapon.kind, this.spatial(man.x, man.y));
+    this.pingFrom(man);
     this.muzzleFx(man);
     if (man === this.me) this.cam.shake += (def.recoil || 1) * 0.7;
     if (def.rocket) {
@@ -432,7 +478,7 @@ export class Game {
   }
 
   meleeAttack(man, def) {
-    this.audio.swing();
+    this.audio.swing(this.spatial(man.x, man.y));
     const mul = man.drugT > 0 ? 1.9 : 1;
     const reach = def.range + 8;
     let hitSomething = false;
@@ -461,7 +507,7 @@ export class Game {
     const destroyed = this.map.damageWallPx(px, py, def.dmg * mul * 1.6);
     if (destroyed >= 0) this.onWallDestroyed(destroyed);
     else if (this.map.tPx(px, py) === T_WALL) { this.wallChip(px, py); hitSomething = true; }
-    if (hitSomething) this.audio.hit();
+    if (hitSomething) this.audio.hit(this.spatial(man.x, man.y));
   }
 
   // Damage routed to whoever owns the target.
@@ -489,6 +535,9 @@ export class Game {
     man.hurtT = 0.25;
     man.vx += kx * 0.8; man.vy += ky * 0.5;
     if (!silent && man === this.me) { this.cam.shake += Math.min(6, eff * 0.25); this.audio.hurt(); }
+    // Shot bots go looking for the shooter.
+    const ctrl = this.controllers.get(man.id);
+    if (ctrl && by && by !== man.id) ctrl.onHurt(by, this);
     if (man.hp <= 0) {
       const ev = { k: 'die', v: man.id, by, wk: kind, x: Math.round(man.x), y: Math.round(man.y), dx: Math.sign(kx) || 1 };
       if (this.net) this.net.sendEvent(ev);
@@ -503,7 +552,7 @@ export class Game {
     man.respawnT = 3;
     this.deaths.set(e.v, (this.deaths.get(e.v) || 0) + 1);
     if (e.by && e.by !== e.v) this.scores.set(e.by, (this.scores.get(e.by) || 0) + 1);
-    this.audio.death();
+    this.audio.death(this.spatial(e.x, e.y, 1300));
     this.addCorpse(man, e.dx || 1);
     this.bloodBurst(e.x, e.y - 30, e.dx || 0, 90);
     const wname = WEAPONS[e.wk]?.name || '???';
@@ -535,7 +584,7 @@ export class Game {
   throwGrenade(man, kind) {
     const def = WEAPONS[kind];
     const a = man.aim;
-    this.audio.swing();
+    this.audio.swing(this.spatial(man.x, man.y));
     this.lobbed.push({
       type: kind, x: man.x + Math.cos(a) * 14, y: man.y - 38 + Math.sin(a) * 10,
       vx: Math.cos(a) * def.throwVel + man.vx * 0.4, vy: Math.sin(a) * def.throwVel - 60,
@@ -547,7 +596,7 @@ export class Game {
     const id = this.myShort() + '-m' + this.itemSeq++;
     const mine = { id, x: man.x + man.facing * 20, y: man.y, owner: man.id, armT: 0.9, local: true };
     this.mines.push(mine);
-    this.audio.swap();
+    this.audio.swap(this.spatial(man.x, man.y));
     if (this.net) this.net.sendEvent({ k: 'mine', id, x: mine.x, y: mine.y, by: man.id });
   }
 
@@ -556,7 +605,7 @@ export class Game {
     if (!slot) return;   // bare hands stay attached
     const def = WEAPONS[slot.kind];
     const a = man.aim;
-    this.audio.swing();
+    this.audio.swing(this.spatial(man.x, man.y));
     this.lobbed.push({
       type: 'wpnthrow', x: man.x + Math.cos(a) * 14, y: man.y - 38,
       vx: Math.cos(a) * 780 + man.vx * 0.4, vy: Math.sin(a) * 780 - 60,
@@ -598,15 +647,15 @@ export class Game {
         // Stickmen.
         for (const m of this.men) {
           if (!m.alive || m.id === b.owner) continue;
-          const dx = b.x - m.x, dyBody = b.y - (m.y - MAN_H / 2);
-          const inBody = Math.abs(dx) < 9 && Math.abs(dyBody) < MAN_H / 2 + 2;
+          const dx = b.x - m.x, dyBody = b.y - (m.y - m.h / 2);
+          const inBody = Math.abs(dx) < 9 && Math.abs(dyBody) < m.h / 2 + 2;
           const inHead = dist2(b.x, b.y, m.headX, m.headY) < 9 * 9;
           if (!inBody && !inHead) continue;
-          // Ballistic shield blocks frontal fire.
-          if (m.wdef.shielded && Math.sign(b.vx) === -m.facing) {
+          // Ballistic shield blocks frontal fire — but flames lick around it.
+          if (m.wdef.shielded && !b.flame && Math.sign(b.vx) === -m.facing) {
             b.dead = true;
             this.sparkFx(b.x, b.y);
-            this.audio.hit();
+            this.audio.hit(this.spatial(b.x, b.y));
             break;
           }
           b.dead = true;
@@ -621,7 +670,7 @@ export class Game {
                 x: b.x, y: b.y, dx: Math.sign(b.vx),
               });
             }
-            this.audio.hit();
+            this.audio.hit(this.spatial(b.x, b.y));
           }
           break;
         }
@@ -671,10 +720,10 @@ export class Game {
       for (let s = 0; s < steps; s++) {
         const nx = p.x + sx, ny = p.y + sy;
         const hitX = map.solidPx(nx, p.y), hitY = map.solidPx(p.x, ny);
-        if (hitX) { p.vx *= -0.42; if (Math.abs(p.vx) > 40) this.audio.bounce(); }
+        if (hitX) { p.vx *= -0.42; if (Math.abs(p.vx) > 40) this.audio.bounce(this.spatial(p.x, p.y)); }
         else p.x = nx;
         if (hitY) {
-          if (p.vy > 0) { p.vy *= -0.42; p.vx *= 0.6; if (Math.abs(p.vy) > 60) this.audio.bounce(); }
+          if (p.vy > 0) { p.vy *= -0.42; p.vx *= 0.6; if (Math.abs(p.vy) > 60) this.audio.bounce(this.spatial(p.x, p.y)); }
           else p.vy *= -0.4;
         } else p.y = ny;
         // Tomahawks stick into walls.
@@ -693,7 +742,7 @@ export class Game {
               by: p.owner, wk: p.wkind, kx: Math.sign(p.vx) * 180, ky: -80,
               x: p.x, y: p.y, dx: Math.sign(p.vx),
             });
-            this.audio.hit();
+            this.audio.hit(this.spatial(p.x, p.y));
             p.vx *= -0.3; p.vy = -120;
             break;
           }
@@ -705,7 +754,14 @@ export class Game {
       if (p.type === 'wpnthrow') {
         if ((speed < 50 && grounded) || p.rest || p.t > 6) {
           p.dead = true;
-          if (p.local) this.dropWeapon(p.x, p.y, p.wkind, p.ammo, true);
+          // An empty weapon is trash: it shatters instead of littering the floor.
+          const reusable = WEAPONS[p.wkind].kind === 'melee' || p.ammo > 0;
+          if (reusable) {
+            if (p.local) this.dropWeapon(p.x, p.y, p.wkind, p.ammo, true);
+          } else {
+            this.wallChip(p.x, p.y - 4);
+            this.audio.click(this.spatial(p.x, p.y));
+          }
         }
         continue;
       }
@@ -731,7 +787,8 @@ export class Game {
   }
 
   applyExplosion(x, y, r, dmg, by, breaks, local) {
-    this.audio.boom();
+    this.audio.boom(this.spatial(x, y, 1900));
+    this.addPing(x, y);
     this.cam.shake += Math.max(2, 14 - dist(x, y, this.me.x, this.me.y) / 60);
     this.rings.push({ x, y, r0: 12, r1: r * 1.15, t: 0, dur: 0.38 });
     for (let i = 0; i < 26; i++) {
@@ -749,7 +806,7 @@ export class Game {
     if (breaks) {
       const destroyed = this.map.explode(x, y, r * 0.8);
       for (const i of destroyed) this.wallDebris((i % this.map.w + 0.5) * TILE, (Math.floor(i / this.map.w) + 0.5) * TILE);
-      if (destroyed.length) this.audio.wallBreak();
+      if (destroyed.length) this.audio.wallBreak(this.spatial(x, y));
     }
     for (const d of this.map.decors) {
       if (d.broken) continue;
@@ -873,6 +930,7 @@ export class Game {
     for (const it of [...this.items]) {
       if (Math.abs(it.x - man.x) > 24 || Math.abs(it.y - man.y) > 46) continue;
       if (it.kind === 'weapon') {
+        if (WEAPONS[it.wkind].kind !== 'melee' && it.ammo <= 0) continue;  // stale empty drop
         const emptySlot = man.slots[0] === null || man.slots[1] === null;
         const wants = man.input.pickP || emptySlot;
         if (!wants) continue;
@@ -894,7 +952,7 @@ export class Game {
         this.takeItem(it);
         if (man === this.me) this.flash(({ vest: 'Gilet pare-balles', helmet: 'Casque', med: '+50 PV', drug: 'Stimulants !', jet: 'Jetpack' })[it.kind]);
       }
-      this.audio.pickup();
+      this.audio.pickup(this.spatial(man.x, man.y));
     }
   }
 
@@ -918,6 +976,15 @@ export class Game {
     if (d.broken) return;
     d.broken = true;
     drawDecorDebris(this.gctx, d);
+    // Whatever stood on top (monitor on the desk, microwave on the counter…)
+    // crashes down with it.
+    if (d.plat) {
+      for (const d2 of this.map.decors) {
+        if (d2.broken || d2 === d) continue;
+        const rests = Math.abs(d2.y + d2.h - d.y) < 5 && d2.x + d2.w > d.x && d2.x < d.x + d.w;
+        if (rests) this.breakDecor(d2, false);   // cascades deterministically on every peer
+      }
+    }
     for (let i = 0; i < 8; i++) {
       this.particles.push({
         type: 'chip', x: d.x + Math.random() * d.w, y: d.y + Math.random() * d.h,
@@ -925,14 +992,14 @@ export class Game {
         t: 0, life: 0.8, r: 2 + Math.random() * 2,
       });
     }
-    this.audio.wallBreak();
+    this.audio.wallBreak(this.spatial(d.x + d.w / 2, d.y + d.h / 2));
     if (broadcast && this.net) this.net.sendEvent({ k: 'decor', id: d.id });
   }
 
   onWallDestroyed(idx, broadcast = true) {
     const x = (idx % this.map.w + 0.5) * TILE, y = (Math.floor(idx / this.map.w) + 0.5) * TILE;
     this.wallDebris(x, y);
-    this.audio.wallBreak();
+    this.audio.wallBreak(this.spatial(x, y));
     if (broadcast && this.net) this.net.sendEvent({ k: 'tile', i: idx });
   }
 
@@ -972,6 +1039,23 @@ export class Game {
         type: 'blood', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 100 * Math.random(),
         t: 0, life: 1.6, r: 1.4 + Math.random() * 1.8,
       });
+    }
+    // Spray on the wall behind the hit (the gore layer sits under the tiles,
+    // so these stamps read as blood on the room's back wall).
+    const g = this.gctx;
+    const sprayN = Math.min(10, 3 + Math.round(amount * 0.12));
+    const dir = dirX || (Math.random() < 0.5 ? -1 : 1);
+    for (let i = 0; i < sprayN; i++) {
+      const sx = x + dir * Math.random() * 46 + (Math.random() - 0.5) * 14;
+      const sy = y + (Math.random() - 0.5) * 34;
+      g.fillStyle = `rgba(${138 + Math.random() * 40 | 0}, 14, 20, ${0.25 + Math.random() * 0.3})`;
+      g.beginPath();
+      g.ellipse(sx, sy, 1.2 + Math.random() * 2.4, 1 + Math.random() * 1.8, 0, 0, TAU);
+      g.fill();
+      // The occasional dribble running down the wall.
+      if (Math.random() < 0.3) {
+        g.fillRect(sx - 0.6, sy, 1.2, 4 + Math.random() * 10);
+      }
     }
   }
 
@@ -1316,6 +1400,30 @@ export class Game {
 
     // Fog of war.
     this.renderFog(ctx, camX, camY);
+
+    // Shot pings: chevrons around the player pointing at unseen gunfire.
+    if (this.pings.length && this.me.alive) {
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, (this.cssW / 2 - camX * scale) * dpr, (this.cssH / 2 - camY * scale) * dpr);
+      for (const p of this.pings) {
+        const k = p.t / 1.0;
+        const size = clamp(15 - p.d / 130, 6, 15);
+        const rad = 52 + k * 14;
+        const px = this.me.x + Math.cos(p.a) * rad;
+        const py = this.me.y - 34 + Math.sin(p.a) * rad;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(p.a);
+        ctx.strokeStyle = `rgba(179, 35, 42, ${0.9 * (1 - k)})`;
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-size * 0.5, -size * 0.8);
+        ctx.lineTo(size * 0.5, 0);
+        ctx.lineTo(-size * 0.5, size * 0.8);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
 
     // HUD.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
