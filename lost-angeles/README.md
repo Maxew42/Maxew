@@ -67,6 +67,24 @@ canon — trop tôt et le moteur se noie.
 
 Le tirage dépend du rang : les derniers reçoivent les meilleurs objets.
 
+## Le circuit : collines, saut et fosse aux fans
+
+Chaque piste générée comprend, en plus des virages :
+
+- **Collines** : un profil de relief seedé (pentes plafonnées) — ça grimpe,
+  ça descend, et la pente se sent (on perd de la vitesse en montée).
+- **Le pont effondré** : une rampe rayée jaune/noir au-dessus d'une rivière
+  asséchée. Il faut arriver vite (la plaque de turbo juste avant aide) ;
+  trop lent = chute dans le ravin et repêchage avant le saut, façon Lakitu.
+- **La fosse aux fans** : des tribunes pleines de spectateurs déchaînés qui
+  bombardent la piste — caca en pagaille, lances explosives (rares). Le point
+  d'impact est marqué au sol : zigzague !
+- **Plaques de turbo** : chevrons orange pulsants, un devant la rampe et
+  deux en sortie de virage.
+
+Le saut et la fosse sont signalés sur la minimap (triangle orange / rond
+violet). Tout est déterministe : même seed → mêmes zones chez tous les joueurs.
+
 ## Technique
 
 - **Three.js** (vendu dans `lib/`), rendu low-poly, tout est procédural :

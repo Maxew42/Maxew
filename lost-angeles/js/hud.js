@@ -128,6 +128,22 @@ export class Hud {
     const [sx, sy] = px(...track.minimapPts[0]);
     g.fillStyle = '#111';
     g.fillRect(sx - 3 * dpr, sy - 3 * dpr, 6 * dpr, 6 * dpr);
+    // dangers : saut (triangle orange) et fosse aux fans (rond violet)
+    if (track.jump) {
+      const [jx, jy] = px(...track.minimapPts[Math.floor(track.jump.center) % track.minimapPts.length]);
+      g.fillStyle = '#ff8830';
+      g.beginPath();
+      g.moveTo(jx, jy - 5 * dpr); g.lineTo(jx + 4.5 * dpr, jy + 3.5 * dpr); g.lineTo(jx - 4.5 * dpr, jy + 3.5 * dpr);
+      g.closePath(); g.fill();
+      g.lineWidth = 1.2 * dpr; g.strokeStyle = 'rgba(0,0,0,.7)'; g.stroke();
+    }
+    if (track.crowd) {
+      const mid = Math.floor((track.crowd.f0 + track.crowd.f1) / 2) % track.minimapPts.length;
+      const [cx2, cy2] = px(...track.minimapPts[mid]);
+      g.fillStyle = '#c060d8';
+      g.beginPath(); g.arc(cx2, cy2, 3.4 * dpr, 0, 7); g.fill();
+      g.lineWidth = 1.2 * dpr; g.strokeStyle = 'rgba(0,0,0,.7)'; g.stroke();
+    }
 
     // karts (le local au-dessus)
     const sorted = [...karts].sort((a, b) => (a.slot === localSlot) - (b.slot === localSlot));

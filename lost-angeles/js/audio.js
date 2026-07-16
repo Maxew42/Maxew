@@ -130,6 +130,10 @@ export class AudioFx {
         [523, 659, 784, 1047].forEach((f, i) => this._tone(f, .22, 'square', .35, null, i * .13));
         break;
       case 'wrong': this._tone(200, .2, 'square', .25, 150); break;
+      case 'lob': this._tone(300, .25, 'sine', .28, 140); break;
+      case 'cheer': this._burst(1.3, .35, 1200, 'bandpass'); this._burst(.9, .22, 2400, 'bandpass', .18); break;
+      case 'fall': this._tone(520, .7, 'sawtooth', .35, 70); this._burst(.5, .5, 300, 'lowpass', .35); break;
+      case 'land': this._burst(.16, .5, 420); break;
     }
   }
 }
