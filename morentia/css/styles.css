@@ -219,6 +219,7 @@ p { line-height: 1.6; }
 .card-name { margin: 0; font: 600 13px/1.08 var(--font-display); color: #fff6e7; }
 .card-type { margin-top: 3px; color: color-mix(in srgb, var(--accent) 48%, #fff 48%); font-size: 7px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .card-text { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; color: #d4c8b7; font-size: 8px; line-height: 1.35; white-space: pre-line; }
+.card-keyword { color: #f3dfad; font-weight: 850; text-decoration: underline dotted color-mix(in srgb, var(--accent) 70%, #fff 20%); text-underline-offset: 2px; cursor: help; }
 .card-id { position: absolute; left: 8px; top: 88px; padding: 2px 4px; border-radius: 4px; background: rgba(0,0,0,.35); color: rgba(255,255,255,.58); font-size: 6px; }
 .empty-zone { min-height: 130px; display: grid; place-items: center; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 11px; }
 .drop-zone, .location-zone { transition: border-color .16s, background .16s, box-shadow .16s; }
@@ -468,17 +469,22 @@ p { line-height: 1.6; }
 /* Tabletop refinements */
 .game-stage, .board-surface, .player-console { -webkit-user-select: none; user-select: none; }
 .game-stage .game-card { -webkit-user-drag: none; }
-.board-surface { min-width: 1120px; }
-.central-table { grid-template-columns: 820px 175px; }
-.market-table { align-self: start; }
-.central-table .market-row { flex-flow: column nowrap; align-items: center; gap: 10px; }
-.central-table .market-row .game-card { width: 116px; }
+.board-surface { min-width: 1180px; }
+.central-table { grid-template-columns: 820px 220px; }
+.market-table { align-self: start; padding: 8px 7px; }
+.central-table .market-row { flex-flow: column nowrap; align-items: center; gap: 8px; }
+.central-table .market-row .game-card { width: 138px; flex-basis: 138px; }
+.domain-zone, .opponent-seat { border: 2px solid color-mix(in srgb, var(--faction-color) 52%, var(--line)); }
 .location-zone { min-height: 465px; }
 .location-card-sides { position: relative; z-index: 1; display: grid; gap: 9px; min-height: 330px; }
-.location-player-side { position: relative; min-height: 158px; padding: 18px 8px 7px; border: 1px solid rgba(255,255,255,.06); border-left: 3px solid var(--side-color); border-radius: 10px; background: rgba(0,0,0,.13); }
-.location-player-side.opponent-side { border-left-width: 1px; border-right: 3px solid var(--side-color); }
-.location-side-label { position: absolute; top: 5px; left: 8px; color: color-mix(in srgb, var(--side-color) 50%, #fff 45%); font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.location-player-side { position: relative; min-height: 158px; padding: 24px 8px 7px; border: 2px solid color-mix(in srgb, var(--side-color) 62%, rgba(255,255,255,.08)); border-radius: 10px; background: rgba(0,0,0,.13); }
+.location-player-side.opponent-side { border: 2px solid color-mix(in srgb, var(--side-color) 62%, rgba(255,255,255,.08)); }
+.location-side-label { position: absolute; top: 5px; left: 8px; display: flex; align-items: center; gap: 7px; color: color-mix(in srgb, var(--side-color) 50%, #fff 45%); font-size: 8px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.location-side-label b { padding: 2px 5px; border: 1px solid color-mix(in srgb, var(--side-color) 62%, transparent); border-radius: 9px; color: #eee4d3; font-size: 7px; letter-spacing: .04em; white-space: nowrap; }
 .opponent-side .location-side-label { right: 8px; left: auto; }
+.duration-badge { display: inline-flex; justify-content: center; align-items: center; gap: 4px; }
+.duration-badge .hourglass { font-size: 12px; line-height: 1; }
+.duration-badge b { font-size: 11px; }
 .location-player-cards { display: flex; flex-wrap: wrap; gap: 7px; min-height: 137px; align-items: start; }
 .opponent-side .location-player-cards { justify-content: flex-end; }
 .self-side .location-player-cards { justify-content: flex-start; }
@@ -498,8 +504,9 @@ p { line-height: 1.6; }
 .survivor-panel.waiting { width: min(480px, calc(100% - 28px)); text-align: center; }
 
 @media (max-width: 820px) {
-  .board-surface { min-width: 1080px; }
-  .central-table { grid-template-columns: 760px 165px; }
+  .board-surface { min-width: 1135px; }
+  .central-table { grid-template-columns: 760px 205px; }
+  .central-table .market-row .game-card { width: 128px; flex-basis: 128px; }
   .location-zone { min-height: 450px; }
   .player-treasury { grid-template-columns: repeat(2, 1fr); }
   .player-treasury .treasury-vp { grid-column: 1 / -1; }

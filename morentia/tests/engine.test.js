@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CATALOG } from "../js/catalog.js";
-import { createGame, getPlayer, isDomainPermanent, isUnit, locationTotals, performAction } from "../js/engine.js";
+import { createGame, dehydrateGame, getPlayer, hydrateGame, isDomainPermanent, isUnit, locationTotals, performAction } from "../js/engine.js";
 import { chooseAIAction } from "../js/ai.js";
 import { signalCode } from "../js/p2p.js";
 
@@ -18,7 +18,24 @@ test("mise en place conforme au classeur", () => {
   assert.equal(state.players[0].deck.length, 21);
   assert.equal(state.market.visible.length, 3);
   assert.equal(state.locations.length, 2);
+  assert.ok(state.locations.every(location => location.locationId !== "LIE-09"));
+  assert.ok(state.locationDeck.every(locationId => locationId !== "LIE-09"));
   assert.equal(state.phase, "Journée");
+});
+
+test("une ancienne sauvegarde remplace le Nœud de Serpents de Mer sans perdre ses cartes", () => {
+  const original = createGame(CATALOG, { players: twoPlayers, seed: "removed-location" });
+  const location = original.locations[0];
+  const card = original.players[0].hand.shift();
+  card.zone = "location";
+  card.locationUid = location.uid;
+  location.cards.push(card);
+  location.locationId = "LIE-09";
+  original.locationDeck.unshift("LIE-09", "LIE-09");
+  const restored = hydrateGame(dehydrateGame(original), CATALOG);
+  assert.ok(restored.locations.every(item => item.locationId !== "LIE-09"));
+  assert.ok(restored.locationDeck.every(locationId => locationId !== "LIE-09"));
+  assert.ok(restored.locations.some(item => item.cards.some(candidate => candidate.uid === card.uid)));
 });
 
 test("un Jour avance après que tous les joueurs passent", () => {

@@ -91,6 +91,44 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character]);
 }
 
+const CARD_KEYWORD_PATTERN = /(À l[’']Aube|Au Crépuscule|À la Nuit|Or actif|Survivantes?|Influence|Contrôl(?:ez|ée|e|é)|Détru(?:isez|ire|ite|it)|Défauss(?:ez|ée|er|e)|Domaines?|Lieux?|Déploy(?:ez|ée|er)|Épuis(?:é|ée)|Réserve|Jours?|Action)/giu;
+
+function keywordExplanation(keyword) {
+  const value = keyword.toLocaleLowerCase("fr");
+  if (value.includes("aube")) return "Début d’un nouveau Jour : rafraîchissement, revenus et pioche.";
+  if (value.includes("crépuscule")) return "Phase qui commence lorsque tous les joueurs ont passé ; le contrôle des Lieux est résolu.";
+  if (value.includes("nuit")) return "Fin du Jour, lorsque les effets nocturnes et les durées des Lieux sont résolus.";
+  if (value.includes("or actif")) return "Or disponible immédiatement pour payer des cartes et des actions.";
+  if (value.includes("réserve")) return "Or mis de côté, transféré vers l’or actif à la prochaine Aube.";
+  if (value.includes("influence")) return "Valeur utilisée pour déterminer le contrôle d’un Lieu.";
+  if (value.startsWith("contrôl")) return "Vous contrôlez un Lieu si votre influence y est strictement la plus élevée.";
+  if (value.startsWith("détru")) return "La carte va dans la défausse et ses effets de destruction peuvent se déclencher.";
+  if (value.startsWith("défauss")) return "Placez la carte dans la défausse sans la considérer comme détruite.";
+  if (value.startsWith("domain")) return "Zone personnelle où vos cartes jouées attendent avant leur déploiement.";
+  if (value.startsWith("lieu")) return "Zone commune contestée par l’influence des joueurs.";
+  if (value.startsWith("survivante")) return "Carte choisie pour retourner au Domaine lorsque son Lieu expire.";
+  if (value.startsWith("déploy")) return "Déplacez une unité de votre Domaine vers un Lieu.";
+  if (value.startsWith("épuis")) return "Cette carte ne peut pas être déployée ou activée avant la prochaine Aube.";
+  if (value.startsWith("jour")) return "Un cycle complet de l’Aube à la Nuit.";
+  return "Une action utilise votre tour avant de passer au joueur suivant.";
+}
+
+function formatCardText(value) {
+  const text = String(value || "");
+  let output = "";
+  let cursor = 0;
+  for (const match of text.matchAll(CARD_KEYWORD_PATTERN)) {
+    output += escapeHtml(text.slice(cursor, match.index));
+    output += `<strong class="card-keyword" title="${escapeHtml(keywordExplanation(match[0]))}">${escapeHtml(match[0])}</strong>`;
+    cursor = match.index + match[0].length;
+  }
+  return output + escapeHtml(text.slice(cursor));
+}
+
+function victoryPointLabel(value) {
+  return `${escapeHtml(value)} ${Number(value) === 1 ? "Point" : "Points"} de victoire`;
+}
+
 function safeUrl(value) {
   const url = String(value || "assets/art/neutral.jpg").trim();
   if (/^(data:image\/|blob:)/i.test(url)) return url.replace(/["'()]/g, encodeURIComponent);
@@ -234,7 +272,7 @@ function cardHtml(card, definition, { source = "detail", selected = false } = {}
     ${influence != null && influence !== "" ? `<div class="card-influence">${escapeHtml(influence)}</div>` : ""}
     <div class="card-costs">${costs.map(cost => `<span class="cost-orb">${escapeHtml(cost)}</span>`).join("")}</div>
     <span class="card-id">${escapeHtml(definition.id)}</span>
-    <div class="card-content"><div class="card-text">${escapeHtml(definition.text || definition.effect || "")}</div></div>
+    <div class="card-content"><div class="card-text">${formatCardText(definition.text || definition.effect || "")}</div></div>
   </article>`;
 }
 
@@ -273,7 +311,7 @@ function renderBoard() {
           ${pileHtml("Défausse", perspective.discard.length, "discard")}
         </div>
         <div class="player-hand"><div class="console-label"><span>Votre main</span><small>${perspective.hand.length} cartes</small></div><div class="hand-row">${perspective.hand.length ? perspective.hand.map(card => cardHtml(card, game.index.cards[card.cardId], { source: "hand" })).join("") : `<div class="empty-zone">Main vide</div>`}</div></div>
-        <div class="player-treasury"><span class="treasury-label">Trésorerie</span><div class="treasury-vp"><strong>${perspective.vp}</strong><span>PV</span></div><div><strong>${perspective.activeGold}</strong><span>or actif</span></div><div><strong>${perspective.reserveGold}</strong><span>réserve</span></div></div>
+        <div class="player-treasury"><span class="treasury-label">Trésorerie</span><div class="treasury-vp"><strong>${perspective.vp}</strong><span>Point de victoire</span></div><div><strong>${perspective.activeGold}</strong><span>or actif</span></div><div><strong>${perspective.reserveGold}</strong><span>réserve</span></div></div>
       </section>
       <div class="drop-cost-preview" data-drop-cost hidden><span data-drop-label>Choisissez une zone</span><strong data-drop-price>—</strong></div>
       ${survivorChoiceHtml(perspective)}
@@ -304,7 +342,7 @@ function opponentSeatHtml(player) {
   const influence = player.domain.reduce((total, card) => total + influenceOf(game, card), 0);
   const active = game.players[game.activePlayer]?.id === player.id;
   return `<section class="opponent-seat ${active ? "active" : ""}" style="--faction-color:${playerColor(player.faction)}">
-    <div class="opponent-head"><div><strong>${escapeHtml(player.name)}</strong><span>${escapeHtml(player.faction)}${player.isAI ? " · IA" : ""}</span></div><div class="opponent-stats"><span>${player.vp} PV</span><span>${player.activeGold} or</span><span>${influence} influence</span></div></div>
+    <div class="opponent-head"><div><strong>${escapeHtml(player.name)}</strong><span>${escapeHtml(player.faction)}${player.isAI ? " · IA" : ""}</span></div><div class="opponent-stats"><span>${victoryPointLabel(player.vp)}</span><span>${player.activeGold} or</span><span>${influence} influence</span></div></div>
     <div class="opponent-zones"><div><small>Main · ${player.hand.length}</small><div class="opponent-hand">${Array.from({ length: Math.min(player.hand.length, 5) }, () => cardBackHtml()).join("")}</div></div><div><small>Domaine · ${player.domain.length}</small><div class="opponent-domain">${player.domain.length ? player.domain.map(card => cardHtml(card, game.index.cards[card.cardId], { source: "opponent-domain" })).join("") : `<div class="empty-zone">Domaine vide</div>`}</div></div></div>
   </section>`;
 }
@@ -325,7 +363,7 @@ function playerSummaryHtml(player, active, isPerspective) {
   const color = playerColor(player.faction);
   return `<section class="player-summary ${active ? "active" : ""}" style="--faction-color:${color}">
     <div class="player-summary-head"><div><h3>${escapeHtml(player.name)}</h3><div class="faction-label">${escapeHtml(player.faction)}</div></div>${player.isAI ? `<span class="ai-tag">IA</span>` : isPerspective ? `<span class="you-tag">VOUS</span>` : ""}</div>
-    <div class="resource-grid"><div class="resource"><b>${player.vp}</b><span>PV</span></div><div class="resource"><b>${player.activeGold}</b><span>Actif</span></div><div class="resource"><b>${player.reserveGold}</b><span>Réserve</span></div></div>
+    <div class="resource-grid"><div class="resource"><b>${player.vp}</b><span>Point de victoire</span></div><div class="resource"><b>${player.activeGold}</b><span>Actif</span></div><div class="resource"><b>${player.reserveGold}</b><span>Réserve</span></div></div>
     <div class="zone-strip"><span>Main ${player.hand.length}</span><span>Deck ${player.deck.length}</span><span>Défausse ${player.discard.length}</span></div>
     ${player.faction === "Kalassir" ? `<select class="order-select" data-order-player="${player.id}" ${player.id === perspectiveId && !player.flags.actionsTaken ? "" : "disabled"}><option ${player.order === "Lames de Karina" ? "selected" : ""}>Lames de Karina</option><option ${player.order === "Culte du Premier Sang" ? "selected" : ""}>Culte du Premier Sang</option><option ${player.order === "Disciples de Karlov" ? "selected" : ""}>Disciples de Karlov</option></select>` : ""}
   </section>`;
@@ -345,23 +383,21 @@ function domainHtml(player, { self = false } = {}) {
 function locationHtml(location) {
   const definition = game.index.locations[location.locationId];
   const totals = locationTotals(game, location);
-  const controller = location.controller || Object.entries(totals).sort((a, b) => b[1] - a[1])[0]?.[0];
   return `<section class="location-zone drop-zone" data-drop-zone="location" data-location-uid="${location.uid}" style="--location-art:url('${safeUrl(definition.illustration)}')">
-    <div class="location-header"><div><div class="location-name">${escapeHtml(definition.name)}</div><div class="location-type">${escapeHtml(definition.type)}${definition.subtype ? ` · ${escapeHtml(definition.subtype)}` : ""}</div></div><div class="duration-badge">${location.remaining == null ? `Seuil` : `⧖ ${location.remaining}`}</div></div>
-    <div class="location-totals">${game.players.map(player => `<span class="total-chip ${controller === player.id ? "control" : ""}" style="--chip-color:${playerColor(player.faction)}"><span>${escapeHtml(player.name.slice(0, 7))}</span><b>${totals[player.id] || 0}</b></span>`).join("")}</div>
-    <div class="location-card-sides">${game.players.filter(player => player.id !== perspectiveId).map(player => locationPlayerSide(location, player, "opponent-side")).join("")}${locationPlayerSide(location, game.players.find(player => player.id === perspectiveId), "self-side")}</div>
-    <div class="location-footer"><span>${escapeHtml(definition.vp)} PV · ${escapeHtml(definition.survivors)} survivant(s)</span><span class="attachment-list">${location.attachments.map(card => `<button class="attachment-pill" data-card-uid="${card.uid}" data-source="attachment">${escapeHtml(game.index.cards[card.cardId].name)}</button>`).join("")}</span></div>
+    <div class="location-header"><div><div class="location-name">${escapeHtml(definition.name)}</div><div class="location-type">${escapeHtml(definition.type)}${definition.subtype ? ` · ${escapeHtml(definition.subtype)}` : ""}</div></div><div class="duration-badge">${location.remaining == null ? `Seuil` : `<span class="hourglass" aria-hidden="true">⌛</span><b>${location.remaining}</b>`}</div></div>
+    <div class="location-card-sides">${game.players.filter(player => player.id !== perspectiveId).map(player => locationPlayerSide(location, player, "opponent-side", totals[player.id] || 0)).join("")}${locationPlayerSide(location, game.players.find(player => player.id === perspectiveId), "self-side", totals[perspectiveId] || 0)}</div>
+    <div class="location-footer"><span>${escapeHtml(definition.vp)} Points de victoire · ${escapeHtml(definition.survivors)} survivant(s)</span><span class="attachment-list">${location.attachments.map(card => `<button class="attachment-pill" data-card-uid="${card.uid}" data-source="attachment">${escapeHtml(game.index.cards[card.cardId].name)}</button>`).join("")}</span></div>
   </section>`;
 }
 
-function locationPlayerSide(location, player, side) {
+function locationPlayerSide(location, player, side, influence) {
   if (!player) return "";
   const cards = location.cards.filter(card => card.controller === player.id);
-  return `<div class="location-player-side ${side}" style="--side-color:${playerColor(player.faction)}"><span class="location-side-label">${player.id === perspectiveId ? "Vous" : escapeHtml(player.name)}</span><div class="location-player-cards">${cards.length ? cards.map(card => cardHtml(card, game.index.cards[card.cardId], { source: "location" })).join("") : `<span class="side-empty">Aucune carte</span>`}</div></div>`;
+  return `<div class="location-player-side ${side}" style="--side-color:${playerColor(player.faction)}"><span class="location-side-label"><span>${player.id === perspectiveId ? "Vous" : escapeHtml(player.name)}</span><b>${influence} influence</b></span><div class="location-player-cards">${cards.length ? cards.map(card => cardHtml(card, game.index.cards[card.cardId], { source: "location" })).join("") : `<span class="side-empty">Aucune carte</span>`}</div></div>`;
 }
 
 function allCards() {
-  return [...Object.values(catalog.factions).flat(), ...catalog.market, ...catalog.specials, ...catalog.locations];
+  return [...Object.values(catalog.factions).flat(), ...catalog.market, ...catalog.specials, ...catalog.locations.filter(card => card.id !== "LIE-09")];
 }
 
 function studioGroups() {
@@ -720,7 +756,7 @@ function colorSetting(name, label) {
 
 function openArbiter() {
   actionContent.innerHTML = `<p class="eyebrow">Outil de test</p><h2>Arbitre</h2><p class="lead">Résolvez une cible laissée au choix, corrigez un état ou testez rapidement une interaction. L’ajustement est consigné dans la Chronique et coûte une action.</p>
-    <form id="arbiterForm" class="action-form"><div class="field-row"><div class="field"><label>Joueur</label><select name="playerId">${game.players.map(player => `<option value="${player.id}">${escapeHtml(player.name)}</option>`).join("")}</select></div><div class="field"><label>Ressource</label><select name="resource"><option value="activeGold">Or actif</option><option value="reserveGold">Or en réserve</option><option value="vp">PV</option><option value="influence">Influence permanente</option><option value="draw">Piocher</option><option value="destroy">Détruire la cible</option></select></div></div>
+    <form id="arbiterForm" class="action-form"><div class="field-row"><div class="field"><label>Joueur</label><select name="playerId">${game.players.map(player => `<option value="${player.id}">${escapeHtml(player.name)}</option>`).join("")}</select></div><div class="field"><label>Ressource</label><select name="resource"><option value="activeGold">Or actif</option><option value="reserveGold">Or en réserve</option><option value="vp">Point de victoire</option><option value="influence">Influence permanente</option><option value="draw">Piocher</option><option value="destroy">Détruire la cible</option></select></div></div>
     <div class="field-row"><div class="field"><label>Valeur (+/−)</label><input name="amount" type="number" value="1"></div><div class="field"><label>Cible carte</label><select name="targetUid">${cardOptions()}</select></div></div><div class="field"><label>Note</label><input name="note" placeholder="Raison de l’ajustement"></div><button class="primary-button">Appliquer et terminer l’action</button></form>`;
   actionDialog.showModal();
 }

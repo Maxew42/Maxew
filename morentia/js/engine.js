@@ -1,4 +1,5 @@
 const PHASES = ["Aube", "Journée", "Crépuscule", "Guerre", "Nuit"];
+const REMOVED_LOCATION_IDS = new Set(["LIE-09"]);
 
 export const DEFAULT_GAME_OPTIONS = {
   startingHand: 4,
@@ -115,11 +116,9 @@ function drawLocation(state, slot) {
   while (tries > 0) {
     tries -= 1;
     const locationId = state.locationDeck.shift();
+    if (REMOVED_LOCATION_IDS.has(locationId)) continue;
     const def = state.index.locations[locationId];
-    if (locationId === "LIE-09" && state.locations.some(location => location.locationId === "LIE-09")) {
-      state.locationDeck.push(locationId);
-      continue;
-    }
+    if (!def) continue;
     return {
       uid: uid(state, "p"), locationId, slot,
       remaining: Number.isFinite(Number(def.duration)) ? Number(def.duration) : null,
@@ -177,6 +176,7 @@ export function createGame(catalog, setup = {}) {
   const marketDefs = catalog.market.filter(card => card.included === "Oui" || (state.options.includeJadis && card.included === "Optionnel"));
   state.market.deck = shuffle(state, marketDefs.map(card => makeCard(state, card.id, "market", null)));
   state.locationDeck = shuffle(state, catalog.locations
+    .filter(location => !REMOVED_LOCATION_IDS.has(location.id))
     .filter(location => location.included === "Oui" || (state.options.includeJadis && location.included === "Optionnel"))
     .flatMap(location => Array.from({ length: numeric(location.copies) || 1 }, () => location.id)));
   for (const player of state.players) drawFaction(state, player, state.options.startingHand);
@@ -196,6 +196,30 @@ export function hydrateGame(raw, catalog) {
   state.catalog = catalog;
   state.index = catalogIndex(catalog);
   state.options = { ...DEFAULT_GAME_OPTIONS, ...(state.options || {}), locationCount: DEFAULT_GAME_OPTIONS.locationCount, marketSize: DEFAULT_GAME_OPTIONS.marketSize };
+  state.locationDeck = (state.locationDeck || []).filter(locationId => !REMOVED_LOCATION_IDS.has(locationId));
+  state.locations = (state.locations || []).map(location => {
+    if (!REMOVED_LOCATION_IDS.has(location.locationId)) return location;
+    const replacement = drawLocation(state, location.slot);
+    if (replacement) {
+      replacement.cards = location.cards || [];
+      replacement.attachments = location.attachments || [];
+      return replacement;
+    }
+    for (const card of [...(location.cards || []), ...(location.attachments || [])]) {
+      const player = state.players.find(candidate => candidate.id === card.controller || candidate.id === card.owner);
+      if (!player) continue;
+      card.zone = "domain";
+      card.locationUid = null;
+      card.exhausted = true;
+      player.domain.push(card);
+    }
+    return null;
+  }).filter(Boolean);
+  while (state.locations.length < state.options.locationCount) {
+    const replacement = drawLocation(state, state.locations.length);
+    if (!replacement) break;
+    state.locations.push(replacement);
+  }
   if (state.market.visible.length > state.options.marketSize) {
     state.market.deck.unshift(...state.market.visible.splice(state.options.marketSize));
   }
@@ -1143,7 +1167,7 @@ function finishGame(state) {
   state.status = "finished";
   const best = Math.max(...state.players.map(player => player.vp));
   state.winnerIds = state.players.filter(player => player.vp === best).map(player => player.id);
-  log(state, `Fin de partie : ${state.winnerIds.map(id => getPlayer(state, id).name).join(", ")} ${state.winnerIds.length > 1 ? "gagnent" : "gagne"} avec ${best} PV.`, "system");
+  log(state, `Fin de partie : ${state.winnerIds.map(id => getPlayer(state, id).name).join(", ")} ${state.winnerIds.length > 1 ? "gagnent" : "gagne"} avec ${best} point${best === 1 ? "" : "s"} de victoire.`, "system");
 }
 
 export function availableActions(state, playerId) {

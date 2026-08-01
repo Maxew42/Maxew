@@ -106,15 +106,19 @@
     overflow: hidden;
   }
 
-  .art svg {
+  .art svg,
+  .art img {
     display: block;
     width: 100%;
     height: 100%;
+    object-fit: cover;
     transition: transform .35s ease;
   }
 
   .game-card:hover .art svg,
-  .game-card:focus-visible .art svg {
+  .game-card:hover .art img,
+  .game-card:focus-visible .art svg,
+  .game-card:focus-visible .art img {
     transform: scale(1.045);
   }
 
@@ -172,9 +176,9 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .game-card, .art svg { transition: none; }
+    .game-card, .art svg, .art img { transition: none; }
     .game-card:hover { transform: none; }
-    .game-card:hover .art svg { transform: none; }
+    .game-card:hover .art svg, .game-card:hover .art img { transform: none; }
   }
 </style>
 </head>
@@ -502,6 +506,22 @@
       <span class="kicker">Combat au sabre · 3D</span>
       <span class="card-title">The Apprentice</span>
       <p class="card-desc">Combat au sabre laser en 3D dans un Colisée. Duels directionnels façon Mount &amp; Blade, mode Horde contre des droïdes, Force et parades parfaites — solo ou multijoueur P2P.</p>
+    </div>
+  </a>
+
+  <!-- ============ LE TOURNOI DES DOUZES ============ -->
+  <a class="game-card" href="tournoi-des-douzes/"
+     style="--accent:#e3bd6d; --glow:rgba(217,173,91,.5); --card-bg:#111711;">
+    <div class="art">
+      <img
+        src="tournoi-des-douzes/og.png"
+        alt="Trois combattants du Tournoi des Douzes sur une table médiévale"
+      >
+    </div>
+    <div class="card-body">
+      <span class="kicker">Cartes tactiques · WebRTC</span>
+      <span class="card-title">Le Tournoi des Douzes</span>
+      <p class="card-desc">Placez trois combattants, déclenchez leurs pouvoirs et remportez les trophées au fil de dix manches — contre l’IA ou jusqu’à six joueurs en pair à pair.</p>
     </div>
   </a>
 

@@ -1,4 +1,4 @@
-const CACHE = "morentia-v14";
+const CACHE = "morentia-v16";
 const CORE = [
   "./", "./index.html", "./css/styles.css", "./js/app.js", "./js/catalog.js", "./js/engine.js",
   "./js/ai.js", "./js/p2p.js", "./js/xlsx.js", "./manifest.webmanifest", "./assets/icon.svg",
