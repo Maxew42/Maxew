@@ -1,0 +1,16 @@
+{
+  "name": "Morentia — Table de test",
+  "short_name": "Morentia",
+  "description": "Jouez, testez et éditez le jeu de cartes Morentia.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#17130f",
+  "theme_color": "#17130f",
+  "lang": "fr",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

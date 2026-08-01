@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17130f">
+  <meta name="description" content="Morentia — table de test numérique pour le jeu de cartes stratégique.">
+  <title>Morentia — Table de test</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon.svg">
+  <link rel="stylesheet" href="css/styles.css?v=14">
+  <script src="vendor/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="#game" aria-label="Morentia, table de test">
+      <span class="brand-mark">M</span>
+      <span><strong>Morentia</strong><small>Table de test</small></span>
+    </a>
+    <nav class="primary-nav" aria-label="Navigation principale">
+      <button class="nav-item active" data-view="game">Partie</button>
+      <button class="nav-item" data-view="studio">Studio</button>
+      <button class="nav-item" data-view="rules">Règles</button>
+    </nav>
+    <div class="top-actions">
+      <button id="networkButton" class="icon-button" title="Multijoueur P2P"><span class="status-dot"></span><span class="desktop-only">P2P</span></button>
+      <button id="installButton" class="ghost-button" hidden>Installer</button>
+      <button id="settingsButton" class="icon-button" aria-label="Réglages">⚙</button>
+    </div>
+  </header>
+
+  <main id="app" tabindex="-1"></main>
+
+  <dialog id="actionDialog" class="modal action-modal">
+    <div class="dialog-shell">
+      <button class="modal-close" type="button" data-dialog-close aria-label="Fermer">×</button>
+      <div id="actionDialogContent"></div>
+    </div>
+  </dialog>
+
+  <dialog id="networkDialog" class="modal wide-modal">
+    <div class="dialog-shell">
+      <button class="modal-close" type="button" data-dialog-close aria-label="Fermer">×</button>
+      <div id="networkDialogContent"></div>
+    </div>
+  </dialog>
+
+  <dialog id="settingsDialog" class="modal wide-modal">
+    <div class="dialog-shell">
+      <button class="modal-close" type="button" data-dialog-close aria-label="Fermer">×</button>
+      <div id="settingsDialogContent"></div>
+    </div>
+  </dialog>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  <input id="workbookInput" type="file" accept=".xlsx,.xls" hidden>
+  <script type="module" src="js/app.js?v=14"></script>
+</body>
+</html>
