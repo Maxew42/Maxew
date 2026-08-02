@@ -372,5 +372,94 @@ section("Qualité de l'IA");
   ok(smart > dumb * 1.15, `l'IA bat nettement le hasard (${a} vs ${b})`);
 }
 
+// ── Multijoueur : hôte et pairs, sans réseau ─────────────────────────────────
+// On branche HostSession et ClientSession sur un faux transport pour vérifier
+// le protocole : qui voit quoi, ce que l'hôte accepte, ce qu'il diffuse.
+section('Multijoueur (transport simulé)');
+{
+  const { HostSession, ClientSession } = await import('../js/session.js');
+
+  /** Bus en étoile : l'hôte parle à chaque pair, les pairs parlent à l'hôte. */
+  function makeBus(ids) {
+    const nets = new Map();
+    for (const id of ids) {
+      nets.set(id, {
+        selfId: id,
+        get hostId() { return [...ids].sort()[0]; },
+        onPlace: () => {}, onView: () => {}, onResolve: () => {},
+        onAbort: () => {}, onPeerLeave: () => {}, onHostGone: () => {},
+        start() {},
+        sendView(v, target) { nets.get(target).onView(clone(v)); },
+        place(msg) { nets.get(this.hostId).onPlace(clone(msg), id); },
+        resolve(p) { for (const [k, n] of nets) if (k !== id) n.onResolve(clone(p)); },
+        abort(r) { for (const [k, n] of nets) if (k !== id) n.onAbort(r); },
+        leave() {},
+      });
+    }
+    return nets;
+  }
+  const clone = o => JSON.parse(JSON.stringify(o));
+
+  const ids = ['aaa', 'bbb', 'ccc'];
+  const roster = ids.map((id, i) => ({ id, name: 'J' + i }));
+  const nets = makeBus(ids);
+  const host = new HostSession(nets.get('aaa'), roster, 4242);
+  const peers = ['bbb', 'ccc'].map(id => new ClientSession(nets.get(id)));
+
+  const views = new Map();
+  host.onView = v => views.set('aaa', v);
+  peers.forEach((p, i) => { p.onView = v => views.set(ids[i + 1], v); });
+  const payloads = [];
+  host.onResolve = p => payloads.push(['host', p]);
+  peers.forEach((p, i) => { p.onResolve = pl => payloads.push([ids[i + 1], pl]); });
+
+  host.start();
+  eq(views.size, 3, 'chacun reçoit sa vue au lancement');
+  eq(views.get('bbb').mySeat, 1, 'le pair connaît son siège');
+  eq(views.get('bbb').hand.length, 3, 'le pair reçoit sa main');
+  // Confidentialité : une vue ne contient jamais la main des autres.
+  const leak = JSON.stringify(views.get('bbb').seats).match(/"hand"|"deck"/);
+  eq(leak, null, "la vue d'un pair ne dévoile ni main ni pioche adverses");
+
+  // Un pair pose ses trois cartes ; l'hôte doit les accepter.
+  const play = (who, s) => {
+    const v = views.get(who);
+    s.put('left', v.hand[0].iid);
+    s.put('arena', v.hand[1].iid);
+    s.put('right', v.hand[2].iid);
+    s.confirm();
+  };
+  play('bbb', peers[0]);
+  eq(host.e.ready(1), true, "l'hôte enregistre le placement du pair");
+  eq(payloads.length, 0, 'rien ne se résout tant qu\'il manque un joueur');
+
+  // Une carte qui n'est pas dans la main du pair doit être refusée.
+  let refused = '';
+  host.onNotice = t => { refused = t; };
+  nets.get('aaa').onPlace({ left: 'bidon', arena: 'bidon', right: 'bidon' }, 'ccc');
+  ok(refused.includes('refusé'), "l'hôte refuse un placement invalide");
+  eq(host.e.ready(2), false, 'et ne valide pas ce siège');
+
+  play('ccc', peers[1]);
+  play('aaa', host);
+  eq(payloads.length, 3, 'la manche résolue arrive chez les trois joueurs');
+  const [, hp] = payloads[0];
+  eq(hp.placements.length, 3, 'le compte rendu porte les trois placements');
+  ok(payloads.every(([, p]) => JSON.stringify(p.events) === JSON.stringify(hp.events)),
+    'tout le monde rejoue exactement les mêmes évènements');
+
+  // Manche suivante : l'hôte repousse les vues, les mains sont reconstituées.
+  host.advance();
+  eq(views.get('bbb').round, 2, 'les pairs passent à la manche 2');
+  eq(views.get('bbb').hand.length, 3, 'et retrouvent trois cartes en main');
+  eq(views.get('bbb').placed.left, null, 'avec des emplacements vides');
+
+  // Départ d'un joueur : la partie est interrompue proprement.
+  let aborted = '';
+  peers[0].onNotice = t => { aborted = t; };
+  nets.get('aaa').onPeerLeave('ccc');
+  ok(aborted.includes('quitté'), 'le départ d\'un joueur interrompt le tournoi');
+}
+
 console.log(`\n${fail === 0 ? '✓' : '✗'} ${pass} vérifications passées, ${fail} échec(s)`);
 process.exit(fail ? 1 : 0);

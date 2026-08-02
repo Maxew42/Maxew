@@ -130,8 +130,18 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
 
 /* ══════════════════ menu ══════════════════ */
 #screen-menu .wrap { display: flex; flex-direction: column; gap: 24px; align-items: center; min-height: 100%; justify-content: center; }
-.crest { width: clamp(76px, 15vw, 118px); aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 2px var(--gold-dk), 0 12px 34px rgba(0, 0, 0, .6); }
+/* Blason et boutons côte à côte ; ils se remettent l'un sous l'autre quand la
+   largeur manque, c'est-à-dire sur un téléphone tenu à la verticale. */
+.menu-row { display: flex; align-items: center; gap: clamp(22px, 5vw, 54px); }
+.crest {
+  width: clamp(108px, 20vw, 190px); aspect-ratio: 1; border-radius: 50%; flex: 0 0 auto;
+  box-shadow: 0 0 0 2px var(--gold-dk), 0 12px 34px rgba(0, 0, 0, .6);
+}
 .menu-actions { display: grid; gap: 10px; width: min(340px, 100%); }
+@media (max-width: 560px) {
+  .menu-row { flex-direction: column; gap: 24px; }
+  .crest { width: clamp(88px, 26vw, 140px); }
+}
 
 /* ══════════════════ galerie de règles ══════════════════ */
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px; margin-top: 8px; }
@@ -468,12 +478,14 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
 <!-- ══════════════════ menu ══════════════════ -->
 <section class="screen on" id="screen-menu">
   <div class="sheet"><div class="wrap">
-    <img class="crest" src="icon-192.png" alt="">
     <h1>Le Tournoi<br>des Douzes</h1>
-    <div class="menu-actions">
-      <button class="btn primary wide" data-go="solo">Jouer en solo</button>
-      <button class="btn wide" data-go="mp">Multijoueur</button>
-      <button class="btn ghost wide" data-go="rules">Règles &amp; combattants</button>
+    <div class="menu-row">
+      <img class="crest" src="icon-192.png" alt="">
+      <div class="menu-actions">
+        <button class="btn primary wide" data-go="solo">Jouer en solo</button>
+        <button class="btn wide" data-go="mp">Multijoueur</button>
+        <button class="btn ghost wide" data-go="rules">Règles &amp; combattants</button>
+      </div>
     </div>
   </div></div>
 </section>

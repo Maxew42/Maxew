@@ -259,11 +259,7 @@ export class Play {
     this.narrate('Les combattants prennent place…');
     await this.wait(420);
     if (rp.abort) return;
-    for (let s = 0; s < n; s++) {
-      for (const side of SLOTS) {
-        this.board.setCard(s, side, { n: payload.placements[s][side].n }, { anim: 'flip' });
-      }
-    }
+    this.mountCards();
     rp.i = -1;
     this.renderStep(-1);
 
@@ -305,36 +301,68 @@ export class Play {
     this.session.advance();
   }
 
+  /**
+   * Crée une fois pour toutes les cartes de la manche, révélées, et les garde
+   * en réserve : la relecture ne fera plus que les déplacer d'une place à
+   * l'autre. Reconstruire les images à chaque étape les faisait clignoter.
+   */
+  mountCards() {
+    const p = this.rp.payload;
+    this.deck = new Map();   // id de carte → {node, base}
+    for (let s = 0; s < p.placements.length; s++) {
+      for (const side of SLOTS) {
+        const n = p.placements[s][side].n;
+        const node = this.board.setCard(s, side, { n }, { anim: 'flip' });
+        this.deck.set(`${s}:${side}`, { node, base: n });
+      }
+    }
+  }
+
   /** Reconstruit le plateau tel qu'il est après l'évènement `i` (−1 = révélation). */
   renderStep(i) {
     const p = this.rp.payload;
     const n = p.placements.length;
-    for (let s = 0; s < n; s++) {
-      for (const side of SLOTS) this.board.setCard(s, side, { n: p.placements[s][side].n });
-    }
-    this.board.clearMarks('focus', 'won', 'lost', 'tied');
 
+    // 1. Rejouer les échanges et les changements de force, hors DOM.
+    //    `at` : place → carte qui s'y trouve ; la force voyage avec la carte.
+    const at = new Map(), force = new Map();
+    for (let s = 0; s < n; s++) {
+      for (const side of SLOTS) {
+        const id = `${s}:${side}`;
+        at.set(id, id);
+        force.set(id, p.placements[s][side].n);
+      }
+    }
     const totals = p.totals.map((t, k) => t - p.trophies[k]);
+    const verdicts = [];
     for (let k = 0; k <= i; k++) {
       const e = p.events[k];
-      if (e.swap) this.board.swapCards(e.swap[0], e.swap[1]);
-      if (e.forces) for (const f of e.forces) this.board.setForce(f.seat, f.side, f.force);
+      if (e.swap) {
+        const [x, y] = e.swap.map(q => `${q.seat}:${q.side}`);
+        const t = at.get(x); at.set(x, at.get(y)); at.set(y, t);
+      }
+      if (e.forces) for (const f of e.forces) force.set(at.get(`${f.seat}:${f.side}`), f.force);
       if (e.k === 'joust') {
-        if (e.winner === null) for (const q of e.focus) { this.board.mark(q, 'tied'); this.board.stamp(q, 'tied'); }
-        else {
-          this.board.mark(e.win, 'won'); this.board.stamp(e.win, 'won');
-          this.board.mark(e.lose, 'lost'); this.board.stamp(e.lose, 'lost');
-        }
+        if (e.winner === null) for (const q of e.focus) verdicts.push([q, 'tied']);
+        else { verdicts.push([e.win, 'won'], [e.lose, 'lost']); }
       }
       if (e.k === 'arena') {
         for (let s = 0; s < n; s++) {
-          const won = e.winners.includes(s);
-          this.board.mark({ seat: s, side: 'arena' }, won ? 'won' : 'lost');
-          this.board.stamp({ seat: s, side: 'arena' }, won ? 'won' : 'lost');
+          verdicts.push([{ seat: s, side: 'arena' }, e.winners.includes(s) ? 'won' : 'lost']);
         }
       }
       if (e.k === 'trophy' && e.amount > 0) totals[e.seat] += e.amount;
     }
+
+    // 2. Appliquer au plateau.
+    this.board.clearMarks('focus', 'won', 'lost', 'tied');
+    for (let s = 0; s < n; s++) {
+      for (const side of SLOTS) {
+        const card = this.deck.get(at.get(`${s}:${side}`));
+        this.board.attachCard(s, side, card.node, card.base, force.get(at.get(`${s}:${side}`)));
+      }
+    }
+    for (const [q, kind] of verdicts) { this.board.mark(q, kind); this.board.stamp(q, kind); }
     totals.forEach((t, k) => this.board.bumpTrophies(k, t));
 
     const cur = i >= 0 ? p.events[i] : null;

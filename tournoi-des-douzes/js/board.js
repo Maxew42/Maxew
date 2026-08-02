@@ -172,14 +172,23 @@ export class Board {
   }
 
   /**
-   * Les deux places d'un champ de joute affiché en position p : la carte de
-   * gauche appartient au joueur affiché en p, celle de droite au suivant.
+   * Les deux places d'un champ de joute, rangées de gauche à droite à l'écran.
+   *
+   * Chaque carte se met du côté de son propriétaire : « gauche » et « droite »
+   * désignent le côté de la table où vous l'avez posée, pas sa position dans le
+   * duel. Le champ est à l'angle φ, ses deux joueurs à φ ± 180/n ; la tangente
+   * en φ vaut (−sin φ, cos φ), donc le signe de −sin φ dit lequel des deux est
+   * le plus à droite de l'écran.
    */
   duelSides(L, p) {
-    return [
-      { seat: L.order[p], side: 'left' },
-      { seat: L.order[(p + 1) % L.n], side: 'right' },
-    ];
+    const a = { seat: L.order[p], side: 'left' };
+    const b = { seat: L.order[(p + 1) % L.n], side: 'right' };
+    const phi = ((90 + ((p + 0.5) * 360) / L.n) * Math.PI) / 180;
+    const tx = -Math.sin(phi);
+    // b est du côté des angles croissants : il passe à droite si la tangente
+    // y pointe. Au signe près (deux joueurs pile l'un au-dessus de l'autre),
+    // l'ordre est arbitraire mais reste symétrique.
+    return tx > 1e-9 ? [a, b] : [b, a];
   }
 
   // ── Construction du DOM ───────────────────────────────────────────────────
@@ -268,10 +277,9 @@ export class Board {
       this.root.append(banner);
 
       const cardY = box.y + BANNER_H + 4;
-      this.root.append(this.mkSlot(A.seat, A.side, box.x, cardY, L.jw, L.jh,
-        A.seat === view.mySeat ? 'Gauche' : ''));
-      this.root.append(this.mkSlot(B.seat, B.side, box.x + L.jw + INNER, cardY, L.jw, L.jh,
-        B.seat === view.mySeat ? 'Droite' : ''));
+      const tag = q => (q.seat === view.mySeat ? (q.side === 'left' ? 'Gauche' : 'Droite') : '');
+      this.root.append(this.mkSlot(A.seat, A.side, box.x, cardY, L.jw, L.jh, tag(A)));
+      this.root.append(this.mkSlot(B.seat, B.side, box.x + L.jw + INNER, cardY, L.jw, L.jh, tag(B)));
     }
 
     // Les plaques repartent des valeurs de la vue : un retracé en pleine
@@ -380,44 +388,40 @@ export class Board {
     return chip;
   }
 
-  setForce(seat, side, force) {
-    const c = this.slot(seat, side)?.querySelector('.card');
-    if (!c) return;
-    const base = +c.dataset.n;
-    c.querySelector('.force-chip')?.remove();
-    c.append(this.forceChip(base, force));
-  }
-
-  /** Intervertit les cartes de deux places (Rosalie, Aliénor). */
-  swapCards(p, q) {
-    const a = this.slot(p.seat, p.side), b = this.slot(q.seat, q.side);
-    if (!a || !b) return;
-    const ca = a.querySelector('.card'), cb = b.querySelector('.card');
-    if (ca) b.append(ca);
-    if (cb) a.append(cb);
-    for (const [slot, card] of [[a, cb], [b, ca]]) {
-      if (!card) continue;
-      const seat = +slot.dataset.seat;
-      card.querySelector('.owner-chip')?.remove();
-      if (seat !== this.mySeat) card.append(el('div', 'owner-chip', this.names[seat] || ''));
-    }
+  /**
+   * Déplace un élément de carte déjà construit sur une place, et remet à jour
+   * ses pastilles. Recréer les cartes à chaque étape de relecture faisait
+   * clignoter les images le temps de leur re-décodage.
+   */
+  attachCard(seat, side, node, base, force) {
+    const s = this.slot(seat, side);
+    if (!s || !node) return;
+    if (node.parentElement !== s) s.append(node);
+    node.querySelector('.force-chip')?.remove();
+    node.append(this.forceChip(base, force));
+    node.querySelector('.owner-chip')?.remove();
+    if (seat !== this.mySeat) node.append(el('div', 'owner-chip', this.names[seat] || ''));
   }
 
   mark(pos, cls) { this.slot(pos.seat, pos.side)?.classList.add(cls); }
   clearMarks(...cls) {
     for (const [, s] of this.slots) {
       s.classList.remove(...cls);
-      if (cls.includes('won') || cls.includes('lost')) s.querySelector('.verdict')?.remove();
+      if (cls.includes('won') || cls.includes('tied')) s.querySelector('.verdict')?.remove();
     }
   }
 
-  /** Tampon VAINQUEUR / VAINCU / NUL sur une carte. */
+  /**
+   * Tampon Gagné / Perdu / Nul. Il est posé sur la *place*, pas sur la carte :
+   * Aliénor déplace les cartes après le combat, le verdict doit rester au
+   * champ où il a été rendu.
+   */
   stamp(pos, kind) {
-    const c = this.slot(pos.seat, pos.side)?.querySelector('.card');
-    if (!c) return;
-    c.querySelector('.verdict')?.remove();
+    const s = this.slot(pos.seat, pos.side);
+    if (!s) return;
+    s.querySelector('.verdict')?.remove();
     // Mots courts : à six joueurs les cartes n'ont pas la largeur pour plus.
-    c.append(el('div', 'verdict ' + kind,
+    s.append(el('div', 'verdict ' + kind,
       kind === 'won' ? 'Gagné' : kind === 'lost' ? 'Perdu' : 'Nul'));
   }
 
