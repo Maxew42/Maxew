@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#17110d">
+<meta name="description" content="Le Tournoi des Douzes — jeu de cartes médiéval. Arène, champs de joute et douze combattants, en solo contre l'IA ou entre amis en pair-à-pair.">
+<title>Le Tournoi des Douzes</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --stone: #b9ab97;
+  --stone-dk: #6d6353;
+  --parch: #e9e0c2;
+  --parch-dk: #cdc09a;
+  --ink: #201a10;
+  --gold: #e8bd52;
+  --gold-dk: #9c7a24;
+  --blood: #a3241c;
+  --night: #17110d;
+  --night-2: #241a13;
+  --line: rgba(233, 224, 194, .16);
+  --txt: #ece3cd;
+  --muted: #a2957c;
+  --win: #4fbf6a;
+  --lose: #c9453a;
+  --tie: #93876e;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .55);
+  --card-ratio: 0.3875;   /* 465 / 1200 */
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--night);
+  color: var(--txt);
+  font-family: var(--serif);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+body {
+  /* Voûte de pierre : dégradés seulement, pour rester jouable hors-ligne. */
+  background:
+    radial-gradient(120% 80% at 50% -20%, rgba(232, 189, 82, .10), transparent 60%),
+    radial-gradient(90% 70% at 50% 120%, rgba(163, 36, 28, .18), transparent 65%),
+    linear-gradient(180deg, #1d150f 0%, #17110d 55%, #120d09 100%);
+}
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; opacity: .35; z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* ══════════════════ écrans ══════════════════ */
+.screen {
+  position: fixed; inset: 0; z-index: 1;
+  display: none; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.screen.on { display: flex; }
+.sheet { flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.wrap { max-width: 940px; margin: 0 auto; padding: clamp(18px, 4vh, 46px) 18px 60px; }
+
+/* ══════════════════ typographie ══════════════════ */
+h1 {
+  font-size: clamp(30px, 7vw, 62px); font-weight: 700; line-height: 1.02;
+  letter-spacing: .01em; text-align: center;
+  background: linear-gradient(180deg, #fff5da, var(--gold) 55%, #8f6c1c);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .5));
+}
+h2 { font-size: clamp(19px, 3.4vw, 26px); color: var(--gold); font-weight: 600; letter-spacing: .04em; }
+h3 { font-size: 16px; color: var(--gold); font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+p { line-height: 1.62; color: #d8cdb4; }
+.lede { text-align: center; color: var(--muted); font-size: clamp(13px, 2.4vw, 16px); font-style: italic; }
+.rule { height: 1px; background: linear-gradient(90deg, transparent, var(--gold-dk), transparent); margin: 18px 0 26px; }
+small, .small { font-size: 12.5px; color: var(--muted); }
+
+/* ══════════════════ contrôles ══════════════════ */
+.btn {
+  font: inherit; font-size: 16px; letter-spacing: .03em; cursor: pointer;
+  padding: 13px 26px; border-radius: 4px; color: var(--parch);
+  border: 1px solid rgba(232, 189, 82, .38);
+  background: linear-gradient(180deg, #34281c, #221a12);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .07);
+  transition: transform .12s, border-color .18s, background .18s, opacity .18s;
+  -webkit-user-select: none; user-select: none;
+}
+.btn:hover:not(:disabled) { border-color: var(--gold); background: linear-gradient(180deg, #43331f, #2a2015); }
+.btn:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primary {
+  color: #2a1f08; font-weight: 700; border-color: #f0d48a;
+  background: linear-gradient(180deg, #f4d98f, var(--gold) 60%, #b98f2c);
+}
+.btn.primary:hover:not(:disabled) { background: linear-gradient(180deg, #fbe7ad, #eec55f 60%, #c79a2f); }
+.btn.ghost { background: transparent; box-shadow: none; border-color: var(--line); }
+.btn.wide { width: 100%; }
+.btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+input[type=text] {
+  font: inherit; font-size: 17px; padding: 12px 14px; width: 100%;
+  color: var(--parch); background: rgba(0, 0, 0, .35);
+  border: 1px solid var(--line); border-radius: 4px; letter-spacing: .05em;
+}
+input[type=text]:focus { outline: none; border-color: var(--gold-dk); }
+label.field { display: block; margin-bottom: 14px; }
+label.field > span { display: block; font-size: 12.5px; color: var(--muted); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 6px; }
+
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg button {
+  font: inherit; font-size: 15px; cursor: pointer; padding: 10px 15px; min-width: 46px;
+  color: var(--txt); background: rgba(0, 0, 0, .3);
+  border: 1px solid var(--line); border-radius: 4px; transition: all .15s;
+}
+.seg button[aria-pressed=true] { color: #2a1f08; font-weight: 700; background: var(--gold); border-color: #f0d48a; }
+
+.panel {
+  background: linear-gradient(180deg, rgba(45, 34, 24, .82), rgba(28, 21, 15, .82));
+  border: 1px solid var(--line); border-radius: 6px; padding: 20px;
+  box-shadow: var(--shadow); backdrop-filter: blur(3px);
+}
+.panel + .panel { margin-top: 16px; }
+
+/* ══════════════════ menu ══════════════════ */
+#screen-menu .wrap { display: flex; flex-direction: column; gap: 24px; align-items: center; min-height: 100%; justify-content: center; }
+.crest { width: clamp(76px, 15vw, 118px); aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 2px var(--gold-dk), 0 12px 34px rgba(0, 0, 0, .6); }
+.menu-actions { display: grid; gap: 10px; width: min(340px, 100%); }
+
+/* ══════════════════ galerie de règles ══════════════════ */
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px; margin-top: 8px; }
+.gal-item { cursor: pointer; text-align: center; background: none; border: 0; padding: 0; font: inherit; color: inherit; }
+.gal-item img { width: 100%; aspect-ratio: var(--card-ratio); object-fit: cover; border-radius: 3px; box-shadow: var(--shadow); transition: transform .15s; }
+.gal-item:hover img { transform: translateY(-4px); }
+.gal-item b { display: block; font-size: 13px; margin-top: 7px; color: var(--gold); font-weight: 600; }
+.gal-item span { display: block; font-size: 11.5px; color: var(--muted); }
+.timing-list { list-style: none; }
+.timing-list li { padding: 7px 0; border-bottom: 1px dashed rgba(233, 224, 194, .12); font-size: 14.5px; }
+.timing-list li b { color: var(--gold); font-weight: 600; }
+.dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14.5px; align-items: baseline; }
+.dl dt { color: var(--gold); font-weight: 600; white-space: nowrap; }
+.dl dd { color: #d8cdb4; line-height: 1.5; }
+
+/* ══════════════════ lobby ══════════════════ */
+.code {
+  font-size: clamp(30px, 8vw, 52px); letter-spacing: .22em; text-align: center;
+  color: var(--gold); font-weight: 700; padding: 6px 0 2px;
+}
+.roster { list-style: none; display: grid; gap: 8px; }
+.roster li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(0, 0, 0, .28); border: 1px solid var(--line); border-radius: 4px; font-size: 15px; }
+.dot { width: 11px; height: 11px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 2px rgba(0, 0, 0, .35); }
+.tag { margin-left: auto; font-size: 11.5px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+/* ══════════════════ partie ══════════════════ */
+#screen-game { display: none; }
+#screen-game.on { display: flex; }
+
+.topbar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px; min-height: 46px;
+  border-bottom: 1px solid var(--line); background: rgba(0, 0, 0, .3);
+}
+.topbar .grow { flex: 1; min-width: 0; }
+.icon-btn {
+  font: inherit; font-size: 17px; line-height: 1; cursor: pointer; flex: 0 0 auto;
+  width: 36px; height: 36px; border-radius: 4px; color: var(--parch);
+  background: rgba(0, 0, 0, .3); border: 1px solid var(--line);
+}
+.icon-btn:hover { border-color: var(--gold-dk); }
+.round-badge { font-size: 14px; letter-spacing: .05em; color: var(--muted); white-space: nowrap; }
+.round-badge b { color: var(--gold); font-size: 17px; }
+.hint { font-size: 13.5px; color: var(--parch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
+
+.play { flex: 1; display: flex; min-height: 0; }
+.board-wrap { flex: 1; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+#board { position: absolute; top: 0; left: 0; transform-origin: top left; }
+
+/* — rail des joueurs — */
+.plate {
+  position: absolute; display: flex; align-items: center; gap: 8px; overflow: hidden;
+  padding: 6px 8px; border-radius: 5px;
+  background: linear-gradient(180deg, rgba(58, 44, 30, .9), rgba(30, 22, 15, .9));
+  border: 1px solid var(--line); border-left: 3px solid var(--seat, var(--gold));
+}
+.plate.me { border-color: rgba(232, 189, 82, .45); background: linear-gradient(180deg, rgba(78, 58, 28, .92), rgba(38, 28, 16, .92)); }
+.plate-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.plate-top { display: flex; align-items: center; gap: 6px; }
+.plate-name { font-size: 17px; font-weight: 600; color: var(--parch); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plate-troph { font-size: 18px; font-weight: 700; color: var(--gold); white-space: nowrap; letter-spacing: .02em; }
+.plate-troph.bump { animation: bump .5s ease-out; }
+@keyframes bump { 0% { transform: scale(1); } 35% { transform: scale(1.5); color: #fff2c8; } 100% { transform: scale(1); } }
+.plate-piles { display: flex; align-items: flex-start; gap: 6px; flex: 0 0 auto; }
+.pile { position: relative; border-radius: 2px; overflow: hidden; flex: 0 0 auto; background: rgba(0, 0, 0, .5); box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
+.pile img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pile.empty { border: 1px dashed rgba(233, 224, 194, .22); }
+.pile-count {
+  position: absolute; right: 0; bottom: 0; font-size: 10px; line-height: 1;
+  padding: 2px 3px; border-radius: 2px 0 0 0; color: #2a1f08; background: rgba(232, 189, 82, .92); font-weight: 700;
+}
+.pile-tag { font-size: 9px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.pile-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ready-dot { width: 9px; height: 9px; border-radius: 50%; background: #4a4034; flex: 0 0 auto; }
+.ready-dot.on { background: var(--win); box-shadow: 0 0 7px var(--win); }
+
+.dais {
+  position: absolute; border-radius: 10px; pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 50%, rgba(232, 189, 82, .10), transparent 72%);
+  box-shadow: inset 0 0 0 1px rgba(232, 189, 82, .13);
+}
+
+/* — libellés de zone — */
+.zone-label {
+  position: absolute; text-align: center; font-size: 15px; letter-spacing: .3em;
+  text-transform: uppercase; color: var(--gold-dk); white-space: nowrap;
+}
+.zone-label::before, .zone-label::after {
+  content: ''; position: absolute; top: 50%; width: 26%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-dk));
+}
+.zone-label::before { left: 0; }
+.zone-label::after { right: 0; transform: scaleX(-1); }
+
+/* — bannière d'un champ de joute — */
+.duel-banner {
+  position: absolute; display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 13px; color: var(--ink); border-radius: 3px; padding: 0 8px;
+  background: linear-gradient(180deg, var(--parch), var(--parch-dk));
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .5); overflow: hidden; white-space: nowrap;
+}
+.duel-banner span { overflow: hidden; text-overflow: ellipsis; max-width: 42%; }
+.duel-banner .vs { color: var(--blood); font-weight: 700; flex: 0 0 auto; }
+.duel-banner.mine { background: linear-gradient(180deg, #fbe7ad, #d8b45c); }
+
+/* — emplacements et cartes — */
+.slot {
+  position: absolute; border-radius: 4px;
+  border: 1px dashed rgba(233, 224, 194, .2);
+  background: rgba(0, 0, 0, .28);
+  box-shadow: inset 0 0 26px rgba(0, 0, 0, .5);
+}
+.slot-tag {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  text-align: center; font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
+  color: rgba(233, 224, 194, .3); pointer-events: none;
+}
+.slot.drop {
+  border-color: var(--gold); border-style: solid;
+  background: rgba(232, 189, 82, .13);
+  box-shadow: 0 0 0 2px rgba(232, 189, 82, .3), 0 0 24px rgba(232, 189, 82, .35);
+}
+.slot.drop-hot {
+  background: rgba(232, 189, 82, .3);
+  box-shadow: 0 0 0 3px var(--gold), 0 0 34px rgba(232, 189, 82, .6);
+}
+.slot.focus > .card { box-shadow: 0 0 0 3px var(--gold), 0 0 30px rgba(232, 189, 82, .55); z-index: 3; }
+.slot.won > .card { box-shadow: 0 0 0 3px var(--win), 0 0 26px rgba(79, 191, 106, .5); }
+.slot.lost > .card { filter: saturate(.35) brightness(.62); }
+.slot.tied > .card { box-shadow: 0 0 0 3px var(--tie); }
+
+.card {
+  position: absolute; inset: 0; border-radius: 3px; overflow: hidden;
+  background: #100c08; box-shadow: 0 5px 14px rgba(0, 0, 0, .6);
+  transition: box-shadow .25s, filter .25s, transform .25s;
+  -webkit-user-select: none; user-select: none;
+}
+.card > img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.card.dealt { animation: dealIn .35s cubic-bezier(.2, .9, .3, 1.2) both; }
+@keyframes dealIn { from { transform: translateY(14px) scale(.9); opacity: 0; } }
+.card.flip { animation: flipIn .5s ease-out both; }
+@keyframes flipIn { 0% { transform: rotateY(90deg); } 100% { transform: rotateY(0); } }
+
+.card .unplace {
+  position: absolute; top: 2px; right: 2px; z-index: 5; width: 20px; height: 20px; padding: 0;
+  border: 0; border-radius: 50%; cursor: pointer; font: inherit; font-size: 11px; line-height: 20px;
+  text-align: center; color: #f6efdb; background: rgba(20, 14, 9, .82);
+  box-shadow: 0 0 0 1px rgba(232, 189, 82, .5);
+}
+.card .unplace:hover { background: var(--blood); }
+
+.force-chip {
+  position: absolute; top: 3px; left: 3px; z-index: 2;
+  min-width: 21px; padding: 1px 4px; border-radius: 3px;
+  font-size: 14px; font-weight: 700; line-height: 1.3; text-align: center;
+  color: #2a1f08; background: rgba(232, 189, 82, .95);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .6);
+}
+.force-chip.up { color: #04220c; background: #62d97e; }
+.force-chip.down { color: #2c0605; background: #e8695c; }
+.force-chip s { display: block; font-size: 9px; opacity: .65; text-decoration: line-through; }
+.owner-chip {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
+  font-size: 11px; text-align: center; padding: 2px 3px;
+  color: #f6efdb; background: linear-gradient(180deg, transparent, rgba(0, 0, 0, .85) 45%);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.verdict {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-8deg);
+  z-index: 4; font-size: 15px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 3px; pointer-events: none;
+  animation: stamp .4s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.verdict.won { color: #04220c; background: rgba(98, 217, 126, .95); }
+.verdict.lost { color: #2c0605; background: rgba(232, 105, 92, .95); }
+.verdict.tied { color: #1d1a12; background: rgba(200, 190, 165, .95); }
+@keyframes stamp { from { transform: translate(-50%, -50%) rotate(-8deg) scale(2.4); opacity: 0; } }
+
+.fly-troph {
+  position: fixed; z-index: 90; pointer-events: none;
+  font-size: 20px; font-weight: 700; color: var(--gold);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, .9);
+}
+
+/* — main du joueur — */
+.hand-wrap {
+  flex: 0 0 auto; display: flex; gap: 8px; align-items: center; overflow: hidden;
+  padding: 8px; border-top: 1px solid var(--line); background: rgba(0, 0, 0, .32);
+  transition: height .28s ease, width .28s ease, padding .28s ease;
+}
+.hand { flex: 1; display: flex; justify-content: center; align-items: center; gap: 10px; min-width: 0; min-height: 0; }
+.hand-side { flex: 0 0 auto; display: flex; gap: 8px; align-items: stretch; }
+.hand-side .btn { white-space: nowrap; }
+
+#screen-game.hand-bottom .play { flex-direction: column; }
+#screen-game.hand-right .play { flex-direction: row; }
+#screen-game.hand-right .hand-wrap { flex-direction: column; border-top: 0; border-left: 1px solid var(--line); }
+#screen-game.hand-right .hand { flex-direction: column; overflow: hidden; }
+/* Sur téléphone la place manque : les deux boutons passent côte à côte, en petit. */
+#screen-game.hand-right .hand-side { gap: 5px; width: 100%; }
+#screen-game.hand-right .hand-side .btn {
+  flex: 1; min-width: 0; padding: 9px 2px; font-size: 12.5px; letter-spacing: 0;
+  overflow: hidden; text-overflow: ellipsis;
+}
+
+.hand-card {
+  position: relative; flex: 0 0 auto; border-radius: 3px; overflow: hidden;
+  background: #100c08; cursor: grab; touch-action: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .6);
+  transition: transform .16s, box-shadow .16s, opacity .16s;
+}
+.hand-card > img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; pointer-events: none; }
+/* En colonne, la carte est réduite à un bandeau ; le cadrage vertical est
+   calculé dans play.js pour centrer l'écusson du numéro. */
+.hand-card:hover { transform: translateY(-7px); box-shadow: 0 10px 22px rgba(0, 0, 0, .7); }
+#screen-game.hand-right .hand-card:hover { transform: translateX(-9px); }
+.hand-card.sel { box-shadow: 0 0 0 3px var(--gold), 0 10px 24px rgba(0, 0, 0, .7); transform: translateY(-7px); }
+#screen-game.hand-right .hand-card.sel { transform: translateX(-9px); }
+.hand-card.dragging { opacity: .28; }
+.hand-card .zoom {
+  position: absolute; top: 2px; right: 2px; z-index: 3; width: 22px; height: 22px;
+  border: 0; border-radius: 50%; cursor: pointer; font-size: 12px; line-height: 22px; text-align: center;
+  color: #2a1f08; background: rgba(232, 189, 82, .9); padding: 0;
+}
+.hand-empty { font-size: 13.5px; color: var(--muted); font-style: italic; text-align: center; padding: 12px; }
+
+#drag-ghost {
+  position: fixed; z-index: 100; pointer-events: none; border-radius: 4px; overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .75); transform-origin: center;
+  transform: rotate(-3deg) scale(1.04);
+}
+#drag-ghost img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* — récit de la résolution — */
+.narr {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: none; align-items: center; gap: 10px; padding: 8px 10px;
+  background: linear-gradient(180deg, rgba(12, 9, 6, 0), rgba(12, 9, 6, .93) 40%);
+}
+.narr.on { display: flex; }
+.narr-text {
+  flex: 1; min-width: 0; font-size: 15px; line-height: 1.42; color: var(--parch);
+  max-height: 3.1em; overflow: hidden;
+}
+.narr-text b { color: var(--gold); font-weight: 600; }
+.narr .btn { padding: 8px 14px; font-size: 14px; flex: 0 0 auto; }
+
+/* Sur téléphone en paysage, le récit prend la colonne libérée par la main :
+   rogner la hauteur du plateau y coûterait bien trop cher. */
+#screen-game.hand-right .narr {
+  position: static; flex-direction: column; align-items: stretch; justify-content: center;
+  width: 100%; height: 100%; padding: 0; background: none;
+}
+#screen-game.hand-right .narr-text { flex: 0 1 auto; max-height: 62%; font-size: 13.5px; overflow-y: auto; }
+#screen-game.hand-right .narr .btn { width: 100%; margin-top: 10px; padding: 10px 4px; font-size: 13px; }
+
+/* — voile de zoom d'une carte — */
+#zoom-veil {
+  position: fixed; inset: 0; z-index: 120; display: none;
+  align-items: center; justify-content: center; gap: clamp(12px, 3vw, 34px);
+  padding: 18px; background: rgba(8, 6, 4, .88); backdrop-filter: blur(4px);
+}
+#zoom-veil.on { display: flex; }
+#zoom-veil img { max-height: min(88vh, 760px); max-width: 46vw; border-radius: 6px; box-shadow: 0 20px 60px rgba(0, 0, 0, .8); }
+.zoom-info { max-width: 380px; }
+.zoom-info h2 { margin-bottom: 4px; }
+.zoom-info .epi { color: var(--muted); font-style: italic; margin-bottom: 12px; }
+.zoom-info .fx { background: rgba(233, 224, 194, .07); border-left: 2px solid var(--gold-dk); padding: 10px 12px; border-radius: 3px; font-size: 15px; }
+.zoom-info .when { margin-top: 10px; font-size: 12.5px; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+@media (max-width: 760px), (max-height: 560px) {
+  #zoom-veil { flex-direction: row; }
+  #zoom-veil img { max-width: 34vw; }
+  .zoom-info { max-width: 52vw; font-size: 13px; }
+  .zoom-info .fx { font-size: 13px; }
+}
+
+/* — feuille de fin de partie — */
+.podium { list-style: none; display: grid; gap: 10px; }
+.podium li { display: flex; align-items: center; gap: 12px; padding: 13px 15px; border-radius: 5px; background: rgba(0, 0, 0, .3); border: 1px solid var(--line); }
+.podium li.first { border-color: var(--gold); background: linear-gradient(90deg, rgba(232, 189, 82, .16), rgba(0, 0, 0, .3)); }
+.podium .rk { font-size: 20px; font-weight: 700; color: var(--gold); width: 30px; text-align: center; }
+.podium .nm { flex: 1; font-size: 17px; }
+.podium .tr { font-size: 19px; font-weight: 700; color: var(--gold); }
+
+.toast {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 130;
+  padding: 11px 18px; border-radius: 4px; font-size: 14.5px; max-width: 90vw; text-align: center;
+  color: var(--parch); background: rgba(30, 22, 15, .96); border: 1px solid var(--gold-dk);
+  box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s;
+}
+.toast.on { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ menu ══════════════════ -->
+<section class="screen on" id="screen-menu">
+  <div class="sheet"><div class="wrap">
+    <img class="crest" src="icon-192.png" alt="">
+    <h1>Le Tournoi<br>des Douzes</h1>
+    <div class="menu-actions">
+      <button class="btn primary wide" data-go="solo">Jouer en solo</button>
+      <button class="btn wide" data-go="mp">Multijoueur</button>
+      <button class="btn ghost wide" data-go="rules">Règles &amp; combattants</button>
+    </div>
+  </div></div>
+</section>
+
+<!-- ══════════════════ solo ══════════════════ -->
+<section class="screen" id="screen-solo">
+  <div class="sheet"><div class="wrap">
+    <h1>Partie solo</h1>
+    <div class="rule"></div>
+    <div class="panel">
+      <label class="field"><span>Votre nom</span><input type="text" id="solo-name" maxlength="14" placeholder="Chevalier sans nom"></label>
+      <label class="field"><span>Nombre de joueurs (vous compris)</span>
+        <div class="seg" id="solo-count"></div>
+      </label>
+      <label class="field" style="margin-bottom:0"><span>Niveau des adversaires</span>
+        <div class="seg" id="solo-level"></div>
+      </label>
+    </div>
+    <div class="btn-row" style="margin-top:22px">
+      <button class="btn ghost" data-go="menu">Retour</button>
+      <button class="btn primary" id="solo-start">Entrer dans l'arène</button>
+    </div>
+  </div></div>
+</section>
+
+<!-- ══════════════════ multijoueur ══════════════════ -->
+<section class="screen" id="screen-mp">
+  <div class="sheet"><div class="wrap">
+    <h1>Multijoueur</h1>
+    <p class="lede">De deux à six joueurs.</p>
+    <div class="rule"></div>
+
+    <div class="panel" id="mp-join">
+      <label class="field"><span>Votre nom</span><input type="text" id="mp-name" maxlength="14" placeholder="Chevalier sans nom"></label>
+      <label class="field"><span>Code du salon</span><input type="text" id="mp-code" maxlength="5" placeholder="ABCDE" autocapitalize="characters" spellcheck="false"></label>
+      <div class="btn-row" style="justify-content:flex-start">
+        <button class="btn primary" id="mp-go">Rejoindre</button>
+        <button class="btn" id="mp-create">Créer un salon</button>
+        <button class="btn ghost" data-go="menu">Retour</button>
+      </div>
+    </div>
+
+    <div class="panel" id="mp-lobby" hidden>
+      <h3>Salon</h3>
+      <div class="code" id="mp-shown-code">—</div>
+      <p class="small" style="text-align:center;margin-bottom:16px">Partagez ce code. La partie se lance quand l'hôte est prêt.</p>
+      <ul class="roster" id="mp-roster"></ul>
+      <p class="small" id="mp-status" style="margin-top:14px"></p>
+      <div class="btn-row" style="margin-top:16px;justify-content:flex-start">
+        <button class="btn primary" id="mp-start" disabled>Lancer la partie</button>
+        <button class="btn ghost" id="mp-leave">Quitter le salon</button>
+      </div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ══════════════════ règles ══════════════════ -->
+<section class="screen" id="screen-rules">
+  <div class="sheet"><div class="wrap">
+    <h1>Règles</h1>
+    <div class="rule"></div>
+
+    <div class="panel">
+      <h3>But du jeu</h3>
+      <p>Chaque joueur mélange son propre paquet de douze cartes numérotées de 1 à 12, puis en pioche trois. Dix manches plus tard, quand la pioche est vide, le joueur avec le plus de trophées remporte le tournoi. À égalité, c'est la plus faible force de base totale sur les trois dernières cartes jouées qui tranche.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Déroulement d'une manche</h3>
+      <p><b>1. Préparation.</b> Vous posez vos trois cartes face cachée : une dans l'arène, une sur le champ de joute à votre gauche, une sur celui à votre droite. Quand tout le monde a posé, tout est révélé.</p>
+      <p style="margin-top:10px"><b>2. Combat.</b> Un champ de joute est partagé avec un voisin : les deux cartes qui y sont posées s'affrontent. Toutes les cartes de l'arène s'affrontent en même temps. Les effets se résolvent dans l'ordre ci-dessous, puis la carte la plus forte de chaque champ rapporte un trophée. À égalité sur un champ de joute, personne ne marque ; dans l'arène, tous les ex æquo marquent.</p>
+      <p style="margin-top:10px"><b>3. Fin de manche.</b> La carte de l'arène va sur votre défausse, face visible. Les deux jouteurs reviennent en main, et vous piochez une carte.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Ordre de résolution</h3>
+      <ul class="timing-list" id="rules-timings"></ul>
+      <p class="small" style="margin-top:12px">Dans l'arène, les effets qui modifient le combat ne s'appliquent pas — sauf Henriette (4). Ceux qui ne touchent qu'au décompte des trophées — David (1), Tracassin (9), Quasi-Maximus (11) — comptent partout.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Cas particuliers</h3>
+      <dl class="dl">
+        <dt>Deux Rosalies</dt><dd>Si vous subissez une Rosalie sur vos deux champs de joute, celle de votre gauche se résout d'abord, puis celle de votre droite.</dd>
+        <dt>Rosalie déplacée</dt><dd>Une Rosalie amenée de l'arène sur un champ de joute par l'effet d'une autre Rosalie n'agit pas.</dd>
+        <dt>Deux Pères Pairs</dt><dd>Quels que soient les modificateurs de force, c'est une égalité et personne ne marque.</dd>
+      </dl>
+    </div>
+
+    <div class="panel">
+      <h3>Les douze combattants</h3>
+      <p class="small">Touchez une carte pour la lire en grand.</p>
+      <div class="gallery" id="rules-gallery"></div>
+    </div>
+
+    <div class="btn-row" style="margin-top:22px">
+      <button class="btn primary" data-go="back">Retour</button>
+    </div>
+  </div></div>
+</section>
+
+<!-- ══════════════════ plateau ══════════════════ -->
+<section class="screen hand-bottom" id="screen-game">
+  <div class="topbar">
+    <button class="icon-btn" id="btn-quit" title="Quitter la partie" aria-label="Quitter la partie">✕</button>
+    <div class="round-badge">Manche <b id="hud-round">1</b>/10</div>
+    <div class="grow"><div class="hint" id="hud-hint">Placez vos trois cartes.</div></div>
+    <button class="icon-btn" id="btn-rules" title="Règles" aria-label="Règles">?</button>
+  </div>
+  <div class="play">
+    <div class="board-wrap" id="board-wrap">
+      <div id="board"></div>
+      <div class="narr" id="narr">
+        <div class="narr-text" id="narr-text"></div>
+        <button class="btn" id="narr-skip">Passer ⏭</button>
+      </div>
+    </div>
+    <div class="hand-wrap" id="hand-wrap">
+      <div class="hand" id="hand"></div>
+      <div class="hand-side">
+        <button class="btn primary" id="btn-ready" disabled>Prêt</button>
+        <button class="btn ghost" id="btn-auto" title="Placer au hasard">Au hasard</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ fin ══════════════════ -->
+<section class="screen" id="screen-end">
+  <div class="sheet"><div class="wrap">
+    <h1 id="end-title">Fin du tournoi</h1>
+    <p class="lede" id="end-sub"></p>
+    <div class="rule"></div>
+    <div class="panel"><ul class="podium" id="end-podium"></ul></div>
+    <div class="btn-row" style="margin-top:22px">
+      <button class="btn primary" id="end-again">Rejouer</button>
+      <button class="btn ghost" data-go="menu">Menu</button>
+    </div>
+  </div></div>
+</section>
+
+<div id="zoom-veil"><img id="zoom-img" alt=""><div class="zoom-info" id="zoom-info"></div></div>
+<div class="toast" id="toast"></div>
+
+<script type="importmap">
+{ "imports": { "trystero": "./lib/trystero-nostr.min.js" } }
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

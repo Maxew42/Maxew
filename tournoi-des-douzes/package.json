@@ -1,0 +1,6 @@
+{
+  "name": "tournoi-des-douzes",
+  "private": true,
+  "type": "module",
+  "description": "Jeu de cartes statique — sert uniquement à exécuter tools/harness.mjs avec les modules ES du dossier js/."
+}
