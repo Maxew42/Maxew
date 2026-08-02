@@ -5,7 +5,7 @@ import { CARDS, CARD_NUMBERS, TIMINGS, cardImg, fullName } from './cards.js';
 import { Play } from './play.js';
 import { LocalSession, HostSession, ClientSession } from './session.js';
 import { Net } from './net.js';
-import { $, el, roomCode, NAMES, shuffle } from './util.js';
+import { $, el, roomCode, NAMES, shuffle, plural } from './util.js';
 
 const MAX_PLAYERS = 6;
 
@@ -127,6 +127,10 @@ const play = new Play({
   ready: $('#btn-ready'),
   auto: $('#btn-auto'),
   skip: $('#narr-skip'),
+  prev: $('#narr-prev'),
+  next: $('#narr-next'),
+  playPause: $('#narr-play'),
+  pos: $('#narr-pos'),
   quit: $('#btn-quit'),
   narr: $('#narr'),
   narrText: $('#narr-text'),
@@ -168,16 +172,21 @@ function quitGame(fatal = false) {
 // ── Fin de partie ─────────────────────────────────────────────────────────────
 
 function showEnd(payload) {
+  // Le classement est déjà trié : trophées, puis la plus faible force de base
+  // sur les trois dernières cartes jouées. Il n'y a vraie égalité que si ce
+  // second critère ne départage pas non plus.
   const rank = payload.ranking || [];
-  const top = rank[0]?.trophies ?? 0;
-  const champs = rank.filter(r => r.trophies === top);
+  const first = rank[0];
+  const champs = rank.filter(r => r.trophies === first?.trophies && r.tiebreak === first?.tiebreak);
   const mine = play.session?.mySeat ?? 0;
   const won = champs.some(r => r.seat === mine);
+  const tied = rank.filter(r => r.trophies === first?.trophies).length > champs.length;
 
   $('#end-title').textContent = won ? 'Vous remportez le tournoi !' : 'Fin du tournoi';
   $('#end-sub').textContent = champs.length > 1
     ? `${champs.map(c => c.name).join(' et ')} finissent à égalité parfaite.`
-    : `${champs[0]?.name || '—'} l'emporte avec ${top} trophées.`;
+    : `${first?.name || '—'} l'emporte avec ${plural(first?.trophies ?? 0, 'trophée', 'trophées')}`
+      + (tied ? ', départagé sur la force de ses trois dernières cartes.' : '.');
 
   const list = $('#end-podium');
   list.textContent = '';
