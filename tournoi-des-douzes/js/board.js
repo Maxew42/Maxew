@@ -331,7 +331,7 @@ export class Board {
 
   renderView(view) {
     this.renderPlates(view);
-    this.clearMarks('focus', 'won', 'lost', 'tied', 'drop', 'drop-hot');
+    this.clearOutcomes();
     for (const [key] of this.slots) {
       const [seat, side] = key.split(':');
       const i = +seat;
@@ -403,26 +403,41 @@ export class Board {
     if (seat !== this.mySeat) node.append(el('div', 'owner-chip', this.names[seat] || ''));
   }
 
-  mark(pos, cls) { this.slot(pos.seat, pos.side)?.classList.add(cls); }
-  clearMarks(...cls) {
-    for (const [, s] of this.slots) {
-      s.classList.remove(...cls);
-      if (cls.includes('won') || cls.includes('tied')) s.querySelector('.verdict')?.remove();
-    }
+  /** Met en évidence les places concernées par l'évènement en cours. */
+  setFocus(list = []) {
+    const want = new Set(list.map(p => this.key(p.seat, p.side)));
+    for (const [k, s] of this.slots) s.classList.toggle('focus', want.has(k));
   }
 
   /**
-   * Tampon Gagné / Perdu / Nul. Il est posé sur la *place*, pas sur la carte :
-   * Aliénor déplace les cartes après le combat, le verdict doit rester au
-   * champ où il a été rendu.
+   * Issue d'un combat sur une place : classe et tampon Gagné / Perdu / Nul.
+   *
+   * Le tampon est posé sur la *place*, pas sur la carte — Aliénor déplace les
+   * cartes après le combat, le verdict doit rester au champ où il a été rendu.
+   * Et s'il est déjà là, on n'y touche pas : le recréer relancerait son
+   * animation à chaque étape de la relecture.
    */
-  stamp(pos, kind) {
-    const s = this.slot(pos.seat, pos.side);
+  setOutcome(seat, side, kind) {
+    const s = this.slot(seat, side);
     if (!s) return;
-    s.querySelector('.verdict')?.remove();
+    for (const k of ['won', 'lost', 'tied']) s.classList.toggle(k, k === kind);
+    const cur = s.querySelector('.verdict');
+    if (cur && cur.dataset.kind === kind) return;
+    cur?.remove();
+    if (!kind) return;
     // Mots courts : à six joueurs les cartes n'ont pas la largeur pour plus.
-    s.append(el('div', 'verdict ' + kind,
-      kind === 'won' ? 'Gagné' : kind === 'lost' ? 'Perdu' : 'Nul'));
+    const v = el('div', 'verdict ' + kind,
+      kind === 'won' ? 'Gagné' : kind === 'lost' ? 'Perdu' : 'Nul');
+    v.dataset.kind = kind;
+    s.append(v);
+  }
+
+  /** Efface toutes les marques de combat (nouvelle manche). */
+  clearOutcomes() {
+    for (const [, s] of this.slots) {
+      s.classList.remove('focus', 'won', 'lost', 'tied', 'drop', 'drop-hot');
+      s.querySelector('.verdict')?.remove();
+    }
   }
 
   /** Trophée qui s'envole d'une place vers la plaque du joueur. */

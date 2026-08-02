@@ -87,11 +87,19 @@ export class Play {
   /** Le rapport largeur/hauteur a changé : la table doit être redessinée. */
   relayout() {
     this.layoutHand();
-    if (this.view && this.built) {
-      this.board.build(this.view);
-      if (this.rp) this.renderStep(this.rp.i);
-      else { this.board.renderView(this.view); this.decorateMine(); }
-    }
+    if (!this.view || !this.built) return;
+    this.board.build(this.view);
+    // Le repli de la main déclenche un retracé qui peut tomber pendant la
+    // seconde où les cartes sont encore face cachée : la réserve n'existe pas
+    // encore, on se contente de reposer les dos.
+    if (this.rp) { if (this.deck) this.renderStep(this.rp.i); else this.showBacks(); }
+    else { this.board.renderView(this.view); this.decorateMine(); }
+  }
+
+  /** Toutes les places couvertes d'un dos de carte. */
+  showBacks() {
+    const n = this.rp.payload.placements.length;
+    for (let s = 0; s < n; s++) for (const side of SLOTS) this.board.setCard(s, side, { back: true });
   }
 
   // ── Rendu ─────────────────────────────────────────────────────────────────
@@ -158,6 +166,7 @@ export class Play {
 
   renderHand() {
     const host = this.dom.hand;
+    this.dnd.reset();          // les nœuds vont disparaître : plus de sélection
     host.textContent = '';
     const cards = this.view?.hand || [];
     for (const c of cards) {
@@ -254,7 +263,8 @@ export class Play {
 
     // Toutes les cartes face cachée, puis on retourne.
     const n = payload.placements.length;
-    for (let s = 0; s < n; s++) for (const side of SLOTS) this.board.setCard(s, side, { back: true });
+    this.deck = null;
+    this.showBacks();
     this.setControls();
     this.narrate('Les combattants prennent place…');
     await this.wait(420);
@@ -294,6 +304,7 @@ export class Play {
     this.dom.narr.classList.remove('on');
     this.dom.screen.classList.remove('resolving');
     this.rp = null;
+    this.deck = null;
     this.busy = false;
     this.board.reserve = 0;
     this.board.fit();
@@ -334,7 +345,7 @@ export class Play {
       }
     }
     const totals = p.totals.map((t, k) => t - p.trophies[k]);
-    const verdicts = [];
+    const outcome = new Map();
     for (let k = 0; k <= i; k++) {
       const e = p.events[k];
       if (e.swap) {
@@ -343,30 +354,31 @@ export class Play {
       }
       if (e.forces) for (const f of e.forces) force.set(at.get(`${f.seat}:${f.side}`), f.force);
       if (e.k === 'joust') {
-        if (e.winner === null) for (const q of e.focus) verdicts.push([q, 'tied']);
-        else { verdicts.push([e.win, 'won'], [e.lose, 'lost']); }
+        if (e.winner === null) for (const q of e.focus) outcome.set(`${q.seat}:${q.side}`, 'tied');
+        else {
+          outcome.set(`${e.win.seat}:${e.win.side}`, 'won');
+          outcome.set(`${e.lose.seat}:${e.lose.side}`, 'lost');
+        }
       }
       if (e.k === 'arena') {
-        for (let s = 0; s < n; s++) {
-          verdicts.push([{ seat: s, side: 'arena' }, e.winners.includes(s) ? 'won' : 'lost']);
-        }
+        for (let s = 0; s < n; s++) outcome.set(`${s}:arena`, e.winners.includes(s) ? 'won' : 'lost');
       }
       if (e.k === 'trophy' && e.amount > 0) totals[e.seat] += e.amount;
     }
 
-    // 2. Appliquer au plateau.
-    this.board.clearMarks('focus', 'won', 'lost', 'tied');
+    // 2. Appliquer au plateau, sans rien recréer de ce qui n'a pas changé.
     for (let s = 0; s < n; s++) {
       for (const side of SLOTS) {
-        const card = this.deck.get(at.get(`${s}:${side}`));
-        this.board.attachCard(s, side, card.node, card.base, force.get(at.get(`${s}:${side}`)));
+        const id = at.get(`${s}:${side}`);
+        const card = this.deck.get(id);
+        this.board.attachCard(s, side, card.node, card.base, force.get(id));
+        this.board.setOutcome(s, side, outcome.get(`${s}:${side}`) || null);
       }
     }
-    for (const [q, kind] of verdicts) { this.board.mark(q, kind); this.board.stamp(q, kind); }
     totals.forEach((t, k) => this.board.bumpTrophies(k, t));
 
     const cur = i >= 0 ? p.events[i] : null;
-    if (cur?.focus) for (const q of cur.focus) this.board.mark(q, 'focus');
+    this.board.setFocus(cur?.focus || []);
     this.narrate(cur ? cur.text : 'Les cartes sont révélées.');
     this.setControls();
   }

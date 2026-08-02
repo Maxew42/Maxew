@@ -133,6 +133,9 @@ export class DragDrop {
   }
 
   _select(p) {
+    // Une seule carte sélectionnée à la fois : sans cela, taper successivement
+    // deux cartes les laissait toutes deux en surbrillance.
+    this._deselect();
     this.selected = p;
     p.node.classList.add('sel');
     for (const el of this.h.targets()) el.classList.add('drop');
@@ -140,7 +143,9 @@ export class DragDrop {
   }
 
   _deselect() {
-    if (this.selected) this.selected.node.classList.remove('sel');
+    // Balayage complet : le rendu de la main recrée les nœuds, une référence
+    // gardée peut donc être périmée alors que la classe traîne encore.
+    for (const n of document.querySelectorAll('.hand-card.sel, .card.sel')) n.classList.remove('sel');
     this.selected = null;
     for (const el of this.h.targets()) el.classList.remove('drop', 'drop-hot');
     this.h.onSelect(null);
