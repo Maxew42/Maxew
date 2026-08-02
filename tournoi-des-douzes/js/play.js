@@ -247,7 +247,9 @@ export class Play {
       abort: false, nudge: false, continued: false,
     };
     const mine = payload.trophies[this.session.mySeat] ?? 0;
-    this.summary = `<b>Manche ${payload.round}</b> — vous remportez ${mine} trophée${mine > 1 ? 's' : ''}.`
+    const gain = mine === 0 ? 'vous ne remportez aucun trophée'
+      : `vous remportez ${mine} trophée${mine > 1 ? 's' : ''}`;
+    this.summary = `<b>Manche ${payload.round}</b> — ${gain}.`
       + (payload.gameOver ? " C'était la dernière." : '');
 
     // Toutes les cartes face cachée, puis on retourne.

@@ -21,12 +21,14 @@ const SEAT_HUES = ['#f0c14b', '#5aa8e6', '#57b87a', '#e0714d', '#b07bd8', '#d95f
 
 // Hauteur des cartes selon le nombre de joueurs : à deux la table est vide,
 // à six il faut resserrer.
+// Hauteurs visées ; la boucle de mise en page les réduit d'elle-même si la
+// géométrie ne les accepte pas (écran très large, très étroit, joueurs impairs).
 const CARD_H = {
-  2: { arena: 356, joust: 306 },
-  3: { arena: 332, joust: 288 },
-  4: { arena: 308, joust: 270 },
-  5: { arena: 290, joust: 256 },
-  6: { arena: 274, joust: 242 },
+  2: { arena: 470, joust: 440 },
+  3: { arena: 400, joust: 350 },
+  4: { arena: 340, joust: 300 },
+  5: { arena: 310, joust: 274 },
+  6: { arena: 286, joust: 252 },
 };
 
 const PLATE_W = 262, PLATE_H = 86, BANNER_H = 30, INNER = 12;
@@ -62,11 +64,11 @@ export class Board {
     // Les cartes sont très hautes : selon le nombre de joueurs, un champ de
     // joute peut ne pas trouver de place sans mordre sur l'arène. On réduit
     // alors les cartes d'un cran et on recommence.
-    for (let attempt = 0; attempt < 9; attempt++) {
+    for (let attempt = 0; attempt < 16; attempt++) {
       const L = this.tryLayout(n, me, aspect, 0.95 ** attempt);
       if (L) return L;
     }
-    return this.tryLayout(n, me, aspect, 0.95 ** 9, true);
+    return this.tryLayout(n, me, aspect, 0.95 ** 16, true);
   }
 
   tryLayout(n, me, aspect, shrink, force = false) {
@@ -118,6 +120,7 @@ export class Board {
     // Les champs de joute : sur un anneau intermédiaire, repoussés vers
     // l'extérieur tant qu'ils mordent sur l'arène ou sur une plaque.
     const plateRects = seats.map(s => ({ x: s.x, y: s.y, w: PLATE_W, h: PLATE_H }));
+    if (!force && plateRects.some(r => hits(r, arena, 8))) return null;
     const FRx = SRx * 0.66, FRy = SRy * 0.78;
     const fields = [];
     for (let p = 0; p < n; p++) {
@@ -271,6 +274,9 @@ export class Board {
         B.seat === view.mySeat ? 'Droite' : ''));
     }
 
+    // Les plaques repartent des valeurs de la vue : un retracé en pleine
+    // résolution ne doit pas remettre les pioches et les défausses à zéro.
+    this.renderPlates(view);
     this.fit();
   }
 
@@ -303,7 +309,8 @@ export class Board {
 
   // ── Rendu d'un état ───────────────────────────────────────────────────────
 
-  renderView(view) {
+  /** Plaques seules : nom, trophées, pioche, défausse, témoin « prêt ». */
+  renderPlates(view) {
     for (const [seat, pl] of this.plates) {
       const s = view.seats[seat];
       pl.troph.textContent = `${s.trophies} 🏆`;
@@ -312,6 +319,10 @@ export class Board {
       pl.deck.style.visibility = s.deckCount ? '' : 'hidden';
       this.setDiscard(seat, s.discard[0]);
     }
+  }
+
+  renderView(view) {
+    this.renderPlates(view);
     this.clearMarks('focus', 'won', 'lost', 'tied', 'drop', 'drop-hot');
     for (const [key] of this.slots) {
       const [seat, side] = key.split(':');
@@ -405,8 +416,9 @@ export class Board {
     const c = this.slot(pos.seat, pos.side)?.querySelector('.card');
     if (!c) return;
     c.querySelector('.verdict')?.remove();
+    // Mots courts : à six joueurs les cartes n'ont pas la largeur pour plus.
     c.append(el('div', 'verdict ' + kind,
-      kind === 'won' ? 'Vainqueur' : kind === 'lost' ? 'Vaincu' : 'Nul'));
+      kind === 'won' ? 'Gagné' : kind === 'lost' ? 'Perdu' : 'Nul'));
   }
 
   /** Trophée qui s'envole d'une place vers la plaque du joueur. */
