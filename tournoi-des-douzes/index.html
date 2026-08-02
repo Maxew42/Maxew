@@ -190,9 +190,9 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
 }
 .plate.me { border-color: rgba(232, 189, 82, .45); background: linear-gradient(180deg, rgba(78, 58, 28, .92), rgba(38, 28, 16, .92)); }
 .plate-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.plate-top { display: flex; align-items: center; gap: 6px; }
-.plate-name { font-size: 17px; font-weight: 600; color: var(--parch); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.plate-troph { font-size: 18px; font-weight: 700; color: var(--gold); white-space: nowrap; letter-spacing: .02em; }
+.plate-top { display: flex; align-items: center; gap: 7px; }
+.plate-name { font-size: 21px; font-weight: 600; color: var(--parch); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plate-troph { font-size: 22px; font-weight: 700; color: var(--gold); white-space: nowrap; letter-spacing: .02em; }
 .plate-troph.bump { animation: bump .5s ease-out; }
 @keyframes bump { 0% { transform: scale(1); } 35% { transform: scale(1.5); color: #fff2c8; } 100% { transform: scale(1); } }
 .plate-piles { display: flex; align-items: flex-start; gap: 6px; flex: 0 0 auto; }
@@ -203,33 +203,38 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
   position: absolute; right: 0; bottom: 0; font-size: 10px; line-height: 1;
   padding: 2px 3px; border-radius: 2px 0 0 0; color: #2a1f08; background: rgba(232, 189, 82, .92); font-weight: 700;
 }
-.pile-tag { font-size: 9px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.pile-tag { font-size: 10px; letter-spacing: 0; text-transform: uppercase; color: var(--muted); }
 .pile-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .ready-dot { width: 9px; height: 9px; border-radius: 50%; background: #4a4034; flex: 0 0 auto; }
 .ready-dot.on { background: var(--win); box-shadow: 0 0 7px var(--win); }
 
-.dais {
-  position: absolute; border-radius: 10px; pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 50%, rgba(232, 189, 82, .10), transparent 72%);
-  box-shadow: inset 0 0 0 1px rgba(232, 189, 82, .13);
+/* — la table — */
+.table-top {
+  position: absolute; border-radius: 50%; pointer-events: none;
+  background:
+    radial-gradient(70% 70% at 50% 34%, rgba(120, 84, 46, .30), rgba(58, 39, 22, .34) 62%, rgba(30, 20, 12, .30)),
+    radial-gradient(100% 100% at 50% 50%, transparent 78%, rgba(0, 0, 0, .35));
+  box-shadow:
+    inset 0 0 0 3px rgba(232, 189, 82, .16),
+    inset 0 0 60px rgba(0, 0, 0, .55),
+    0 0 0 1px rgba(0, 0, 0, .5),
+    0 24px 60px rgba(0, 0, 0, .5);
 }
 
-/* — libellés de zone — */
-.zone-label {
-  position: absolute; text-align: center; font-size: 15px; letter-spacing: .3em;
-  text-transform: uppercase; color: var(--gold-dk); white-space: nowrap;
+.dais {
+  position: absolute; border-radius: 999px; pointer-events: none;
+  background: radial-gradient(110% 92% at 50% 52%, rgba(232, 189, 82, .13), transparent 74%);
+  box-shadow: inset 0 0 0 1px rgba(232, 189, 82, .18);
 }
-.zone-label::before, .zone-label::after {
-  content: ''; position: absolute; top: 50%; width: 26%; height: 1px;
-  background: linear-gradient(90deg, transparent, var(--gold-dk));
+.dais-label {
+  position: absolute; top: 6px; left: 0; right: 0; text-align: center;
+  font-size: 17px; letter-spacing: .34em; text-transform: uppercase; color: var(--gold-dk);
 }
-.zone-label::before { left: 0; }
-.zone-label::after { right: 0; transform: scaleX(-1); }
 
 /* — bannière d'un champ de joute — */
 .duel-banner {
-  position: absolute; display: flex; align-items: center; justify-content: center; gap: 6px;
-  font-size: 13px; color: var(--ink); border-radius: 3px; padding: 0 8px;
+  position: absolute; display: flex; align-items: center; justify-content: center; gap: 7px;
+  font-size: 17px; color: var(--ink); border-radius: 3px; padding: 0 9px;
   background: linear-gradient(180deg, var(--parch), var(--parch-dk));
   box-shadow: 0 2px 5px rgba(0, 0, 0, .5); overflow: hidden; white-space: nowrap;
 }
@@ -238,16 +243,29 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
 .duel-banner.mine { background: linear-gradient(180deg, #fbe7ad, #d8b45c); }
 
 /* — emplacements et cartes — */
+/* Les emplacements adverses sont volontairement effacés : d'un coup d'œil, on
+   doit voir qu'on n'a que trois cartes à poser, les siennes. */
 .slot {
   position: absolute; border-radius: 4px;
-  border: 1px dashed rgba(233, 224, 194, .2);
-  background: rgba(0, 0, 0, .28);
-  box-shadow: inset 0 0 26px rgba(0, 0, 0, .5);
+  border: 1px dotted rgba(233, 224, 194, .17);
+  background: rgba(0, 0, 0, .22);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, .35);
 }
+.slot.mine {
+  border: 2px dashed rgba(232, 189, 82, .55);
+  background: rgba(232, 189, 82, .06);
+  box-shadow: inset 0 0 30px rgba(232, 189, 82, .07);
+}
+#screen-game.placing .slot.mine:not(:has(.card)) { animation: waiting 2.4s ease-in-out infinite; }
+@keyframes waiting {
+  0%, 100% { box-shadow: inset 0 0 30px rgba(232, 189, 82, .07), 0 0 0 0 rgba(232, 189, 82, 0); }
+  50% { box-shadow: inset 0 0 34px rgba(232, 189, 82, .16), 0 0 18px 2px rgba(232, 189, 82, .22); }
+}
+.slot.mine > .card { box-shadow: 0 0 0 2px rgba(232, 189, 82, .55), 0 6px 16px rgba(0, 0, 0, .6); }
 .slot-tag {
   position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
-  text-align: center; font-size: 12px; letter-spacing: .16em; text-transform: uppercase;
-  color: rgba(233, 224, 194, .3); pointer-events: none;
+  text-align: center; font-size: 15px; letter-spacing: .18em; text-transform: uppercase;
+  color: rgba(232, 189, 82, .58); pointer-events: none;
 }
 .slot.drop {
   border-color: var(--gold); border-style: solid;
@@ -275,11 +293,12 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
 .card.flip { animation: flipIn .5s ease-out both; }
 @keyframes flipIn { 0% { transform: rotateY(90deg); } 100% { transform: rotateY(0); } }
 
+.card.grabbable { cursor: grab; touch-action: none; }
 .card .unplace {
-  position: absolute; top: 2px; right: 2px; z-index: 5; width: 20px; height: 20px; padding: 0;
-  border: 0; border-radius: 50%; cursor: pointer; font: inherit; font-size: 11px; line-height: 20px;
-  text-align: center; color: #f6efdb; background: rgba(20, 14, 9, .82);
-  box-shadow: 0 0 0 1px rgba(232, 189, 82, .5);
+  position: absolute; top: 4px; right: 4px; z-index: 5; width: 34px; height: 34px; padding: 0;
+  border: 0; border-radius: 50%; cursor: pointer; font: inherit; font-size: 17px; line-height: 34px;
+  text-align: center; color: #f6efdb; background: rgba(20, 14, 9, .88);
+  box-shadow: 0 0 0 1.5px rgba(232, 189, 82, .65), 0 2px 6px rgba(0, 0, 0, .6);
 }
 .card .unplace:hover { background: var(--blood); }
 
@@ -325,11 +344,14 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
 .hand { flex: 1; display: flex; justify-content: center; align-items: center; gap: 10px; min-width: 0; min-height: 0; }
 .hand-side { flex: 0 0 auto; display: flex; gap: 8px; align-items: stretch; }
 .hand-side .btn { white-space: nowrap; }
+#screen-game.resolving .hand-side { display: none; }
 
 #screen-game.hand-bottom .play { flex-direction: column; }
 #screen-game.hand-right .play { flex-direction: row; }
 #screen-game.hand-right .hand-wrap { flex-direction: column; border-top: 0; border-left: 1px solid var(--line); }
-#screen-game.hand-right .hand { flex-direction: column; overflow: hidden; }
+/* La main reste en rangée même dans la colonne de droite : empilées, ces
+   cartes très hautes ne laissaient voir qu'une lichette de chacune. */
+#screen-game.hand-right .hand { flex-direction: row; gap: 6px; overflow: hidden; }
 /* Sur téléphone la place manque : les deux boutons passent côte à côte, en petit. */
 #screen-game.hand-right .hand-side { gap: 5px; width: 100%; }
 #screen-game.hand-right .hand-side .btn {
@@ -351,12 +373,14 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
 .hand-card.sel { box-shadow: 0 0 0 3px var(--gold), 0 10px 24px rgba(0, 0, 0, .7); transform: translateY(-7px); }
 #screen-game.hand-right .hand-card.sel { transform: translateX(-9px); }
 .hand-card.dragging { opacity: .28; }
+/* En bas à droite : en haut, la loupe masquerait l'écusson du numéro. */
 .hand-card .zoom {
-  position: absolute; top: 2px; right: 2px; z-index: 3; width: 22px; height: 22px;
-  border: 0; border-radius: 50%; cursor: pointer; font-size: 12px; line-height: 22px; text-align: center;
-  color: #2a1f08; background: rgba(232, 189, 82, .9); padding: 0;
+  position: absolute; bottom: 4px; right: 4px; z-index: 3; width: 32px; height: 32px;
+  border: 0; border-radius: 50%; cursor: pointer; font-size: 18px; line-height: 32px; text-align: center;
+  color: #2a1f08; background: rgba(232, 189, 82, .92); padding: 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .55);
 }
-.hand-empty { font-size: 13.5px; color: var(--muted); font-style: italic; text-align: center; padding: 12px; }
+.hand-card .zoom:hover { background: #fbe7ad; }
 
 #drag-ghost {
   position: fixed; z-index: 100; pointer-events: none; border-radius: 4px; overflow: hidden;
@@ -377,7 +401,16 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
   max-height: 3.1em; overflow: hidden;
 }
 .narr-text b { color: var(--gold); font-weight: 600; }
-.narr .btn { padding: 8px 14px; font-size: 14px; flex: 0 0 auto; }
+.narr .btn { padding: 9px 14px; font-size: 14px; flex: 0 0 auto; }
+.narr-ctl { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.step-btn {
+  font: inherit; font-size: 14px; line-height: 1; cursor: pointer; flex: 0 0 auto;
+  width: 40px; height: 40px; border-radius: 4px; color: var(--parch);
+  background: rgba(0, 0, 0, .42); border: 1px solid var(--line);
+}
+.step-btn:hover:not(:disabled) { border-color: var(--gold-dk); color: var(--gold); }
+.step-btn:disabled { opacity: .3; cursor: default; }
+.narr-pos { font-size: 12px; color: var(--muted); min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* Sur téléphone en paysage, le récit prend la colonne libérée par la main :
    rogner la hauteur du plateau y coûterait bien trop cher. */
@@ -385,8 +418,9 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
   position: static; flex-direction: column; align-items: stretch; justify-content: center;
   width: 100%; height: 100%; padding: 0; background: none;
 }
-#screen-game.hand-right .narr-text { flex: 0 1 auto; max-height: 62%; font-size: 13.5px; overflow-y: auto; }
-#screen-game.hand-right .narr .btn { width: 100%; margin-top: 10px; padding: 10px 4px; font-size: 13px; }
+#screen-game.hand-right .narr-text { flex: 0 1 auto; max-height: 58%; font-size: 13.5px; overflow-y: auto; }
+#screen-game.hand-right .narr-ctl { flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+#screen-game.hand-right .narr .btn { flex: 1 0 100%; padding: 10px 4px; font-size: 13px; }
 
 /* — voile de zoom d'une carte — */
 #zoom-veil {
@@ -554,7 +588,13 @@ label.field > span { display: block; font-size: 12.5px; color: var(--muted); let
       <div id="board"></div>
       <div class="narr" id="narr">
         <div class="narr-text" id="narr-text"></div>
-        <button class="btn" id="narr-skip">Passer ⏭</button>
+        <div class="narr-ctl">
+          <button class="step-btn" id="narr-prev" title="Étape précédente" aria-label="Étape précédente">◀</button>
+          <button class="step-btn" id="narr-play" title="Mettre en pause" aria-label="Lecture ou pause">❚❚</button>
+          <button class="step-btn" id="narr-next" title="Étape suivante" aria-label="Étape suivante">▶</button>
+          <span class="narr-pos" id="narr-pos"></span>
+          <button class="btn" id="narr-skip">Passer ⏭</button>
+        </div>
       </div>
     </div>
     <div class="hand-wrap" id="hand-wrap">
