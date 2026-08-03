@@ -6,11 +6,11 @@ import {
 } from './data/catalog.js';
 import { catalogFromBuffer, xlsxBytes, exportBundle, importBundle } from './data/catalog-io.js';
 import { DEFAULT_CONFIG, PHASE, ORDERS } from './rules/constants.js';
-import { createState, faceOf } from './rules/state.js';
+import { createState, faceOf, influenceOf } from './rules/state.js';
 import { Engine } from './rules/engine.js';
 import { legalActions } from './rules/flow.js';
 import './rules/effects/index.js';
-import { applyDesign, renderCard } from './ui/card.js';
+import { applyDesign, renderCard, renderPlace } from './ui/card.js';
 import { BoardView, seatColor } from './ui/board.js';
 import { Replayer } from './ui/anim.js';
 import { DragLayer } from './ui/dnd.js';
@@ -18,6 +18,23 @@ import { Ai } from './ai/ai.js';
 import { openStudio } from './ui/studio.js';
 
 const $ = sel => document.querySelector(sel);
+
+/** Noms d'adversaires artificiels, tirés au sort à chaque partie. */
+const AI_NAMES = [
+  'Sélène', 'Ordric', 'Kavash', 'Tamsin', 'Vorlane', 'Iskira', 'Dorne',
+  'Ylvane', 'Bramir', 'Néra', 'Corvin', 'Aldis', 'Thessa', 'Malek', 'Rhoane',
+];
+
+/** Tire `count` noms distincts, en évitant ceux déjà pris à la table. */
+function pickAiNames(count, taken = []) {
+  const pool = AI_NAMES.filter(n => !taken.includes(n));
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    if (!pool.length) { out.push(`Adversaire ${i + 1}`); continue; }
+    out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  }
+  return out;
+}
 const $$ = sel => [...document.querySelectorAll(sel)];
 
 let catalog = getCatalog();
@@ -47,7 +64,7 @@ function toast(text, ms = 2400) {
 // ============================================================ accueil
 
 function fillFactionSelects() {
-  for (const sel of ['#solo-faction', '#host-faction', '#join-faction']) {
+  for (const sel of ['#solo-faction', '#net-faction']) {
     const node = $(sel);
     node.innerHTML = '';
     FACTIONS.forEach((f, i) => {
@@ -88,7 +105,14 @@ function renderLocalSeats() {
       kind.append(o);
     }
     kind.value = seat.kind;
-    kind.onchange = () => { seat.kind = kind.value; };
+    kind.onchange = () => {
+      seat.kind = kind.value;
+      // Un siège qui passe à l'IA prend un nom d'adversaire, pas « Joueur 2 ».
+      if (kind.value === 'ai' && /^Joueur \d+$/.test(seat.name)) {
+        seat.name = pickAiNames(1, localSeats.map(x => x.name))[0];
+        name.value = seat.name;
+      }
+    };
     const tag = document.createElement('span');
     tag.style.color = 'var(--faint)';
     tag.textContent = `#${i + 1}`;
@@ -172,10 +196,11 @@ $('#mode-tabs').addEventListener('click', ev => {
   if (!tab) return;
   mode = tab.dataset.mode;
   $$('#mode-tabs .tab').forEach(t => t.classList.toggle('on', t === tab));
-  for (const pane of ['solo', 'local', 'host', 'join']) {
+  for (const pane of ['solo', 'local', 'online']) {
     $(`#mode-${pane}`).hidden = pane !== mode;
   }
-  if (mode === 'host' || mode === 'join') connectRoom();
+  refreshStartButton();
+  if (mode === 'online') connectRoom();
 });
 
 $('#local-add').onclick = () => {
@@ -261,6 +286,8 @@ function renderRules() {
       + `• Ordres de Kalassir : l'Ordre actif débute sur « Lames de Karina ». En changer est une action qui coûte ${1} or (le Conseil des Trois Ordres), gratuite après un Messager du Conseil.\n`
       + `• Aube : la réserve devient or actif, les cartes se redressent, chaque joueur pioche ${config.drawAtDawn} carte, puis les effets d'Aube se résolvent dans l'ordre du premier joueur.\n`
       + `• Journée : chacun joue une action à son tour jusqu'à se coucher.\n`
+      + `• Mulligan : la question posée au début de la partie est le mulligan gratuit de la feuille « À lire » — vous pouvez refaire votre main de départ une fois. Réglable à 0 dans les réglages.\n`
+      + `• Lieux actifs : autant que de joueurs, pour que chaque camp occupe un côté du lieu. Le classeur conseille « joueurs + 1 » ; c'est réglable avant la partie.\n`
       + `• Contrôle : recalculé en continu, pas seulement au Crépuscule — un effet qui change l'influence peut donc faire basculer un lieu immédiatement.\n`
       + `• Lieux adjacents : les emplacements forment une rangée ; seuls les voisins immédiats sont adjacents, plus les deux emplacements reliés par un Réseau Longmai.\n`
       + `• Deck de lieux épuisé : les lieux déjà expirés sont remélangés pour former une nouvelle réserve.`],
@@ -289,7 +316,7 @@ async function ensureRoom() {
   const mod = await import('./net/net.js');
   relayStatus = mod.relayStatus;
   net = new mod.Net();
-  net.onRoster = renderRoster;
+  net.onRoster = renderLobby;
   net.onStart = cfg => startAsGuest(cfg);
   net.onEvents = events => {
     if (!session) { earlyEvents.push(...events); return; }
@@ -302,15 +329,45 @@ async function ensureRoom() {
   net.onBye = reason => { toast(`Partie interrompue : ${reason || 'un joueur a quitté'}.`, 5000); show('home'); };
 }
 
+// Un seul écran multijoueur : on tient un salon sous son propre code (on est
+// alors l'hôte, et seul l'hôte lance la partie), ou on rejoint celui d'un ami.
+const CODE_KEY = 'morentia2.code.v1';
+// Alphabet sans caractères confondables (0/O, 1/I/L) : le code se dicte.
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function newRoomCode() {
+  let out = '';
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  for (const b of bytes) out += CODE_ALPHABET[b % CODE_ALPHABET.length];
+  return out;
+}
+
+/** Code personnel, stable d'une session à l'autre pour rester partageable. */
+function myRoomCode() {
+  try {
+    const saved = localStorage.getItem(CODE_KEY);
+    if (saved && /^[A-Z0-9]{4,12}$/.test(saved)) return saved;
+  } catch { /* stockage indisponible : code éphémère */ }
+  const code = newRoomCode();
+  try { localStorage.setItem(CODE_KEY, code); } catch { /* idem */ }
+  return code;
+}
+
+/** 'host' quand on tient son propre salon, 'guest' quand on a rejoint. */
+let netRole = 'host';
+let joinedCode = null;
+
+function normalizeCode(raw) {
+  return (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 function currentRoomCode() {
-  const raw = (mode === 'host' ? $('#host-code').value : $('#join-code').value).trim();
-  return raw || 'morentia';
+  return netRole === 'guest' ? joinedCode : myRoomCode();
 }
 
 function myProfile() {
-  const nameNode = mode === 'host' ? '#host-name' : '#join-name';
-  const factionNode = mode === 'host' ? '#host-faction' : '#join-faction';
-  return { name: $(nameNode).value.trim() || 'Joueur', faction: $(factionNode).value };
+  return { name: $('#net-name').value.trim() || 'Joueur', faction: $('#net-faction').value };
 }
 
 async function connectRoom() {
@@ -318,41 +375,113 @@ async function connectRoom() {
   // sinon un changement de code arrive avant que la connexion existe.
   await ensureRoom();
   if (!net) return;
-  net.join(currentRoomCode(), myProfile(), { asHost: mode === 'host' });
+  const code = currentRoomCode();
+  if (!code) return;
+  net.join(code, myProfile(), { asHost: netRole === 'host' });
   net.announce();
-  renderRoster();
+  renderLobby();
 }
 
 setInterval(() => {
-  if ($('#home').classList.contains('on') && (mode === 'host' || mode === 'join')) renderRoster();
+  if ($('#home').classList.contains('on') && mode === 'online') renderLobby();
 }, 1500);
 
-for (const id of ['#host-code', '#join-code', '#host-name', '#join-name', '#host-faction', '#join-faction']) {
-  $(id).addEventListener('change', () => { if (mode === 'host' || mode === 'join') connectRoom(); });
+$('#net-copy').onclick = async () => {
+  const code = myRoomCode();
+  try {
+    await navigator.clipboard.writeText(code);
+    toast(`Code ${code} copié — envoyez-le à vos amis.`);
+  } catch {
+    // Presse-papiers refusé (http, permission) : le code reste sélectionnable.
+    getSelection()?.selectAllChildren($('#net-my-code'));
+    toast('Copie refusée par le navigateur — le code est sélectionné.');
+  }
+};
+
+$('#net-join').onclick = () => {
+  const code = normalizeCode($('#net-join-code').value);
+  if (netRole === 'guest' && !code) { backToOwnRoom(); return; }
+  if (code.length < 4) { toast('Saisissez le code reçu de votre ami.'); return; }
+  if (code === myRoomCode()) { toast('C’est votre propre code : partagez-le plutôt.'); return; }
+  netRole = 'guest';
+  joinedCode = code;
+  $('#net-join-code').value = code;
+  refreshStartButton();
+  connectRoom();
+};
+
+$('#net-join-code').addEventListener('keydown', ev => {
+  if (ev.key === 'Enter') $('#net-join').click();
+});
+
+/** Quitte le salon rejoint et rouvre le sien. */
+function backToOwnRoom() {
+  netRole = 'host';
+  joinedCode = null;
+  $('#net-join-code').value = '';
+  refreshStartButton();
+  connectRoom();
 }
 
-function renderRoster() {
-  const host = mode === 'host' ? $('#host-roster') : $('#join-roster');
-  if (!host || !net) return;
+for (const id of ['#net-name', '#net-faction']) {
+  $(id).addEventListener('change', () => {
+    if (mode !== 'online' || !net?.connected) return;
+    // Le nom et la faction se rediffusent : inutile de refaire la connexion.
+    net.setProfile(myProfile());
+    renderLobby();
+  });
+}
+
+/** Le bouton « Commencer » n'appartient qu'à l'hôte ; les autres attendent. */
+function refreshStartButton() {
+  const waiting = mode === 'online' && netRole === 'guest';
+  $('#start-game').hidden = waiting;
+  $('#start-waiting').hidden = !waiting;
+}
+
+function chip(text, cls = '') {
+  const node = document.createElement('span');
+  node.className = `net-chip ${cls}`.trim();
+  node.textContent = text;
+  return node;
+}
+
+function renderLobby() {
+  $('#net-my-code').textContent = myRoomCode();
+  $('#net-join-hint').textContent = netRole === 'guest'
+    ? `Salon de ${joinedCode} — la partie se lance de son côté.`
+    : 'Vous attendrez que l’hôte lance la partie.';
+  $$('.net-card').forEach((card, i) => {
+    card.classList.toggle('on', (netRole === 'host') === (i === 0));
+  });
+
+  const host = $('#net-roster');
+  if (!host) return;
   host.innerHTML = '';
+  if (!net?.connected) return;
+
   const relays = relayStatus();
-  const link = document.createElement('span');
-  link.className = 'phase-chip relay-chip';
-  link.textContent = relays.open
+  host.append(chip(relays.open
     ? `Signalisation : ${relays.open}/${relays.total} relais`
-    : 'Signalisation : connexion en cours…';
-  host.append(link);
+    : 'Signalisation : connexion en cours…', 'faint'));
   for (const p of net.roster()) {
-    const chip = document.createElement('span');
-    chip.className = 'phase-chip roster-peer';
-    chip.textContent = `${p.name} · ${FACTION_LABELS[p.faction] || '—'}${p.isHost ? ' (hôte)' : ''}`;
-    host.append(chip);
+    const mine = p.id === net.selfId;
+    host.append(chip(
+      `${p.name} · ${FACTION_LABELS[p.faction] || '—'}${p.isHost ? ' (hôte)' : ''}`,
+      mine ? 'me' : ''));
   }
-  if (!net.rosterComplete) {
-    const wait = document.createElement('span');
-    wait.className = 'phase-chip';
-    wait.textContent = 'Présentation en cours…';
-    host.append(wait);
+  if (!net.rosterComplete) host.append(chip('Présentation en cours…', 'faint'));
+  else if (netRole === 'guest' && !net.hostKnown) {
+    host.append(chip(`Recherche du salon ${joinedCode}…`, 'faint'));
+  } else if (netRole === 'host' && net.roster().length < 2) {
+    host.append(chip('Personne n’a encore rejoint — partagez votre code.', 'faint'));
+  }
+  if (netRole === 'guest') {
+    const leave = document.createElement('button');
+    leave.className = 'btn small ghost';
+    leave.textContent = 'Quitter ce salon';
+    leave.onclick = backToOwnRoom;
+    host.append(leave);
   }
 }
 
@@ -372,7 +501,7 @@ class Session {
     this.pendingLocal = null;
     this.logEntries = [];
 
-    this.board = new BoardView(document, { catalog });
+    this.board = new BoardView(document, { catalog, onZoom: target => showCard(target, this.view) });
     this.replayer = new Replayer({
       board: this.board, catalog,
       onLog: entry => this.log(entry),
@@ -489,6 +618,14 @@ class Session {
     return player && player.kind !== 'ai' && player.kind !== 'remote';
   }
 
+  /** Attend-on une décision d'un autre joueur (IA ou pair distant) ? */
+  awaitingRemote() {
+    const state = this.view;
+    if (!state || state.phase !== PHASE.DAY) return true;
+    const player = this.players[state.activePlayer];
+    return !!player && player.kind !== 'human';
+  }
+
   actionsFor(instId) {
     if (!this.canAct()) return [];
     return legalActions(this.view, catalog, this.seat)
@@ -498,6 +635,12 @@ class Session {
 
   submitAction(action) {
     if (!this.canAct()) return;
+    // Retour immédiat : le bouton bascule en attente avant même que le moteur
+    // n'ait produit son premier événement.
+    const pass = $('#btn-pass');
+    pass.disabled = true;
+    pass.classList.add('waiting');
+    pass.textContent = 'Résolution…';
     if (this.role === 'guest') { net?.act(action); this.refreshInteraction(); return; }
     this.step(() => this.engine.act(this.seat, action));
   }
@@ -506,7 +649,13 @@ class Session {
   refreshInteraction() {
     if (!this.view) return;
     const can = this.canAct();
-    $('#btn-pass').disabled = !can;
+    const pass = $('#btn-pass');
+    pass.disabled = !can;
+    // Tant que la partie avance, le bouton le dit plutôt que de rester grisé.
+    const busy = !can && this.view.phase !== PHASE.GAME_OVER
+      && (this.replayer.busy || !!this.pendingLocal || this.awaitingRemote());
+    pass.classList.toggle('waiting', busy);
+    pass.textContent = busy ? 'Résolution…' : 'Se coucher';
     const orderBtn = $('#btn-order');
     const player = this.view?.players?.[this.seat];
     const canOrder = can && player?.faction === 'kalassir';
@@ -587,6 +736,78 @@ class Session {
   }
 }
 
+// ====================================================== vue détaillée
+
+/**
+ * Agrandit une carte pour la lire. Sur le plateau un simple clic suffit ; en
+ * main, le clic sert à jouer, c'est donc la loupe du coin qui ouvre cette vue.
+ */
+function showCard(target, state) {
+  const overlay = $('#zoom-overlay');
+  const host = $('#zoom-card');
+  host.innerHTML = '';
+  host.className = '';
+
+  if (target.pile) {
+    const player = state.players[target.player];
+    const isDeck = target.pile === 'deck';
+    const ids = isDeck ? player.deck : player.discard;
+    let list = ids.map(id => state.cards[id]).filter(Boolean);
+    // Le contenu du deck est connu du joueur, mais pas son ordre : on le range
+    // par nom pour ne rien révéler des prochaines pioches.
+    if (isDeck) {
+      list = list.slice().sort((a, b) =>
+        (faceOf(catalog, a)?.name || '').localeCompare(faceOf(catalog, b)?.name || '', 'fr'));
+    }
+    host.className = 'zoom-pile';
+    const title = document.createElement('h3');
+    title.textContent = isDeck
+      ? `Votre deck — ${list.length} carte(s), rangées par nom`
+      : `Défausse — ${list.length} carte(s)`;
+    host.append(title);
+    if (isDeck) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = 'L’ordre affiché n’est pas celui du deck.';
+      host.append(note);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'zoom-grid';
+    for (const inst of list) {
+      const face = faceOf(catalog, inst);
+      if (face) grid.append(renderCard(catalog, face));
+    }
+    if (!list.length) {
+      const empty = document.createElement('p');
+      empty.className = 'hint';
+      empty.textContent = 'Aucune carte.';
+      grid.append(empty);
+    }
+    host.append(grid);
+  } else if (target.placeId) {
+    const rec = catalog.placeById.get(target.placeId);
+    if (!rec) return;
+    const slot = state.slots[target.slot];
+    host.append(renderPlace(catalog, rec, { duration: slot?.duration }));
+  } else if (target.inst) {
+    const inst = state.cards[target.inst];
+    const face = inst && faceOf(catalog, inst);
+    if (!face) return;
+    host.append(renderCard(catalog, face, {
+      influence: influenceOf(state, catalog, inst),
+    }));
+  } else {
+    return;
+  }
+  overlay.classList.add('on');
+}
+
+$('#zoom-overlay').onclick = () => $('#zoom-overlay').classList.remove('on');
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return;
+  $('#zoom-overlay').classList.remove('on');
+});
+
 // ============================================================ dialogues
 
 function dialog({ title, body, buttons }) {
@@ -629,6 +850,18 @@ function choiceDialog(req, state, cat) {
     const h = document.createElement('h3');
     h.textContent = req.prompt || 'Faites un choix.';
     node.append(who, h);
+
+    // Certaines questions montrent des cartes à titre indicatif (mulligan).
+    if (req.preview?.length) {
+      const strip = document.createElement('div');
+      strip.className = 'choice-cards preview';
+      for (const id of req.preview) {
+        const inst = state.cards[id];
+        const face = inst && faceOf(cat, inst);
+        if (face) strip.append(renderCard(cat, face));
+      }
+      node.append(strip);
+    }
 
     const picked = new Set();
     const max = req.max ?? 1;
@@ -702,11 +935,11 @@ function buildPlayers() {
     const count = Number($('#solo-count').value);
     const mine = $('#solo-faction').value;
     const others = FACTIONS.filter(f => f !== mine);
-    const list = [{
-      id: 'me', name: $('#solo-name').value.trim() || 'Vous', faction: mine, kind: 'human',
-    }];
+    const myName = $('#solo-name').value.trim() || 'Vous';
+    const list = [{ id: 'me', name: myName, faction: mine, kind: 'human' }];
+    const names = pickAiNames(count, [myName]);
     for (let i = 0; i < count; i++) {
-      list.push({ id: `ai${i}`, name: `IA ${i + 1}`, faction: others[i % others.length], kind: 'ai' });
+      list.push({ id: `ai${i}`, name: names[i], faction: others[i % others.length], kind: 'ai' });
     }
     return { players: list, seat: 0, role: 'local' };
   }
@@ -716,7 +949,7 @@ function buildPlayers() {
       seat: 0, role: 'local',
     };
   }
-  // Parties en ligne : l'ordre des sièges suit l'ordre stable du salon.
+  // Multijoueur : l'ordre des sièges suit l'ordre stable du salon.
   const roster = net?.roster() || [];
   const players = roster.map((r, i) => ({
     id: r.id, name: r.name, faction: r.faction || FACTIONS[i % FACTIONS.length],
@@ -728,18 +961,22 @@ function buildPlayers() {
 
 function startSession(setup, seed) {
   session = new Session({ ...setup, seed });
-  session.replayer.speed = SPEEDS[speedIndex];
   $('#log-list').innerHTML = '';
   show('table');
   requestAnimationFrame(() => session.board.fit());
 }
 
 $('#start-game').onclick = () => {
-  if (mode === 'join') { toast('En attente du lancement par l’hôte.'); return; }
+  if (mode === 'online' && netRole !== 'host') return;
   const setup = buildPlayers();
-  if (setup.players.length < 2) { toast('Il faut au moins deux joueurs.'); return; }
+  if (setup.players.length < 2) {
+    toast(mode === 'online'
+      ? 'Personne n’a encore rejoint votre salon.'
+      : 'Il faut au moins deux joueurs.');
+    return;
+  }
   const seed = (Math.random() * 0xffffffff) >>> 0 || 1;
-  if (mode === 'host') {
+  if (mode === 'online') {
     if (!net?.rosterComplete) {
       toast('Un joueur ne s’est pas encore présenté — réessayez dans un instant.');
       return;
@@ -779,18 +1016,6 @@ $('#btn-order').onclick = async () => {
   }, session.view, catalog);
   if (value) session.submitAction({ type: 'order', order: value });
 };
-// Vitesse de la résolution animée : le rythme lisible par défaut devient vite
-// long quand on enchaîne les parties de test.
-const SPEEDS = [1, 2, 4, 0];
-const SPEED_LABELS = { 1: 'Vitesse ×1', 2: 'Vitesse ×2', 4: 'Vitesse ×4', 0: 'Instantané' };
-let speedIndex = 0;
-$('#btn-speed').onclick = () => {
-  speedIndex = (speedIndex + 1) % SPEEDS.length;
-  const speed = SPEEDS[speedIndex];
-  $('#btn-speed').textContent = SPEED_LABELS[speed];
-  if (session) session.replayer.speed = speed;
-};
-
 $('#btn-fit').onclick = () => session?.board.fit();
 $('#zoom-in').onclick = () => session?.board.zoom(1.18);
 $('#zoom-out').onclick = () => session?.board.zoom(1 / 1.18);
@@ -817,6 +1042,8 @@ fillFactionSelects();
 renderLocalSeats();
 renderConfig();
 refreshCatalogInfo();
+$('#net-my-code').textContent = myRoomCode();
+refreshStartButton();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

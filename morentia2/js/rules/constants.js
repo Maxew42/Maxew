@@ -59,7 +59,10 @@ export const DEFAULT_CONFIG = {
   startingGold: 3,
   mulligans: 1,
   marketExtra: 1,        // marché = joueurs + marketExtra
-  placesExtra: 1,        // lieux actifs = joueurs + placesExtra
+  // Le classeur conseille « joueurs + 1 » lieux actifs ; la table numérique en
+  // ouvre autant que de joueurs, pour que chaque camp tienne un côté du lieu et
+  // que le plateau reste lisible. Réglable avant la partie.
+  placesExtra: 0,
   endExpiredBase: 2,     // fin après 2 × joueurs + endExpiredBase lieux expirés
   endExpiredPerPlayer: 2,
   dayLimit: 0,           // 0 = pas de limite de Jours

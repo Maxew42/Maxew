@@ -22,10 +22,14 @@ npm run serve          # http://localhost:4174
 | --- | --- |
 | Solo contre l'IA | Vous plus une ou deux IA qui jouent et répondent à leurs propres cartes. |
 | Chacun son tour | Plusieurs humains sur un seul écran, avec un rideau entre les tours pour ne pas dévoiler les mains. |
-| Héberger en ligne | Votre navigateur devient l'hôte : il fait tourner le moteur et diffuse la partie. |
-| Rejoindre | Vous entrez le même code de salon et suivez la partie de l'hôte. |
+| Multijoueur | Un seul écran : partagez votre code pour inviter, ou saisissez celui d'un ami pour le rejoindre. |
 
 ## Multijoueur pair-à-pair
+
+Chaque navigateur porte un code de partie tiré au hasard et conservé d'une
+session à l'autre. Le partager fait de vous l'hôte, et vous seul voyez le bouton
+**Commencer** ; saisir celui d'un ami vous place dans son salon, où vous attendez
+qu'il lance la partie.
 
 L'hôte est le seul à exécuter le moteur. Il ne transmet pas l'état complet mais
 le **flux d'événements** qui le produit : les invités replient ce flux et
@@ -78,29 +82,47 @@ directement dans le Studio.
 
 ## Disposition des cartes
 
-Conforme à la demande : titre, influence et prix sur la première ligne, les deux
-prix (domaine et lieu) empilés verticalement pour économiser la largeur, puis
-l'illustration, puis le type, puis le texte de règles. Les tailles sont exprimées
+Première ligne : influence à gauche, puis le nom, puis les deux prix (domaine et
+lieu) empilés verticalement pour économiser la largeur. Ensuite l'illustration,
+le type, et le texte de règles. Les lieux remplacent l'influence par la Durée et
+affichent `Durée · Survivants · PV` en clair sous leur type. Les tailles sont exprimées
 en pourcentage de la largeur de la carte, si bien qu'une carte reste lisible à
 n'importe quelle échelle du plateau.
 
 ## Plateau
 
-Domaines adverses en haut, rangée des lieux au centre, marché et votre domaine en
-bas, main en barre fixe. Le plateau se recadre seul pour tenir à l'écran tant que
-vous ne l'avez pas déplacé vous-même ; molette, pincement et boutons `+` / `−`
-permettent de zoomer, le glisser de fond permet de se déplacer.
+Marché à gauche en colonne — ses cartes sont couchées d'un quart de tour, sommet
+vers la gauche, pour tenir en hauteur tout en restant lisibles. Domaines adverses
+en haut, lieux au centre, votre domaine en bas ; la main occupe une barre fixe
+avec, à sa gauche, votre deck et votre défausse à la taille des cartes, et à sa
+droite votre or et vos points de victoire.
+
+La **carte Base** de chaque faction est toujours visible dans le domaine de son
+joueur : c'est un pouvoir permanent, pas une carte qu'on joue.
+
+Autour de chaque lieu, **chaque camp occupe un côté** : vous en bas, vos
+adversaires à gauche, à droite et en face selon leur nombre. On voit donc à qui
+appartient chaque carte sans avoir à suivre une pastille de couleur. Il y a
+autant de lieux actifs que de joueurs.
+
+Le plateau se recadre seul tant que vous ne l'avez pas déplacé vous-même ;
+molette, pincement et les boutons `+` / `−` / `⛶` permettent de cadrer.
 
 Les cartes se jouent au **glisser-déposer**. Pendant le glissement, seules les
 zones réellement licites s'allument — la légalité vient du moteur, jamais de
 l'affichage.
+
+**Lire une carte** : un clic sur n'importe quelle carte du plateau (lieu, carte
+adverse, marché) l'agrandit. En main le clic sert à jouer, c'est donc la loupe du
+coin de la carte qui ouvre la même vue. La pile de défausse s'ouvre d'un clic ;
+le deck reste caché, y compris à son propriétaire.
 
 ## Résolution animée
 
 Le moteur résout une phase entière instantanément. L'affichage travaille sur un
 état retardé et rejoue les événements un par un, avec une pause propre à chacun,
 le déplacement des cartes, les bulles d'influence et d'or, et un bandeau de
-phase. Le bouton **Vitesse** passe de ×1 à ×2, ×4 puis instantané.
+phase.
 
 ## Organisation du code
 
@@ -158,9 +180,15 @@ ici :
 - **Contrôle** — recalculé en continu et non seulement au Crépuscule : un effet
   qui change une influence peut faire basculer un lieu immédiatement, ce qui rend
   lisibles les cartes déclenchées par une prise de contrôle.
+- **Lieux actifs** — le classeur conseille « joueurs + 1 » ; la table en ouvre
+  autant que de joueurs, pour que chaque camp tienne un côté du lieu et que le
+  plateau reste lisible. Réglable avant la partie.
 - **Lieux adjacents** — les emplacements forment une rangée ; seuls les voisins
   immédiats sont adjacents, plus les deux emplacements reliés par un Réseau
   Longmai.
+- **Mulligan** — la feuille « À lire » accorde une refonte gratuite de la main de
+  départ ; la question posée en début de partie est ce mulligan, et elle montre
+  les cartes concernées. Mettre `Mulligans` à 0 dans les réglages la supprime.
 - **Deck de lieux épuisé** — les lieux déjà expirés sont remélangés. Avec neuf
   lieux au catalogue et une fin de partie à `2 × joueurs + 2` expirations, une
   partie à trois joueurs en consomme davantage que la réserve initiale.

@@ -1,8 +1,8 @@
 // Rendu d'une carte.
 //
 // Disposition demandée, de haut en bas :
-//   1. titre, influence et prix sur la même ligne (les deux prix empilés
-//      verticalement pour économiser la largeur) ;
+//   1. influence, titre et prix sur la même ligne — l'influence à gauche du
+//      nom, les deux prix empilés verticalement pour économiser la largeur ;
 //   2. illustration ;
 //   3. type ;
 //   4. texte de règles.
@@ -73,11 +73,9 @@ export function renderCard(catalog, record, opts = {}) {
   node.style.setProperty('--accent', accent);
   if (opts.light || record.lightText === true) node.classList.add('light');
 
-  // ---- ligne du haut : titre · influence · prix empilés
+  // ---- ligne du haut : influence · titre · prix empilés
   const top = el('div', 'card-top');
-  top.append(el('h3', 'card-name', record.name));
 
-  const stats = el('div', 'card-stats');
   const influence = opts.influence !== undefined ? opts.influence : record.influence;
   if (influence !== null && influence !== '' && influence !== undefined) {
     const inf = el('span', 'stat influence', String(influence));
@@ -85,16 +83,18 @@ export function renderCard(catalog, record, opts = {}) {
     if (opts.influence !== undefined && opts.influence !== record.influence) {
       inf.classList.add(opts.influence > (record.influence || 0) ? 'boosted' : 'weakened');
     }
-    stats.append(inf);
+    top.append(inf);
   }
+
+  top.append(el('h3', 'card-name', record.name));
+
   const prices = el('div', 'prices');
   for (const row of priceRows(record)) {
     const p = el('span', `price ${row.kind}`, String(row.value));
     p.title = row.title;
     prices.append(p);
   }
-  if (prices.children.length) stats.append(prices);
-  if (stats.children.length) top.append(stats);
+  if (prices.children.length) top.append(prices);
   node.append(top);
 
   // ---- illustration
@@ -125,27 +125,13 @@ export function renderPlace(catalog, record, opts = {}) {
   node.style.setProperty('--accent', accent);
 
   const top = el('div', 'card-top');
-  top.append(el('h3', 'card-name', record.name));
-  const stats = el('div', 'card-stats');
   const duration = opts.duration !== undefined ? opts.duration : record.duration;
   if (duration !== null && duration !== '' && duration !== undefined) {
     const d = el('span', 'stat duration', String(duration));
     d.title = 'Durée restante';
-    stats.append(d);
+    top.append(d);
   }
-  const prices = el('div', 'prices');
-  if (record.survivors !== null && record.survivors !== '') {
-    const s = el('span', 'price surv', String(opts.survivors ?? record.survivors));
-    s.title = 'Survivants';
-    prices.append(s);
-  }
-  if (record.vp) {
-    const v = el('span', 'price vp', String(record.vp).replace(/\s*\/\s*/g, '/'));
-    v.title = 'Points de victoire';
-    prices.append(v);
-  }
-  if (prices.children.length) stats.append(prices);
-  top.append(stats);
+  top.append(el('h3', 'card-name', record.name));
   node.append(top);
 
   const art = el('div', 'card-art');
@@ -154,6 +140,23 @@ export function renderPlace(catalog, record, opts = {}) {
 
   node.append(el('div', 'card-type', [record.type, record.subtype].filter(Boolean).join(' — ')));
 
+  // Durée, Survivants et PV nommés : les trois pastilles du haut se ressemblent
+  // trop pour être lues d'un coup d'œil pendant une partie.
+  const stats = el('div', 'place-stats');
+  const parts = [];
+  if (duration !== null && duration !== '' && duration !== undefined) parts.push(['Durée', duration]);
+  if (record.survivors !== null && record.survivors !== '') {
+    parts.push(['Survivants', opts.survivors ?? record.survivors]);
+  }
+  if (record.vp) parts.push(['PV', String(record.vp).replace(/\s*\/\s*/g, '/')]);
+  if (record.threshold) parts.push(['Seuil', record.threshold]);
+  for (const [label, value] of parts) {
+    const span = el('span');
+    span.append(document.createTextNode(`${label} `), el('b', null, String(value)));
+    stats.append(span);
+  }
+  if (stats.children.length) node.append(stats);
+
   const body = el('div', 'card-text');
   if (record.effect) body.append(el('p', null, record.effect));
   if (record.control) {
@@ -161,12 +164,6 @@ export function renderPlace(catalog, record, opts = {}) {
     c.append(el('em', null, 'Contrôle — '));
     c.append(document.createTextNode(record.control));
     body.append(c);
-  }
-  if (record.threshold) {
-    const t = el('p', 'labelled');
-    t.append(el('em', null, 'Seuil — '));
-    t.append(document.createTextNode(record.threshold));
-    body.append(t);
   }
   node.append(body);
   return node;

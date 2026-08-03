@@ -12,6 +12,18 @@ import { KIND } from '../data/schema.js';
 
 const SEAT_COLORS = ['--kalassir', '--aqaba', '--algarie', '--gold', '--ok'];
 
+/**
+ * Côté du lieu occupé par chaque camp, selon le nombre de joueurs. Le joueur
+ * local est toujours en bas ; ses adversaires se répartissent autour comme
+ * autour d'une table, plutôt que de s'entasser d'un seul côté.
+ */
+const RING_ORDER = {
+  2: ['bottom', 'top'],
+  3: ['bottom', 'left', 'right'],
+  4: ['bottom', 'left', 'top', 'right'],
+};
+const RING_FALLBACK = ['bottom', 'left', 'top', 'right'];
+
 /** Couleur de siège d'un joueur : sa faction, avec repli pour 4 joueurs et plus. */
 export function seatColor(state, index) {
   const faction = state.players[index]?.faction;
@@ -22,10 +34,10 @@ export function seatColor(state, index) {
 }
 
 export class BoardView {
-  constructor(root, { catalog, onDrop, onCardTap }) {
+  constructor(root, { catalog, onDrop, onZoom }) {
     this.catalog = catalog;
     this.onDrop = onDrop;
-    this.onCardTap = onCardTap;
+    this.onZoom = onZoom || (() => {});
     this.nodes = {
       board: root.querySelector('#board'),
       wrap: root.querySelector('#board-wrap'),
@@ -36,6 +48,8 @@ export class BoardView {
       marketTag: root.querySelector('#market-tag'),
       mine: root.querySelector('#my-domain'),
       hand: root.querySelector('#hand'),
+      piles: root.querySelector('#hand-piles'),
+      handStats: root.querySelector('#hand-stats'),
       hudPlayers: root.querySelector('#hud-players'),
       phaseChip: root.querySelector('#phase-chip'),
     };
@@ -70,7 +84,12 @@ export class BoardView {
   _snapshotPositions() {
     const map = new Map();
     for (const node of document.querySelectorAll('[data-inst]')) {
-      map.set(node.dataset.inst, node.getBoundingClientRect());
+      map.set(node.dataset.inst, {
+        rect: node.getBoundingClientRect(),
+        // Les cartes du marché sont couchées par leur cadre : leur transformation
+        // ne doit pas être remplacée par celle de l'animation.
+        tilted: !!node.closest('.market-card'),
+      });
     }
     return map;
   }
@@ -79,9 +98,13 @@ export class BoardView {
     for (const node of document.querySelectorAll('[data-inst]')) {
       const prev = before.get(node.dataset.inst);
       if (!prev) continue;
+      const tilted = !!node.closest('.market-card');
+      // Une carte qui entre ou sort du marché change d'orientation : la faire
+      // glisser produirait un pivotement brutal. On la laisse simplement paraître.
+      if (tilted || prev.tilted) continue;
       const now = node.getBoundingClientRect();
-      const dx = prev.left - now.left;
-      const dy = prev.top - now.top;
+      const dx = prev.rect.left - now.left;
+      const dy = prev.rect.top - now.top;
       if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
       node.animate(
         [{ transform: `translate(${dx}px, ${dy}px)`, zIndex: 20 },
@@ -96,13 +119,15 @@ export class BoardView {
   _renderHud(state, seat) {
     const chip = this.nodes.phaseChip;
     chip.innerHTML = '';
-    chip.append(document.createTextNode('Jour '));
+    const line = document.createElement('span');
+    line.append(document.createTextNode('Jour '));
     const b = document.createElement('b');
     b.textContent = String(Math.max(1, state.day));
-    chip.append(b, document.createTextNode(` · ${PHASE_LABELS[state.phase] || ''}`));
+    line.append(b, document.createTextNode(` · ${PHASE_LABELS[state.phase] || ''}`));
     if (state.phase === PHASE.DAY) {
-      chip.append(document.createTextNode(` · ${state.players[state.activePlayer]?.name ?? ''}`));
+      line.append(document.createTextNode(` · ${state.players[state.activePlayer]?.name ?? ''}`));
     }
+    chip.append(line);
 
     const host = this.nodes.hudPlayers;
     host.innerHTML = '';
@@ -136,38 +161,54 @@ export class BoardView {
     const wrap = document.createElement('div');
     wrap.className = 'domain' + (player.index === seat ? ' you' : '');
     wrap.style.setProperty('--seat', seatColor(state, player.index));
+    // Le joueur dont c'est le tour voit tout son domaine cerné de sa couleur.
+    if (state.phase === PHASE.DAY && state.activePlayer === player.index && !player.asleep) {
+      wrap.classList.add('acting');
+    }
+
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = player.index === seat ? 'Votre domaine' : player.name;
+    wrap.append(who);
 
     const head = document.createElement('div');
     head.className = 'domain-head';
-    const who = document.createElement('span');
-    who.className = 'who';
-    who.textContent = player.name;
-    head.append(who);
-    for (const [label, value] of [
+    // Le joueur local retrouve ses compteurs dans la barre de main : inutile de
+    // les répéter sur son propre domaine.
+    const chips = player.index === seat ? [] : [
       ['Or', `${player.active}<b>${player.reserve ? ` +${player.reserve}` : ''}</b>`],
       ['PV', `<b>${player.vp}</b>`],
+      ['Main', `<b>${player.hand.length}</b>`],
       ['Deck', `<b>${player.deck.length}</b>`],
       ['Défausse', `<b>${player.discard.length}</b>`],
-    ]) {
+    ];
+    for (const [label, value] of chips) {
       const chip = document.createElement('span');
       chip.className = 'chip';
       chip.innerHTML = `${label} ${value}`;
       head.append(chip);
     }
-    if (player.flags.order) {
+    if (player.flags.order && player.index !== seat) {
       const chip = document.createElement('span');
       chip.className = 'chip';
       chip.textContent = player.flags.order;
       head.append(chip);
     }
-    wrap.append(head);
+    if (head.children.length) wrap.append(head);
 
     const strip = document.createElement('div');
     strip.className = 'card-strip';
     strip.dataset.drop = 'domain';
     strip.dataset.player = String(player.index);
-    strip.dataset.empty = 'Domaine vide';
+    strip.dataset.empty = 'Aucune carte jouée';
     if (!player.domain.length) strip.classList.add('empty');
+    // La Base ne quitte jamais le domaine : c'est le pouvoir permanent de la
+    // faction, elle est donc toujours visible au même endroit.
+    for (const id of player.bases) {
+      const node = this._cardNode(state, id, { mini: true });
+      node.classList.add('base-card');
+      strip.append(node);
+    }
     for (const id of player.domain) strip.append(this._cardNode(state, id, { mini: true }));
     wrap.append(strip);
     return wrap;
@@ -178,6 +219,21 @@ export class BoardView {
   _renderPlaces(state, seat) {
     const host = this.nodes.places;
     host.innerHTML = '';
+    // On ne réserve une rangée haute ou basse que si au moins un lieu y pose des
+    // cartes : les lieux restent alignés entre eux sans laisser de vide inutile.
+    const sides = RING_ORDER[state.players.length] || RING_FALLBACK;
+    const used = new Set();
+    for (const slot of state.slots) {
+      for (let k = 0; k < state.players.length; k++) {
+        const index = (seat + k) % state.players.length;
+        const where = sides[k] || RING_FALLBACK[k % RING_FALLBACK.length];
+        if (where !== 'top' && where !== 'bottom') continue;
+        if (slot.cards.some(id => state.cards[id]?.controller === index && !state.cards[id].attachedTo)) {
+          used.add(where);
+        }
+      }
+    }
+    host.dataset.rows = `${used.has('top') ? 'T' : ''}${used.has('bottom') ? 'B' : ''}`;
     let live = 0;
     for (const slot of state.slots) {
       host.append(this._placeColumn(state, slot, seat));
@@ -187,6 +243,10 @@ export class BoardView {
       `${live} actifs · ${state.expiredCount}/${state.endTarget} expirés · réserve ${state.placeDeck.length}`;
   }
 
+  /**
+   * Un lieu et les cartes qui l'entourent. Le joueur local occupe le côté bas,
+   * ses adversaires le haut, la gauche puis la droite, dans l'ordre des sièges.
+   */
   _placeColumn(state, slot, seat) {
     const col = document.createElement('div');
     col.className = 'place-col';
@@ -198,53 +258,81 @@ export class BoardView {
       col.style.setProperty('--seat', seatColor(state, holder));
     }
 
+    // Le lieu, ses camps du haut et du bas et sa ligne de contrôle forment une
+    // colonne ; les camps latéraux sont des colonnes voisines. Ainsi une pile de
+    // deux cartes sur un côté n'écarte plus le lieu de son propre camp.
+    const ring = document.createElement('div');
+    ring.className = 'ring';
+    const mid = document.createElement('div');
+    mid.className = 'ring-mid';
+
+    const centre = document.createElement('div');
+    centre.className = 'ring-center';
     const rec = placeRecord(this.catalog, slot);
     if (rec) {
       const card = renderPlace(this.catalog, rec, { duration: slot.duration });
-      card.classList.add('mini');
+      card.classList.add('zoomable');
       card.dataset.slot = String(slot.index);
-      col.append(card);
+      card.addEventListener('click', () => this.onZoom({ placeId: rec.id, slot: slot.index }));
+      centre.append(card);
     } else {
       const empty = document.createElement('div');
       empty.className = 'deck-stack';
       empty.textContent = 'Emplacement clos';
-      col.append(empty);
+      centre.append(empty);
     }
 
+    // Attribution des côtés : le siège local en bas, les autres autour.
+    const n = state.players.length;
+    const sides = RING_ORDER[n] || RING_FALLBACK;
+    const built = {};
+    for (let k = 0; k < n; k++) {
+      const index = (seat + k) % n;
+      const where = sides[k] || RING_FALLBACK[k % RING_FALLBACK.length];
+      const cards = slot.cards
+        .map(id => state.cards[id])
+        .filter(c => c && c.controller === index && !c.attachedTo);
+      const side = document.createElement('div');
+      side.className = `ring-${where} side ${where === 'left' || where === 'right' ? 'v' : 'h'}`;
+      side.style.setProperty('--seat', seatColor(state, index));
+      if (cards.length) {
+        side.classList.add('filled');
+        const total = cards.reduce(
+          (sum, c) => sum + influenceOf(state, this.catalog, c, 'control'), 0);
+        const label = document.createElement('span');
+        label.className = 'side-name';
+        label.textContent = `${state.players[index].name} · ${total}`;
+        const strip = document.createElement('div');
+        strip.className = 'side-cards';
+        for (const inst of cards) strip.append(this._cardNode(state, inst.id, { onPlace: true }));
+        side.append(label, strip);
+      }
+      built[where] = side;
+    }
+    for (const where of ['top', 'bottom', 'left', 'right']) {
+      if (!built[where]) {
+        const filler = document.createElement('div');
+        filler.className = `ring-${where} side ${where === 'left' || where === 'right' ? 'v' : 'h'}`;
+        built[where] = filler;
+      }
+    }
+
+    // L'influence de chaque camp est déjà lisible sur son intitulé de côté :
+    // cette ligne ne dit plus que qui tient le lieu.
     const meta = document.createElement('div');
     meta.className = 'place-meta';
-    const totals = state.players
-      .map(p => {
-        const v = slot.cards
-          .map(id => state.cards[id])
-          .filter(c => c && c.controller === p.index && !c.attachedTo)
-          .reduce((n, c) => n + influenceOf(state, this.catalog, c, 'control'), 0);
-        return v > 0 ? `<span style="color:${seatColor(state, p.index)}">${v}</span>` : null;
-      })
-      .filter(Boolean);
-    meta.innerHTML = holder !== null && holder !== undefined
-      ? `Contrôlé par <b>${state.players[holder].name}</b><br>${totals.join(' · ')}`
-      : (totals.length ? `Personne ne contrôle<br>${totals.join(' · ')}` : 'Aucune présence');
-    col.append(meta);
-
-    // Cartes présentes, regroupées par joueur pour lire le rapport de force.
-    const side = document.createElement('div');
-    side.className = 'place-side';
-    for (const p of state.players) {
-      const mine = slot.cards
-        .map(id => state.cards[id])
-        .filter(c => c && c.controller === p.index && !c.attachedTo);
-      if (!mine.length) continue;
-      const row = document.createElement('div');
-      row.className = 'side-row';
-      row.style.setProperty('--seat', seatColor(state, p.index));
-      const dot = document.createElement('span');
-      dot.className = 'seat-dot';
-      row.append(dot);
-      for (const inst of mine) row.append(this._cardNode(state, inst.id, { mini: true }));
-      side.append(row);
+    const present = slot.cards.some(id => state.cards[id] && !state.cards[id].attachedTo);
+    if (holder !== null && holder !== undefined) {
+      meta.innerHTML = 'Contrôlé par <b></b>';
+      meta.querySelector('b').textContent = state.players[holder].name;
+      meta.style.color = seatColor(state, holder);
+    } else {
+      meta.textContent = present ? 'Personne ne contrôle' : 'Aucune présence';
     }
-    if (side.children.length) col.append(side);
+
+    mid.append(built.top, centre, built.bottom, meta);
+    ring.append(built.left, mid, built.right);
+    col.append(ring);
     return col;
   }
 
@@ -253,11 +341,25 @@ export class BoardView {
   _renderMarket(state, seat) {
     const host = this.nodes.market;
     host.innerHTML = '';
+    // Le marché garde toujours le même nombre d'emplacements : sans cela, la
+    // colonne rétrécit puis regrandit à chaque achat et tout le plateau saute.
+    const size = Math.max(state.market.visible.length,
+      state.players.length + (state.config.marketExtra ?? 1));
+    for (let i = 0; i < size; i++) {
+      const holder = document.createElement('div');
+      holder.className = 'market-card';
+      const id = state.market.visible[i];
+      if (id) holder.append(this._cardNode(state, id, {}));
+      else holder.classList.add('empty-slot');
+      host.append(holder);
+    }
+    const holder = document.createElement('div');
+    holder.className = 'market-card';
     const deck = document.createElement('div');
     deck.className = 'deck-stack';
     deck.innerHTML = `<b>${state.market.deck.length}</b><span>deck de marché</span>`;
-    host.append(deck);
-    for (const id of state.market.visible) host.append(this._cardNode(state, id, {}));
+    holder.append(deck);
+    host.append(holder);
     this.nodes.marketTag.textContent = state.market.boughtToday
       ? 'un achat a eu lieu ce Jour'
       : 'aucun achat ce Jour — rotation à la fin du Jour';
@@ -269,18 +371,41 @@ export class BoardView {
     const host = this.nodes.hand;
     host.innerHTML = '';
     if (seat === null || seat === undefined) return;
-    for (const id of state.players[seat].hand) host.append(this._cardNode(state, id, {}));
-    if (!state.players[seat].hand.length) {
+    const me = state.players[seat];
+    for (const id of me.hand) host.append(this._cardNode(state, id, { inHand: true }));
+    if (!me.hand.length) {
       const empty = document.createElement('div');
       empty.className = 'deck-stack';
       empty.textContent = 'Main vide';
       host.append(empty);
     }
+
+    // Deck et défausse, à gauche de la main.
+    const piles = this.nodes.piles;
+    piles.innerHTML = '';
+    for (const [label, list, kind] of [['Deck', me.deck, 'deck'], ['Défausse', me.discard, 'discard']]) {
+      const pile = document.createElement('div');
+      pile.className = 'pile';
+      pile.innerHTML = `<b>${list.length}</b><span>${label}</span>`;
+      if (kind === 'discard') {
+        pile.title = 'Votre défausse — cliquez pour la parcourir';
+        pile.addEventListener('click', () => this.onZoom({ pile: 'discard', player: seat }));
+      } else {
+        pile.title = 'Votre deck — contenu visible, ordre non révélé';
+        pile.addEventListener('click', () => this.onZoom({ pile: 'deck', player: seat }));
+      }
+      piles.append(pile);
+    }
+
+    // Or et points de victoire, au-dessus du bouton « Se coucher ».
+    this.nodes.handStats.innerHTML =
+      `<span class="gold">◎ <b>${me.active}</b>${me.reserve ? ` +${me.reserve}` : ''}</span>`
+      + `<span>✦ <b>${me.vp}</b></span>`;
   }
 
   // --------------------------------------------------------------- carte
 
-  _cardNode(state, instId, { mini = false } = {}) {
+  _cardNode(state, instId, { mini = false, inHand = false, onPlace = false } = {}) {
     const inst = state.cards[instId];
     if (!inst) return document.createComment('carte absente');
     const face = faceOf(this.catalog, inst);
@@ -289,7 +414,8 @@ export class BoardView {
     const live = influenceOf(state, this.catalog, inst);
     const node = renderCard(this.catalog, face, { influence: hasInfluence(face) ? live : undefined });
     node.dataset.inst = instId;
-    if (mini) node.classList.add('mini');
+    if (mini || onPlace) node.classList.add('mini');
+    if (onPlace) node.classList.add('on-place');
     if (inst.exhausted) node.classList.add('exhausted');
     if (inst.controller !== null && inst.controller !== undefined) {
       const pip = document.createElement('span');
@@ -310,9 +436,20 @@ export class BoardView {
       if (this.targets.has(instId)) node.classList.add('targetable');
       if (this.chosen.has(instId)) node.classList.add('chosen');
     }
-    node.addEventListener('click', ev => {
-      if (this.onCardTap) this.onCardTap(instId, ev);
-    });
+    if (inHand) {
+      // En main, le clic sert à jouer : la loupe ouvre la vue détaillée.
+      const zoom = document.createElement('button');
+      zoom.className = 'zoom-btn';
+      zoom.type = 'button';
+      zoom.textContent = '⌕';
+      zoom.title = 'Agrandir la carte';
+      zoom.addEventListener('pointerdown', ev => ev.stopPropagation());
+      zoom.addEventListener('click', ev => { ev.stopPropagation(); this.onZoom({ inst: instId }); });
+      node.append(zoom);
+    } else {
+      node.classList.add('zoomable');
+      node.addEventListener('click', () => this.onZoom({ inst: instId }));
+    }
     return node;
   }
 
@@ -419,8 +556,12 @@ export class BoardView {
     board.style.transform = prev;
     if (!size.w || !size.h) return;
     // Une marge de 6 px évite qu'un arrondi rogne le bord du plateau.
-    this.scale = Math.max(0.25, Math.min(1.5,
+    const next = Math.max(0.25, Math.min(1.5,
       Math.min((wrap.width - 6) / size.w, (wrap.height - 6) / size.h)));
+    // Un écart infime ne justifie pas de redimensionner tout le plateau : sans
+    // ce seuil, la moindre carte qui bouge fait « respirer » l'ensemble.
+    if (keepAuto && Math.abs(next - this.scale) / this.scale < 0.02) return;
+    this.scale = next;
     this.offset.x = Math.max(0, (wrap.width - size.w * this.scale) / 2);
     this.offset.y = Math.max(0, (wrap.height - size.h * this.scale) / 2);
     this._apply();

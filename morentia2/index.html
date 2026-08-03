@@ -12,6 +12,8 @@
 <script src="lib/xlsx.full.min.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* `hidden` doit primer : nos classes posent des `display` plus spécifiques. */
+[hidden] { display: none !important; }
 
 :root {
   --bg: #17130f;
@@ -118,38 +120,108 @@ h1.brand {
 .tab { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
 .tab.on { background: var(--bg-3); color: var(--ink); border-color: rgba(240,230,214,.3); }
 
+/* Multijoueur : inviter d'un côté, rejoindre de l'autre. */
+.net-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+@media (max-width: 700px) { .net-split { grid-template-columns: 1fr; } }
+.net-card {
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  background: var(--bg-3); display: flex; flex-direction: column; gap: 8px;
+}
+.net-card > label { font-size: 12px; color: var(--muted); letter-spacing: .05em; }
+.net-card .hint { margin-top: 0; }
+.code-line { display: flex; gap: 8px; align-items: center; }
+.code-line code {
+  flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 20px; letter-spacing: .18em; color: var(--gold);
+  padding: 7px 10px; border: 1px dashed var(--line); border-radius: 8px;
+  background: rgba(0,0,0,.2); text-align: center; user-select: all;
+}
+.code-line input {
+  flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: rgba(0,0,0,.2); text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 18px; letter-spacing: .16em; text-transform: uppercase;
+}
+.net-card.on { border-color: rgba(229,182,79,.45); }
+#net-roster:empty { display: none; }
+#net-roster { margin-top: 12px; }
+.net-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 7px 13px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--bg-3);
+  font-size: 13px; color: var(--muted); white-space: nowrap;
+}
+.net-chip.me { color: var(--ink); border-color: rgba(240,230,214,.3); }
+.net-chip.faint { background: none; color: var(--faint); }
+.net-chip b { color: var(--gold); font-weight: 600; }
+
 /* ------------------------------- Table ------------------------------ */
 
 #table { background: var(--bg); }
 
+/* Bandeau d'une seule pièce : chaque joueur occupe une cellule pleine hauteur,
+   sans cadre ni marge intérieure qui donneraient l'impression de sous-cartes. */
 .hud {
-  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
-  border-bottom: 1px solid var(--line); background: rgba(23,19,15,.95);
-  backdrop-filter: blur(8px); z-index: 6; flex-wrap: wrap;
-  padding-top: max(7px, env(safe-area-inset-top));
+  display: flex; align-items: stretch; height: 46px; flex: none;
+  border-bottom: 1px solid var(--line); background: rgba(23,19,15,.97);
+  backdrop-filter: blur(8px); z-index: 6;
+  padding-top: env(safe-area-inset-top);
 }
 .phase-chip {
-  padding: 4px 12px; border-radius: 999px; background: var(--bg-3);
-  border: 1px solid var(--line); font-size: 13px; white-space: nowrap;
+  display: flex; align-items: center; padding: 0 16px; font-size: 13px;
+  white-space: nowrap; background: var(--bg-3); border-right: 1px solid var(--line);
 }
 .phase-chip b { color: var(--gold); font-weight: 600; }
-.hud-players { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; }
+.hud-players { display: flex; flex: 1; min-width: 0; overflow-x: auto; }
 .hud-player {
-  display: flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 8px;
-  border: 1px solid var(--line); font-size: 12.5px; white-space: nowrap;
-  border-left: 3px solid var(--seat, var(--market));
+  display: flex; align-items: center; gap: 8px; padding: 0 14px;
+  font-size: 12.5px; white-space: nowrap; flex: none;
+  border-right: 1px solid var(--line);
+  border-left: 4px solid var(--seat, var(--market));
 }
-.hud-player.active { background: var(--bg-3); }
-.hud-player.you { box-shadow: inset 0 0 0 1px rgba(229,182,79,.35); }
+.hud-player.active { background: color-mix(in srgb, var(--seat) 20%, transparent); }
+.hud-player.you .nm { color: var(--gold); }
 .hud-player .nm { font-weight: 600; }
 .hud-player .st { color: var(--muted); }
 .hud-player .st b { color: var(--ink); font-weight: 600; }
-.hud-actions { display: flex; gap: 6px; }
+.hud-actions { display: flex; align-items: stretch; }
+.hud-actions .btn {
+  border: 0; border-left: 1px solid var(--line); border-radius: 0;
+  background: none; padding: 0 14px;
+}
 
 .board-wrap { position: relative; flex: 1; overflow: hidden; touch-action: none; }
 .board {
   position: absolute; top: 0; left: 0; transform-origin: 0 0;
-  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+  padding: 16px; display: flex; align-items: flex-start; gap: 14px;
+}
+.board-main { display: flex; flex-direction: column; gap: 14px; }
+
+/* Le marché tient sur le côté, cartes empilées verticalement. */
+.market-zone { flex: none; }
+.market-col { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+/*
+ * Les cartes du marché sont couchées d'un quart de tour, sommet vers la gauche :
+ * une colonne verticale de cartes debout serait démesurément haute. Le cadre
+ * échange largeur et hauteur, la carte tourne à l'intérieur.
+ */
+.market-card {
+  --card-w: 168px;
+  position: relative; flex: none;
+  width: calc(var(--card-w) * var(--card-ratio));
+  height: var(--card-w);
+}
+.market-card > .card {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(-90deg);
+}
+.market-card > .card.selectable:hover { transform: translate(-50%, -50%) rotate(-90deg) scale(1.04); }
+.market-card.empty-slot {
+  border: 1px dashed var(--line); border-radius: var(--card-radius); opacity: .35;
+}
+.market-card > .deck-stack {
+  position: absolute; top: 50%; left: 50%;
+  width: var(--card-w); height: calc(var(--card-w) * var(--card-ratio));
+  transform: translate(-50%, -50%) rotate(-90deg);
 }
 
 .zone {
@@ -162,26 +234,39 @@ h1.brand {
 }
 .zone-head .tag { color: var(--faint); letter-spacing: .04em; text-transform: none; font-size: 12px; }
 
-.bottom-row { display: flex; gap: 14px; align-items: flex-start; }
-.bottom-row > .zone { flex: 1 1 auto; }
-.domains { display: flex; gap: 12px; flex-wrap: wrap; }
+.domains { display: flex; gap: 12px; align-items: stretch; }
 .domain {
-  flex: 1 1 320px; min-width: 300px; border-radius: 14px; padding: 10px 12px 12px;
-  border: 1px solid var(--line); border-top: 3px solid var(--seat, var(--market));
+  position: relative; flex: 1 1 0; min-width: 0; border-radius: 14px;
+  padding: 14px 12px 10px;
+  border: 1px solid var(--seat, var(--line));
   background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.14));
 }
-.domain.you { box-shadow: 0 0 0 1px rgba(229,182,79,.28); }
-.domain-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-.domain-head .who { font-weight: 600; font-size: 14px; }
+/* Le domaine du joueur qui agit est entièrement cerné de sa couleur. */
+.domain.acting {
+  border-color: var(--seat);
+  box-shadow: 0 0 0 2px var(--seat), 0 0 22px -4px var(--seat);
+}
+.domain .card { --card-w: 118px; }
+/* Le nom chevauche le contour, à la manière d'une légende : une ligne de moins. */
+.domain .who {
+  position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
+  padding: 0 12px; background: var(--bg); color: var(--seat);
+  font-weight: 600; font-size: 13px; letter-spacing: .04em; white-space: nowrap;
+}
+.domain-head {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+}
+.domain-head::-webkit-scrollbar { display: none; }
 .domain-head .chip {
-  font-size: 11.5px; padding: 2px 8px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--muted);
+  font-size: 11px; padding: 1px 7px; border-radius: 999px; flex: none;
+  border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
 }
 .domain-head .chip b { color: var(--ink); }
 .slot-row { display: flex; gap: 12px; align-items: flex-start; }
 
 .card-strip {
-  display: flex; gap: 7px; flex-wrap: wrap; min-height: 54px;
+  display: flex; gap: 7px; flex-wrap: wrap; min-height: 30px;
   align-content: flex-start;
 }
 .card-strip.drop-ok { outline: 2px dashed var(--gold); outline-offset: 4px; border-radius: 10px; }
@@ -190,26 +275,63 @@ h1.brand {
   align-self: center; padding: 12px 4px;
 }
 
-.places { display: flex; gap: 12px; align-items: flex-start; }
+.places-zone { border: 0; background: none; padding: 0; }
+.places { display: flex; gap: 22px; align-items: flex-start; }
+/* Aucun cadre autour d'un lieu : les cartes de chaque camp le délimitent déjà. */
 .place-col {
-  display: flex; flex-direction: column; gap: 8px; align-items: center;
-  padding: 9px; border-radius: 14px; border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.16));
-  min-width: calc(var(--card-w) + 24px);
+  display: flex; flex-direction: column; gap: 7px; align-items: center;
+  padding: 4px; border-radius: 14px;
 }
-.place-col.controlled { border-color: var(--seat, var(--gold)); box-shadow: 0 0 0 1px var(--seat, var(--gold)) inset; }
+.place-col.controlled .place-card { box-shadow: 0 0 0 3px var(--seat, var(--gold)), var(--shadow); }
 .place-col.drop-ok { outline: 2px dashed var(--gold); outline-offset: 3px; }
-.place-col .place-meta { font-size: 11.5px; color: var(--muted); text-align: center; line-height: 1.45; }
-.place-col .place-meta b { color: var(--ink); }
-.place-stack { display: flex; flex-direction: column; gap: 6px; align-items: center; width: 100%; }
-.place-side {
-  display: flex; flex-direction: column; gap: 5px; width: 100%;
-  padding-top: 6px; border-top: 1px dashed var(--line);
+.ring-mid .place-meta {
+  font-size: 11.5px; color: var(--muted); text-align: center; line-height: 1.45;
+  max-width: calc(var(--card-w) * 1.5);
 }
-.side-row { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
-.side-row .seat-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--seat); flex: none; align-self: center; }
+.place-col .place-meta b { color: var(--ink); }
 
-.market-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+/*
+ * Chaque camp occupe un côté du lieu : le joueur au bas, ses adversaires
+ * au-dessus, à gauche et à droite. On lit d'un coup d'œil à qui appartient
+ * quoi, sans avoir à suivre une pastille de couleur.
+ *
+ * Le lieu, les camps du haut et du bas et la ligne de contrôle forment une
+ * colonne ; les camps latéraux sont des colonnes voisines qui peuvent
+ * s'allonger sans écarter le lieu de son propre camp.
+ */
+:root { --ring-h: 176px; }
+.ring { display: flex; align-items: flex-start; gap: 8px; }
+.ring-mid { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+
+/*
+ * Les rangées haute et basse ne sont réservées que si un lieu au moins y pose
+ * des cartes : les lieux restent alignés entre eux sans laisser de vide.
+ * Les camps latéraux descendent d'autant pour rester à hauteur du lieu.
+ */
+.places[data-rows="T"] .ring-top,
+.places[data-rows="TB"] .ring-top { min-height: var(--ring-h); justify-content: flex-end; }
+.places[data-rows="B"] .ring-bottom,
+.places[data-rows="TB"] .ring-bottom { min-height: var(--ring-h); }
+.places[data-rows="T"] .ring-left, .places[data-rows="T"] .ring-right,
+.places[data-rows="TB"] .ring-left, .places[data-rows="TB"] .ring-right {
+  margin-top: calc(var(--ring-h) + 6px);
+}
+/* La carte-lieu reste large : son effet et son effet de contrôle sont les
+   informations les plus consultées de la table. */
+.ring-center .place-card { --card-w: 158px; }
+.ring-center .place-card .card-art { height: 26%; }
+.ring-center .place-card .card-text { font-size: calc(var(--text-size) * .92cqw); }
+.side { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: none; }
+.side-cards { display: flex; gap: 5px; }
+.side.h .side-cards { flex-direction: row; flex-wrap: wrap; justify-content: center; max-width: calc(var(--card-w) * 3.6); }
+.side.v .side-cards { flex-direction: column; flex-wrap: wrap; max-height: 312px; }
+/* Le nom du camp est toujours écrit à l'horizontale, au-dessus de ses cartes. */
+.side .side-name {
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--seat); white-space: nowrap; font-weight: 600;
+}
+
+
 .deck-stack {
   width: var(--card-w); height: calc(var(--card-w) * var(--card-ratio));
   border-radius: var(--card-radius); border: 1px dashed var(--line);
@@ -224,11 +346,48 @@ h1.brand {
   border-top: 1px solid var(--line); background: rgba(23,19,15,.96);
   backdrop-filter: blur(8px); padding: 8px 10px;
   padding-bottom: max(8px, env(safe-area-inset-bottom));
-  display: flex; align-items: flex-end; gap: 10px; z-index: 5;
+  display: flex; align-items: flex-end; gap: 12px; z-index: 5;
 }
-.hand-scroll { display: flex; gap: 7px; overflow-x: auto; overflow-y: hidden; padding: 2px; flex: 1; }
+/* La main est centrée : les piles à gauche et les commandes à droite ont la
+   même largeur réservée, quel que soit le nombre de cartes. */
+.hand-piles, .hand-side { flex: 0 0 268px; }
+.hand-piles { display: flex; gap: 8px; align-items: flex-end; }
+.hand-scroll {
+  display: flex; gap: 7px; overflow-x: auto; overflow-y: hidden;
+  padding: 2px; flex: 1; justify-content: center;
+}
 .hand-scroll .card { flex: none; --card-w: 124px; }
 .hand-side { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.hand-stats {
+  display: flex; gap: 6px; justify-content: center; font-size: 13px;
+  padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2);
+}
+.hand-stats span { white-space: nowrap; color: var(--muted); }
+.hand-stats b { color: var(--ink); }
+.hand-stats .gold b { color: var(--gold); }
+
+/* Pendant que la partie se résout, le bouton dit ce qui se passe. */
+.btn.waiting {
+  background: var(--bg-3); color: var(--muted); border-color: var(--line);
+  cursor: progress; opacity: 1;
+}
+.btn.waiting::before {
+  content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 7px;
+  border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%;
+  vertical-align: -1px; animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.pile {
+  width: 124px; height: calc(124px * var(--card-ratio)); border-radius: var(--card-radius);
+  border: 1px dashed var(--line); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px; cursor: pointer;
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.2));
+  font-size: 11px; color: var(--faint); text-align: center; flex: none;
+}
+.pile:hover { border-color: var(--gold); color: var(--muted); }
+.pile b { font-size: 26px; color: var(--muted); }
+.pile span { font-size: 12px; }
 
 /* ============================== Cartes ============================== */
 
@@ -264,7 +423,8 @@ h1.brand {
 }
 .card-name {
   flex: 1; font-size: calc(var(--title-size) * 1cqw); line-height: 1.14; font-weight: 600;
-  letter-spacing: .01em; word-break: break-word; text-shadow: 0 1px 2px rgba(0,0,0,.55);
+  letter-spacing: .01em; overflow-wrap: break-word; hyphens: auto;
+  text-shadow: 0 1px 2px rgba(0,0,0,.55);
 }
 .card-stats { display: flex; align-items: flex-start; gap: 3px; flex: none; }
 .stat {
@@ -292,6 +452,12 @@ h1.brand {
   opacity: var(--art-opacity); flex: none;
   border-block: 1px solid rgba(255,255,255,.10);
 }
+.place-stats {
+  display: flex; flex-wrap: wrap; gap: 0 1.2em; padding: 0 5cqw 1cqw;
+  font-size: calc(var(--text-size) * .88cqw);
+  color: color-mix(in srgb, var(--card-ink) 62%, transparent);
+}
+.place-stats b { color: var(--card-ink); font-weight: 700; }
 .card-type {
   padding: 2.5cqw 5cqw .5cqw; font-size: calc(var(--text-size) * .95cqw); letter-spacing: .02em;
   color: color-mix(in srgb, var(--card-ink) 68%, transparent); font-style: italic;
@@ -310,18 +476,40 @@ h1.brand {
 }
 .back-mark { font-family: var(--card-font); font-size: 13px; color: rgba(0,0,0,.5); }
 
+.card.base-card { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent), var(--shadow); }
+
 .card .owner-pip {
   position: absolute; bottom: 4px; left: 4px; width: 10px; height: 10px;
   border-radius: 50%; background: var(--seat);
   border: 1px solid rgba(0,0,0,.55); box-shadow: 0 0 0 1px rgba(255,255,255,.25);
 }
+.card .zoom-btn {
+  position: absolute; bottom: 3px; right: 3px; width: 22px; height: 22px;
+  border-radius: 6px; background: rgba(0,0,0,.55); color: #fff;
+  display: grid; place-items: center; font-size: 12px; font-family: var(--ui);
+  border: 1px solid rgba(255,255,255,.22); z-index: 2; cursor: zoom-in;
+}
+.card .zoom-btn:hover { background: var(--gold); color: #2a1f0c; }
+.card.zoomable { cursor: zoom-in; }
+
+.zoom-overlay { z-index: 45; cursor: zoom-out; }
+.zoom-overlay .card { --card-w: min(360px, 78vw); box-shadow: 0 30px 70px rgba(0,0,0,.75); }
+.zoom-overlay #zoom-card.zoom-pile {
+  width: min(940px, 94vw); max-height: 86vh; overflow-y: auto; cursor: default;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 16px; padding: 18px;
+}
+.zoom-overlay #zoom-card.zoom-pile h3 { margin-bottom: 12px; font-size: 16px; }
+.zoom-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.zoom-grid .card { --card-w: 132px; box-shadow: var(--shadow); }
+
 .card .attach-count {
-  position: absolute; bottom: 4px; right: 4px; font-size: 10px; padding: 1px 6px;
+  position: absolute; top: 4px; right: 4px; font-size: 10px; padding: 1px 6px;
   border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; font-family: var(--ui);
 }
 
 /* Cartes réduites sur le plateau : le texte cède la place à l'illustration. */
-.card.mini { --card-w: 84px; }
+.card.mini { --card-w: 118px; }
+.card.on-place { --card-w: 108px; }
 .card.mini .card-art { height: 42%; }
 .card.mini .card-text { display: none; }
 .card.mini .card-type { font-size: calc(var(--text-size) * 1.15cqw); padding-bottom: 3cqw; }
@@ -343,6 +531,7 @@ h1.brand {
 .dialog .who-asks { font-size: 12.5px; color: var(--gold); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 10px; }
 .dialog .choices { display: flex; gap: 9px; flex-wrap: wrap; margin: 14px 0 6px; }
 .dialog .choice-cards { display: flex; gap: 9px; flex-wrap: wrap; margin: 14px 0 6px; }
+.dialog .choice-cards.preview .card { --card-w: 138px; cursor: default; }
 .dialog footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 
 /* Bandeau de phase pendant la résolution animée. */
@@ -390,6 +579,7 @@ h1.brand {
   position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 6px; z-index: 4;
 }
 .zoom-tools .btn { width: 38px; height: 38px; display: grid; place-items: center; padding: 0; font-size: 17px; }
+.zoom-tools .btn#btn-fit { font-size: 15px; }
 
 /* ============================== Studio ============================== */
 
@@ -451,8 +641,7 @@ h1.brand {
       <div class="tabs" id="mode-tabs">
         <button class="tab on" data-mode="solo">Solo contre l’IA</button>
         <button class="tab" data-mode="local">Chacun son tour</button>
-        <button class="tab" data-mode="host">Héberger en ligne</button>
-        <button class="tab" data-mode="join">Rejoindre</button>
+        <button class="tab" data-mode="online">Multijoueur</button>
       </div>
 
       <div id="mode-solo" class="mode-pane">
@@ -475,28 +664,36 @@ h1.brand {
         <p class="hint">Tous les joueurs partagent le même écran. Les mains sont masquées entre les tours.</p>
       </div>
 
-      <div id="mode-host" class="mode-pane" hidden>
+      <div id="mode-online" class="mode-pane" hidden>
         <div class="row">
-          <div class="field"><label>Votre nom</label><input id="host-name" value="Hôte"></div>
-          <div class="field"><label>Votre faction</label><select id="host-faction"></select></div>
-          <div class="field"><label>Code du salon</label><input id="host-code" placeholder="morentia"></div>
+          <div class="field"><label>Votre nom</label><input id="net-name" value="Joueur"></div>
+          <div class="field"><label>Votre faction</label><select id="net-faction"></select></div>
         </div>
-        <div class="row" id="host-roster"></div>
-        <p class="hint">Votre navigateur héberge la partie : il détient le seul état de référence et
-          transmet les événements aux autres joueurs par WebRTC. Aucun serveur de jeu.</p>
-      </div>
-
-      <div id="mode-join" class="mode-pane" hidden>
-        <div class="row">
-          <div class="field"><label>Votre nom</label><input id="join-name" value="Invité"></div>
-          <div class="field"><label>Votre faction</label><select id="join-faction"></select></div>
-          <div class="field"><label>Code du salon</label><input id="join-code" placeholder="morentia"></div>
+        <div class="net-split">
+          <div class="net-card">
+            <label>Inviter — partagez votre code</label>
+            <div class="code-line">
+              <code id="net-my-code">······</code>
+              <button class="btn small" id="net-copy">Copier</button>
+            </div>
+            <p class="hint">Vos amis saisissent ce code pour vous rejoindre. C’est vous qui lancez la partie.</p>
+          </div>
+          <div class="net-card">
+            <label>Rejoindre — saisissez un code</label>
+            <div class="code-line">
+              <input id="net-join-code" placeholder="ABC123" maxlength="12" autocomplete="off"
+                     spellcheck="false" autocapitalize="characters">
+              <button class="btn small" id="net-join">Rejoindre</button>
+            </div>
+            <p class="hint" id="net-join-hint">Vous attendrez que l’hôte lance la partie.</p>
+          </div>
         </div>
-        <div class="row" id="join-roster"></div>
+        <div class="row" id="net-roster"></div>
       </div>
 
       <div class="row" style="margin-top:16px">
         <button class="btn primary" id="start-game">Commencer</button>
+        <span class="net-chip" id="start-waiting" hidden>En attente du lancement par l’hôte…</span>
         <button class="btn ghost" id="open-settings">Réglages</button>
       </div>
     </div>
@@ -530,8 +727,6 @@ h1.brand {
     <div class="phase-chip" id="phase-chip">Jour <b>1</b> · Aube</div>
     <div class="hud-players" id="hud-players"></div>
     <div class="hud-actions">
-      <button class="btn small" id="btn-speed" title="Vitesse de résolution">Vitesse ×1</button>
-      <button class="btn small" id="btn-fit" title="Ajuster à l’écran">Ajuster</button>
       <button class="btn small" id="btn-log">Journal</button>
       <button class="btn small ghost" id="btn-quit">Quitter</button>
     </div>
@@ -539,38 +734,35 @@ h1.brand {
 
   <div class="board-wrap" id="board-wrap">
     <div class="board" id="board">
-      <div class="zone" id="zone-opponents">
-        <div class="zone-head">Domaines adverses</div>
+      <aside class="zone market-zone">
+        <div class="zone-head">Marché <span class="tag" id="market-tag"></span></div>
+        <div class="market-col" id="market"></div>
+      </aside>
+
+      <div class="board-main">
         <div class="domains" id="opponent-domains"></div>
-      </div>
 
-      <div class="zone">
-        <div class="zone-head">Lieux <span class="tag" id="places-tag"></span></div>
-        <div class="places" id="places"></div>
-      </div>
-
-      <div class="bottom-row">
-        <div class="zone">
-          <div class="zone-head">Marché <span class="tag" id="market-tag"></span></div>
-          <div class="market-row" id="market"></div>
+        <div class="zone places-zone">
+          <div class="zone-head">Lieux <span class="tag" id="places-tag"></span></div>
+          <div class="places" id="places"></div>
         </div>
 
-        <div class="zone" id="zone-mine">
-          <div class="zone-head">Votre domaine</div>
-          <div class="domains" id="my-domain"></div>
-        </div>
+        <div class="domains" id="my-domain"></div>
       </div>
     </div>
 
     <div class="zoom-tools">
       <button class="btn" id="zoom-in" title="Agrandir">+</button>
       <button class="btn" id="zoom-out" title="Réduire">−</button>
+      <button class="btn" id="btn-fit" title="Ajuster à l’écran" aria-label="Ajuster à l’écran">⛶</button>
     </div>
   </div>
 
   <div class="hand-bar">
+    <div class="hand-piles" id="hand-piles"></div>
     <div class="hand-scroll" id="hand"></div>
     <div class="hand-side">
+      <div class="hand-stats" id="hand-stats"></div>
       <button class="btn primary small" id="btn-pass" disabled>Se coucher</button>
       <button class="btn small" id="btn-order" hidden>Ordre</button>
     </div>
@@ -609,6 +801,7 @@ h1.brand {
 
 <!-- =========================== Dialogues =========================== -->
 <div class="overlay" id="overlay"><div class="dialog" id="dialog"></div></div>
+<div class="overlay zoom-overlay" id="zoom-overlay"><div id="zoom-card"></div></div>
 <div class="phase-banner" id="phase-banner"></div>
 <div class="toast" id="toast"></div>
 <div class="log-panel" id="log-panel">

@@ -61,8 +61,14 @@ export function* setupGame(engine) {
   for (const p of state.players) yield* engine.draw(p.index, cfg.startingHand);
   if (cfg.mulligans > 0) {
     for (const p of state.players) {
-      const keep = yield engine.ctx(null, { player: p.index }).confirm(
-        p.index, 'Gardez-vous votre main de départ ?');
+      // Mulligan de la feuille « À lire » : une seule refonte gratuite de la
+      // main de départ. On montre les cartes concernées avec la question.
+      const keep = yield {
+        ...engine.ctx(null, { player: p.index }).confirm(
+          p.index,
+          'Mulligan — vous pouvez refaire votre main de départ une fois. Gardez-vous ces cartes ?'),
+        preview: p.hand.slice(),
+      };
       if (keep === false) {
         const hand = p.hand.slice();
         for (const id of hand) {

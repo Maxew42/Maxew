@@ -179,6 +179,12 @@ export class Net {
     };
   }
 
+  /** Change son nom ou sa faction sans rouvrir la connexion. */
+  setProfile(profile) {
+    this.me = profile;
+    this.announce();
+  }
+
   announce() { this._fire('hi', { ...this.me, isHost: this.claimHost }); }
   start(cfg) { this._fire('start', cfg); }
   /** Les événements partent en lots : un message par résolution, pas par carte. */
