@@ -1,0 +1,11 @@
+{
+  "name": "morentia2",
+  "private": true,
+  "type": "module",
+  "description": "Table de test numérique pour Morentia — site statique, sans étape de build.",
+  "scripts": {
+    "catalog": "node tools/build-catalog.mjs",
+    "harness": "node tools/harness.mjs",
+    "serve": "python3 -m http.server 4174"
+  }
+}

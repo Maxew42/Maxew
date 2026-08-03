@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#17130f">
+<meta name="description" content="Morentia — table de test numérique : influence, lieux et marché, en solo contre l'IA ou entre amis en pair-à-pair.">
+<title>Morentia</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<script src="lib/xlsx.full.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --bg: #17130f;
+  --bg-2: #221b15;
+  --bg-3: #2c231b;
+  --ink: #f0e6d6;
+  --muted: #a2937d;
+  --faint: #6d6152;
+  --line: rgba(240, 230, 214, .13);
+  --gold: #e5b64f;
+  --danger: #c1483c;
+  --ok: #67a86d;
+  --card-font: Georgia, "Times New Roman", serif;
+  --card-radius: 15px;
+  --card-ink: #f2e9dc;
+  --card-paper: #1c1712;
+  --art-opacity: .72;
+  --title-size: 7.2;      /* en cqw : pourcentage de la largeur de carte */
+  --text-size: 5.4;
+  --frame-width: 2px;
+  --kalassir: #a54843;
+  --aqaba: #c38b3e;
+  --algarie: #598664;
+  --market: #6e6a85;
+  --ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --card-w: 116px;
+  --card-ratio: 1.4;      /* hauteur / largeur */
+  --shadow: 0 8px 26px rgba(0, 0, 0, .55);
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; }
+
+.btn {
+  padding: 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-2);
+  color: var(--ink);
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.btn:hover { background: var(--bg-3); border-color: rgba(240,230,214,.28); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--gold); color: #2a1f0c; border-color: transparent; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+
+/* ============================== Écrans ============================== */
+
+.screen { position: fixed; inset: 0; display: none; flex-direction: column; }
+.screen.on { display: flex; }
+
+/* ------------------------------- Accueil ---------------------------- */
+
+#home {
+  overflow-y: auto;
+  align-items: center;
+  padding: clamp(24px, 5vh, 60px) 20px 60px;
+  background:
+    radial-gradient(900px 520px at 50% -10%, rgba(229,182,79,.10), transparent 70%),
+    var(--bg);
+}
+.home-inner { width: min(880px, 100%); }
+h1.brand {
+  font-family: var(--card-font);
+  font-size: clamp(40px, 9vw, 68px);
+  letter-spacing: .03em;
+  text-align: center;
+  background: linear-gradient(180deg, #fbf3e4, #b49a70);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.brand-sub { text-align: center; color: var(--muted); margin-top: 10px; font-size: 15px; }
+.panel {
+  margin-top: 26px; padding: 20px; border: 1px solid var(--line);
+  border-radius: 14px; background: var(--bg-2);
+}
+.panel h2 { font-size: 15px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; font-weight: 600; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.row + .row { margin-top: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 12px; color: var(--muted); letter-spacing: .05em; }
+.field input, .field select {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-3); min-width: 120px;
+}
+.seats { display: flex; flex-direction: column; gap: 8px; }
+.seat { display: grid; grid-template-columns: 1fr 140px 130px auto; gap: 8px; align-items: center; }
+.seat input, .seat select { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-3); width: 100%; }
+.hint { color: var(--faint); font-size: 13px; line-height: 1.5; margin-top: 10px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.tab { padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.tab.on { background: var(--bg-3); color: var(--ink); border-color: rgba(240,230,214,.3); }
+
+/* ------------------------------- Table ------------------------------ */
+
+#table { background: var(--bg); }
+
+.hud {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+  border-bottom: 1px solid var(--line); background: rgba(23,19,15,.95);
+  backdrop-filter: blur(8px); z-index: 6; flex-wrap: wrap;
+  padding-top: max(7px, env(safe-area-inset-top));
+}
+.phase-chip {
+  padding: 4px 12px; border-radius: 999px; background: var(--bg-3);
+  border: 1px solid var(--line); font-size: 13px; white-space: nowrap;
+}
+.phase-chip b { color: var(--gold); font-weight: 600; }
+.hud-players { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; }
+.hud-player {
+  display: flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 8px;
+  border: 1px solid var(--line); font-size: 12.5px; white-space: nowrap;
+  border-left: 3px solid var(--seat, var(--market));
+}
+.hud-player.active { background: var(--bg-3); }
+.hud-player.you { box-shadow: inset 0 0 0 1px rgba(229,182,79,.35); }
+.hud-player .nm { font-weight: 600; }
+.hud-player .st { color: var(--muted); }
+.hud-player .st b { color: var(--ink); font-weight: 600; }
+.hud-actions { display: flex; gap: 6px; }
+
+.board-wrap { position: relative; flex: 1; overflow: hidden; touch-action: none; }
+.board {
+  position: absolute; top: 0; left: 0; transform-origin: 0 0;
+  padding: 16px; display: flex; flex-direction: column; gap: 14px;
+}
+
+.zone {
+  border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,.028), rgba(0,0,0,.12));
+}
+.zone-head {
+  display: flex; align-items: baseline; gap: 9px; margin-bottom: 8px;
+  font-size: 12px; letter-spacing: .11em; text-transform: uppercase; color: var(--muted);
+}
+.zone-head .tag { color: var(--faint); letter-spacing: .04em; text-transform: none; font-size: 12px; }
+
+.bottom-row { display: flex; gap: 14px; align-items: flex-start; }
+.bottom-row > .zone { flex: 1 1 auto; }
+.domains { display: flex; gap: 12px; flex-wrap: wrap; }
+.domain {
+  flex: 1 1 320px; min-width: 300px; border-radius: 14px; padding: 10px 12px 12px;
+  border: 1px solid var(--line); border-top: 3px solid var(--seat, var(--market));
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.14));
+}
+.domain.you { box-shadow: 0 0 0 1px rgba(229,182,79,.28); }
+.domain-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.domain-head .who { font-weight: 600; font-size: 14px; }
+.domain-head .chip {
+  font-size: 11.5px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.domain-head .chip b { color: var(--ink); }
+.slot-row { display: flex; gap: 12px; align-items: flex-start; }
+
+.card-strip {
+  display: flex; gap: 7px; flex-wrap: wrap; min-height: 54px;
+  align-content: flex-start;
+}
+.card-strip.drop-ok { outline: 2px dashed var(--gold); outline-offset: 4px; border-radius: 10px; }
+.card-strip.empty::after {
+  content: attr(data-empty); color: var(--faint); font-size: 12px; font-style: italic;
+  align-self: center; padding: 12px 4px;
+}
+
+.places { display: flex; gap: 12px; align-items: flex-start; }
+.place-col {
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
+  padding: 9px; border-radius: 14px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.16));
+  min-width: calc(var(--card-w) + 24px);
+}
+.place-col.controlled { border-color: var(--seat, var(--gold)); box-shadow: 0 0 0 1px var(--seat, var(--gold)) inset; }
+.place-col.drop-ok { outline: 2px dashed var(--gold); outline-offset: 3px; }
+.place-col .place-meta { font-size: 11.5px; color: var(--muted); text-align: center; line-height: 1.45; }
+.place-col .place-meta b { color: var(--ink); }
+.place-stack { display: flex; flex-direction: column; gap: 6px; align-items: center; width: 100%; }
+.place-side {
+  display: flex; flex-direction: column; gap: 5px; width: 100%;
+  padding-top: 6px; border-top: 1px dashed var(--line);
+}
+.side-row { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; }
+.side-row .seat-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--seat); flex: none; align-self: center; }
+
+.market-row { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.deck-stack {
+  width: var(--card-w); height: calc(var(--card-w) * var(--card-ratio));
+  border-radius: var(--card-radius); border: 1px dashed var(--line);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: var(--faint); font-size: 12px; gap: 3px; text-align: center; flex: none;
+}
+.deck-stack b { color: var(--muted); font-size: 17px; }
+
+/* -------------------------- Main du joueur -------------------------- */
+
+.hand-bar {
+  border-top: 1px solid var(--line); background: rgba(23,19,15,.96);
+  backdrop-filter: blur(8px); padding: 8px 10px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  display: flex; align-items: flex-end; gap: 10px; z-index: 5;
+}
+.hand-scroll { display: flex; gap: 7px; overflow-x: auto; overflow-y: hidden; padding: 2px; flex: 1; }
+.hand-scroll .card { flex: none; --card-w: 124px; }
+.hand-side { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+
+/* ============================== Cartes ============================== */
+
+.card {
+  container-type: inline-size;
+  position: relative; width: var(--card-w); height: calc(var(--card-w) * var(--card-ratio));
+  border-radius: var(--card-radius); overflow: hidden; flex: none;
+  background: var(--card-paper); color: var(--card-ink);
+  font-family: var(--card-font);
+  border: var(--frame-width) solid var(--accent, var(--market));
+  box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
+  transition: transform .16s, box-shadow .16s, opacity .16s;
+  user-select: none;
+}
+.card.light { --card-ink: #241d15; --card-paper: #efe4d0; }
+.card.selectable { cursor: grab; }
+.card.selectable:hover { transform: translateY(-5px); box-shadow: 0 14px 34px rgba(0,0,0,.62); z-index: 3; }
+.card.dragging { opacity: .35; }
+.card.exhausted { filter: saturate(.5) brightness(.72); }
+.card.exhausted::after {
+  content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(
+    -45deg, transparent 0 7px, rgba(0,0,0,.22) 7px 14px);
+  pointer-events: none;
+}
+.card.targetable { outline: 3px solid var(--gold); outline-offset: 2px; cursor: pointer; animation: pulse 1.4s infinite; }
+.card.chosen { outline: 3px solid var(--ok); outline-offset: 2px; }
+@keyframes pulse { 50% { outline-color: rgba(229,182,79,.35); } }
+
+.card-top {
+  display: flex; align-items: flex-start; gap: 4px; padding: 5% 5% 3%;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 55%, transparent), transparent);
+}
+.card-name {
+  flex: 1; font-size: calc(var(--title-size) * 1cqw); line-height: 1.14; font-weight: 600;
+  letter-spacing: .01em; word-break: break-word; text-shadow: 0 1px 2px rgba(0,0,0,.55);
+}
+.card-stats { display: flex; align-items: flex-start; gap: 3px; flex: none; }
+.stat {
+  display: grid; place-items: center; min-width: 15cqw; aspect-ratio: 1;
+  border-radius: 50%; background: var(--card-ink); color: var(--card-paper);
+  font-size: calc(var(--title-size) * 1.05cqw); font-weight: 700; line-height: 1;
+}
+.stat.influence.boosted { background: var(--ok); color: #0d1a0e; }
+.stat.influence.weakened { background: var(--danger); color: #fff; }
+.stat.duration { background: var(--accent); color: var(--card-ink); }
+/* Les deux prix sont empilés : la ligne de titre garde sa largeur. */
+.prices { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.price {
+  display: grid; place-items: center; min-width: 13cqw; padding: 1.6cqw 2cqw;
+  border-radius: 4px; font-size: calc(var(--text-size) * 1.1cqw); font-weight: 700;
+  background: rgba(0,0,0,.44); border: 1px solid rgba(255,255,255,.18); line-height: 1;
+}
+.card.light .price { background: rgba(255,255,255,.5); border-color: rgba(0,0,0,.2); }
+.price.loc { background: var(--accent); border-color: transparent; color: #14100c; }
+.price.once { background: var(--gold); border-color: transparent; color: #2a1f0c; }
+.price.vp { font-size: calc(var(--text-size) * .8cqw); }
+
+.card-art {
+  height: 34%; background-size: cover; background-position: center;
+  opacity: var(--art-opacity); flex: none;
+  border-block: 1px solid rgba(255,255,255,.10);
+}
+.card-type {
+  padding: 2.5cqw 5cqw .5cqw; font-size: calc(var(--text-size) * .95cqw); letter-spacing: .02em;
+  color: color-mix(in srgb, var(--card-ink) 68%, transparent); font-style: italic;
+}
+.card-text {
+  flex: 1; padding: 1cqw 5cqw 4cqw; font-size: calc(var(--text-size) * 1cqw); line-height: 1.26;
+  overflow: hidden; display: flex; flex-direction: column; gap: .35em;
+}
+.card-text p.labelled em { color: var(--accent); font-style: normal; font-weight: 700; }
+
+.card-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.045) 0 6px, transparent 6px 12px),
+    var(--accent);
+  display: grid; place-items: center;
+}
+.back-mark { font-family: var(--card-font); font-size: 13px; color: rgba(0,0,0,.5); }
+
+.card .owner-pip {
+  position: absolute; bottom: 4px; left: 4px; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--seat);
+  border: 1px solid rgba(0,0,0,.55); box-shadow: 0 0 0 1px rgba(255,255,255,.25);
+}
+.card .attach-count {
+  position: absolute; bottom: 4px; right: 4px; font-size: 10px; padding: 1px 6px;
+  border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; font-family: var(--ui);
+}
+
+/* Cartes réduites sur le plateau : le texte cède la place à l'illustration. */
+.card.mini { --card-w: 84px; }
+.card.mini .card-art { height: 42%; }
+.card.mini .card-text { display: none; }
+.card.mini .card-type { font-size: calc(var(--text-size) * 1.15cqw); padding-bottom: 3cqw; }
+
+/* ============================== Dialogues =========================== */
+
+.overlay {
+  position: fixed; inset: 0; z-index: 40; display: none;
+  align-items: center; justify-content: center; padding: 18px;
+  background: rgba(8, 6, 4, .74); backdrop-filter: blur(4px);
+}
+.overlay.on { display: flex; }
+.dialog {
+  width: min(720px, 100%); max-height: 88vh; overflow: auto;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--bg-2);
+  padding: 20px; box-shadow: var(--shadow);
+}
+.dialog h3 { font-size: 17px; margin-bottom: 6px; }
+.dialog .who-asks { font-size: 12.5px; color: var(--gold); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 10px; }
+.dialog .choices { display: flex; gap: 9px; flex-wrap: wrap; margin: 14px 0 6px; }
+.dialog .choice-cards { display: flex; gap: 9px; flex-wrap: wrap; margin: 14px 0 6px; }
+.dialog footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+/* Bandeau de phase pendant la résolution animée. */
+.phase-banner {
+  position: fixed; left: 50%; top: 16%; transform: translateX(-50%);
+  padding: 12px 30px; border-radius: 999px; background: rgba(23,19,15,.94);
+  border: 1px solid var(--gold); color: var(--gold); z-index: 30;
+  font-family: var(--card-font); font-size: 24px; letter-spacing: .12em;
+  pointer-events: none; opacity: 0; transition: opacity .3s, transform .3s;
+}
+.phase-banner.on { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+
+/* Bulles flottantes : influence, or, PV. */
+.float {
+  position: fixed; z-index: 32; pointer-events: none; font-weight: 700;
+  font-size: 17px; text-shadow: 0 2px 6px rgba(0,0,0,.8);
+  animation: floatUp 1.05s ease-out forwards;
+}
+.float.up { color: var(--ok); }
+.float.down { color: var(--danger); }
+.float.gold { color: var(--gold); }
+@keyframes floatUp {
+  0% { opacity: 0; transform: translateY(6px) scale(.85); }
+  22% { opacity: 1; transform: translateY(-6px) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-34px) scale(1); }
+}
+
+/* Journal de partie. */
+.log-panel {
+  position: fixed; right: 0; top: 0; bottom: 0; width: min(360px, 88vw);
+  background: rgba(23,19,15,.97); border-left: 1px solid var(--line); z-index: 20;
+  transform: translateX(100%); transition: transform .22s; display: flex; flex-direction: column;
+  padding-top: max(0px, env(safe-area-inset-top));
+}
+.log-panel.on { transform: none; }
+.log-panel header { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+.log-list { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+.log-list .entry { font-size: 13px; line-height: 1.45; color: var(--muted); padding-left: 10px; border-left: 2px solid var(--line); }
+.log-list .entry.phase { color: var(--gold); border-left-color: var(--gold); font-weight: 600; }
+.log-list .entry.error { color: var(--danger); border-left-color: var(--danger); }
+.log-list .entry.war { color: #d8b6ff; border-left-color: #7d5aa8; }
+
+/* Zoom / déplacement. */
+.zoom-tools {
+  position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 6px; z-index: 4;
+}
+.zoom-tools .btn { width: 38px; height: 38px; display: grid; place-items: center; padding: 0; font-size: 17px; }
+
+/* ============================== Studio ============================== */
+
+#studio { background: var(--bg); }
+.studio-body { flex: 1; display: grid; grid-template-columns: 300px 1fr; overflow: hidden; }
+@media (max-width: 820px) { .studio-body { grid-template-columns: 1fr; } .studio-list { display: none; } .studio-body.show-list .studio-list { display: flex; } .studio-body.show-list .studio-edit { display: none; } }
+.studio-list { border-right: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; }
+.studio-list .search { padding: 10px; border-bottom: 1px solid var(--line); }
+.studio-list .search input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-3); }
+.studio-item { padding: 9px 12px; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.studio-item:hover { background: var(--bg-2); }
+.studio-item.on { background: var(--bg-3); }
+.studio-item .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.studio-item .nm { font-size: 13.5px; flex: 1; }
+.studio-item .id { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.studio-edit { overflow-y: auto; padding: 18px; display: grid; gap: 18px; grid-template-columns: minmax(0,1fr) auto; align-items: start; }
+@media (max-width: 1100px) { .studio-edit { grid-template-columns: 1fr; } }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.form-grid .field.wide { grid-column: 1 / -1; }
+.form-grid textarea { min-height: 120px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-3); font-family: var(--ui); line-height: 1.45; }
+.preview-pane { display: flex; flex-direction: column; gap: 12px; align-items: center; position: sticky; top: 0; }
+.preview-pane .card { --card-w: 240px; }
+
+/* ============================== Règles ============================== */
+
+#rules { background: var(--bg); }
+.rules-body { flex: 1; overflow-y: auto; padding: 22px; }
+.rules-inner { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.rule-entry { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--bg-2); }
+.rule-entry h4 { font-size: 14px; color: var(--gold); margin-bottom: 6px; letter-spacing: .04em; }
+.rule-entry p { font-size: 14px; line-height: 1.6; color: var(--muted); white-space: pre-line; }
+
+.top-bar {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-bottom: 1px solid var(--line); background: var(--bg-2);
+  padding-top: max(10px, env(safe-area-inset-top));
+}
+.top-bar h2 { font-size: 16px; flex: 1; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
+  padding: 10px 18px; border-radius: 999px; background: var(--bg-3);
+  border: 1px solid var(--line); z-index: 50; font-size: 13.5px;
+  opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; text-align: center;
+}
+.toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ============================ Accueil ============================ -->
+<section id="home" class="screen on">
+  <div class="home-inner">
+    <h1 class="brand">Morentia</h1>
+    <p class="brand-sub">Table de test numérique — influence, lieux et marché.</p>
+
+    <div class="panel">
+      <h2>Partie</h2>
+      <div class="tabs" id="mode-tabs">
+        <button class="tab on" data-mode="solo">Solo contre l’IA</button>
+        <button class="tab" data-mode="local">Chacun son tour</button>
+        <button class="tab" data-mode="host">Héberger en ligne</button>
+        <button class="tab" data-mode="join">Rejoindre</button>
+      </div>
+
+      <div id="mode-solo" class="mode-pane">
+        <div class="row">
+          <div class="field"><label>Votre nom</label><input id="solo-name" value="Vous"></div>
+          <div class="field"><label>Votre faction</label><select id="solo-faction"></select></div>
+          <div class="field"><label>Adversaires</label>
+            <select id="solo-count"><option value="1">1 IA</option><option value="2" selected>2 IA</option></select>
+          </div>
+        </div>
+        <p class="hint">Les adversaires jouent seuls et répondent aux choix de leurs propres cartes.</p>
+      </div>
+
+      <div id="mode-local" class="mode-pane" hidden>
+        <div class="seats" id="local-seats"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn small" id="local-add">Ajouter un joueur</button>
+          <button class="btn small" id="local-remove">Retirer</button>
+        </div>
+        <p class="hint">Tous les joueurs partagent le même écran. Les mains sont masquées entre les tours.</p>
+      </div>
+
+      <div id="mode-host" class="mode-pane" hidden>
+        <div class="row">
+          <div class="field"><label>Votre nom</label><input id="host-name" value="Hôte"></div>
+          <div class="field"><label>Votre faction</label><select id="host-faction"></select></div>
+          <div class="field"><label>Code du salon</label><input id="host-code" placeholder="morentia"></div>
+        </div>
+        <div class="row" id="host-roster"></div>
+        <p class="hint">Votre navigateur héberge la partie : il détient le seul état de référence et
+          transmet les événements aux autres joueurs par WebRTC. Aucun serveur de jeu.</p>
+      </div>
+
+      <div id="mode-join" class="mode-pane" hidden>
+        <div class="row">
+          <div class="field"><label>Votre nom</label><input id="join-name" value="Invité"></div>
+          <div class="field"><label>Votre faction</label><select id="join-faction"></select></div>
+          <div class="field"><label>Code du salon</label><input id="join-code" placeholder="morentia"></div>
+        </div>
+        <div class="row" id="join-roster"></div>
+      </div>
+
+      <div class="row" style="margin-top:16px">
+        <button class="btn primary" id="start-game">Commencer</button>
+        <button class="btn ghost" id="open-settings">Réglages</button>
+      </div>
+    </div>
+
+    <div class="panel" id="settings-panel" hidden>
+      <h2>Réglages de partie</h2>
+      <div class="form-grid" id="config-grid"></div>
+      <p class="hint">Les valeurs par défaut reprennent la « Mise en place conseillée » de la feuille
+        « À lire » du classeur.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Contenu</h2>
+      <div class="row">
+        <button class="btn" id="open-studio">Studio de cartes</button>
+        <button class="btn" id="open-rules">Règles et conventions</button>
+        <button class="btn" id="import-file">Importer .xlsx / .zip</button>
+        <button class="btn" id="export-xlsx">Exporter .xlsx</button>
+        <button class="btn" id="export-zip">Exporter le paquet .zip</button>
+        <button class="btn ghost" id="reset-catalog">Catalogue livré</button>
+      </div>
+      <p class="hint" id="catalog-info"></p>
+      <input type="file" id="file-input" accept=".xlsx,.zip" hidden>
+    </div>
+  </div>
+</section>
+
+<!-- ============================= Table ============================= -->
+<section id="table" class="screen">
+  <div class="hud">
+    <div class="phase-chip" id="phase-chip">Jour <b>1</b> · Aube</div>
+    <div class="hud-players" id="hud-players"></div>
+    <div class="hud-actions">
+      <button class="btn small" id="btn-speed" title="Vitesse de résolution">Vitesse ×1</button>
+      <button class="btn small" id="btn-fit" title="Ajuster à l’écran">Ajuster</button>
+      <button class="btn small" id="btn-log">Journal</button>
+      <button class="btn small ghost" id="btn-quit">Quitter</button>
+    </div>
+  </div>
+
+  <div class="board-wrap" id="board-wrap">
+    <div class="board" id="board">
+      <div class="zone" id="zone-opponents">
+        <div class="zone-head">Domaines adverses</div>
+        <div class="domains" id="opponent-domains"></div>
+      </div>
+
+      <div class="zone">
+        <div class="zone-head">Lieux <span class="tag" id="places-tag"></span></div>
+        <div class="places" id="places"></div>
+      </div>
+
+      <div class="bottom-row">
+        <div class="zone">
+          <div class="zone-head">Marché <span class="tag" id="market-tag"></span></div>
+          <div class="market-row" id="market"></div>
+        </div>
+
+        <div class="zone" id="zone-mine">
+          <div class="zone-head">Votre domaine</div>
+          <div class="domains" id="my-domain"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="zoom-tools">
+      <button class="btn" id="zoom-in" title="Agrandir">+</button>
+      <button class="btn" id="zoom-out" title="Réduire">−</button>
+    </div>
+  </div>
+
+  <div class="hand-bar">
+    <div class="hand-scroll" id="hand"></div>
+    <div class="hand-side">
+      <button class="btn primary small" id="btn-pass" disabled>Se coucher</button>
+      <button class="btn small" id="btn-order" hidden>Ordre</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ Studio ============================= -->
+<section id="studio" class="screen">
+  <div class="top-bar">
+    <button class="btn small ghost" id="studio-back">← Accueil</button>
+    <h2>Studio de cartes</h2>
+    <button class="btn small" id="studio-toggle-list">Liste</button>
+    <button class="btn small" id="studio-design">Design global</button>
+    <button class="btn small primary" id="studio-save">Enregistrer</button>
+  </div>
+  <div class="studio-body" id="studio-body">
+    <aside class="studio-list" id="studio-list">
+      <div class="search"><input id="studio-search" placeholder="Rechercher une carte…"></div>
+      <div id="studio-items"></div>
+    </aside>
+    <div class="studio-edit">
+      <div class="form-grid" id="studio-form"></div>
+      <div class="preview-pane" id="studio-preview"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ Règles ============================= -->
+<section id="rules" class="screen">
+  <div class="top-bar">
+    <button class="btn small ghost" id="rules-back">← Accueil</button>
+    <h2>Règles et conventions</h2>
+  </div>
+  <div class="rules-body"><div class="rules-inner" id="rules-list"></div></div>
+</section>
+
+<!-- =========================== Dialogues =========================== -->
+<div class="overlay" id="overlay"><div class="dialog" id="dialog"></div></div>
+<div class="phase-banner" id="phase-banner"></div>
+<div class="toast" id="toast"></div>
+<div class="log-panel" id="log-panel">
+  <header><strong>Journal</strong><button class="btn small ghost" id="log-close">Fermer</button></header>
+  <div class="log-list" id="log-list"></div>
+</div>
+
+<script type="importmap">
+{ "imports": { "trystero": "./lib/trystero-nostr.min.js" } }
+</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

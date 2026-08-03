@@ -1,0 +1,180 @@
+# Morentia — table de test numérique
+
+Application entièrement frontend pour jouer et éprouver Morentia sur ordinateur
+ou téléphone. Cartes, lieux, design et conventions viennent du classeur
+`Morentia_cartes.xlsx` livré à la racine.
+
+Aucun serveur de jeu, aucune étape de compilation : le dossier est publiable tel
+quel par le workflow GitHub Pages du dépôt.
+
+## Lancer localement
+
+Les modules ES et le service worker exigent un serveur HTTP :
+
+```bash
+cd morentia2
+npm run serve          # http://localhost:4174
+```
+
+## Modes de jeu
+
+| Mode | Ce qu'il fait |
+| --- | --- |
+| Solo contre l'IA | Vous plus une ou deux IA qui jouent et répondent à leurs propres cartes. |
+| Chacun son tour | Plusieurs humains sur un seul écran, avec un rideau entre les tours pour ne pas dévoiler les mains. |
+| Héberger en ligne | Votre navigateur devient l'hôte : il fait tourner le moteur et diffuse la partie. |
+| Rejoindre | Vous entrez le même code de salon et suivez la partie de l'hôte. |
+
+## Multijoueur pair-à-pair
+
+L'hôte est le seul à exécuter le moteur. Il ne transmet pas l'état complet mais
+le **flux d'événements** qui le produit : les invités replient ce flux et
+obtiennent exactement le même plateau. Les invités renvoient leurs actions et
+leurs réponses de carte.
+
+La mise en relation WebRTC passe par des relais Nostr publics. Ces relais ne
+voient jamais la partie — seulement les descriptions de connexion. La liste est
+modifiable dans **Réglages → Relais de signalisation** ; l'écran de salon indique
+combien de relais répondent.
+
+> **Information cachée.** Le flux d'événements est diffusé intégralement, donc
+> le navigateur d'un joueur connaît les mains adverses même s'il ne les affiche
+> pas. C'est le prix d'un multijoueur sans serveur avec un état parfaitement
+> identique partout. C'est sans conséquence pour un test entre gens de confiance ;
+> ce ne conviendrait pas à une partie classée.
+
+Autres limites connues : un joueur ne peut pas rejoindre une partie déjà
+commencée, et si l'hôte quitte, la partie s'arrête.
+
+## Cartes et classeur
+
+- **Importer** un `.xlsx` (mêmes feuilles que le fichier source) ou un `.zip`
+  contenant classeur et illustrations. L'import est conservé dans le stockage
+  local du navigateur et remplace le catalogue livré.
+- **Exporter** en `.xlsx` ou en paquet `.zip` complet.
+- **Studio de cartes** : édition de chaque champ, remplacement d'illustration,
+  et réglage du design global (couleurs de faction, police, arrondi, opacité de
+  l'illustration, tailles de texte). Tout est réexporté dans la feuille `Design`.
+
+Le même analyseur sert à l'import navigateur et à la génération du catalogue
+embarqué, il ne peut donc pas y avoir de divergence entre les deux :
+
+```bash
+npm run catalog        # Morentia_cartes.xlsx → js/data/catalog-default.js
+node tools/roundtrip.mjs   # vérifie qu'export puis import ne perd rien
+```
+
+## Illustrations
+
+Chaque carte reçoit un paysage dessiné par le programme, déterministe à partir
+de son identifiant : deux parties montrent toujours la même image, rien n'est
+téléchargé, et le jeu reste utilisable hors-ligne. La silhouette de premier plan
+suit la famille de la carte (unité, permanent, éphémère, attachement, lieu) et la
+teinte suit la couleur de faction.
+
+Dès qu'une vraie illustration existe, elle la remplace : via la colonne
+`Illustration` du classeur accompagnée du fichier dans un paquet `.zip`, ou
+directement dans le Studio.
+
+## Disposition des cartes
+
+Conforme à la demande : titre, influence et prix sur la première ligne, les deux
+prix (domaine et lieu) empilés verticalement pour économiser la largeur, puis
+l'illustration, puis le type, puis le texte de règles. Les tailles sont exprimées
+en pourcentage de la largeur de la carte, si bien qu'une carte reste lisible à
+n'importe quelle échelle du plateau.
+
+## Plateau
+
+Domaines adverses en haut, rangée des lieux au centre, marché et votre domaine en
+bas, main en barre fixe. Le plateau se recadre seul pour tenir à l'écran tant que
+vous ne l'avez pas déplacé vous-même ; molette, pincement et boutons `+` / `−`
+permettent de zoomer, le glisser de fond permet de se déplacer.
+
+Les cartes se jouent au **glisser-déposer**. Pendant le glissement, seules les
+zones réellement licites s'allument — la légalité vient du moteur, jamais de
+l'affichage.
+
+## Résolution animée
+
+Le moteur résout une phase entière instantanément. L'affichage travaille sur un
+état retardé et rejoue les événements un par un, avec une pause propre à chacun,
+le déplacement des cartes, les bulles d'influence et d'or, et un bandeau de
+phase. Le bouton **Vitesse** passe de ×1 à ×2, ×4 puis instantané.
+
+## Organisation du code
+
+```
+js/
+  data/     classeur → catalogue : schéma, import/export, zip, stockage
+  rules/    moteur isolé — c'est ici que les règles évoluent
+    constants.js  phases, zones, réglages par défaut, Ordres
+    events.js     réducteur : seul endroit qui modifie l'état
+    state.js      sélecteurs purs (influence, contrôle, coûts, légalité)
+    engine.js     primitives, signaux, choix suspendus
+    flow.js       mise en place, enchaînement des phases, actions
+    effects/      un fichier par provenance, une entrée par carte
+  ui/       cartes, illustrations, plateau, glisser-déposer, animation, studio
+  ai/       adversaire artificiel
+  net/      pair-à-pair WebRTC
+```
+
+**Faire évoluer les règles** revient à toucher `js/rules/`, et le plus souvent le
+seul fichier `js/rules/effects/`. Chaque carte y est une entrée autonome dont les
+crochets (`onDawn`, `onEnterPlace`, `aura`, `costFor`, `replaceDestroy`, …) sont
+décrits en tête de `js/rules/registry.js`. Un effet ne connaît ni l'état ni
+l'affichage : tout passe par `ctx`. Un effet peut interrompre sa résolution pour
+poser une question (`yield ctx.pickCard(...)`), ce qui fonctionne aussi bien pour
+un humain, pour l'IA que pour un joueur distant.
+
+Comme toute modification de l'état passe par un événement, une règle nouvelle est
+automatiquement animée, journalisée et synchronisée en réseau.
+
+## Bancs d'essai
+
+```bash
+node tools/harness.mjs 40 3    # 40 parties à 3 joueurs, jouées au hasard
+node tools/roundtrip.mjs       # aller-retour du classeur
+```
+
+Le banc d'essai signale les exceptions, les parties bloquées, la durée moyenne,
+les PV, et surtout **les effets jamais déclenchés** — un bon indicateur de carte
+injouable ou trop chère. À relancer après toute modification des règles ou du
+classeur.
+
+## Conventions retenues
+
+Le classeur fixe les cartes ; plusieurs points restaient à trancher pour pouvoir
+jouer. Ils sont regroupés dans l'écran **Règles** de l'application et rappelés
+ici :
+
+- **Ordres de Kalassir** — le classeur mentionne l'« Ordre actif » et le
+  « Conseil des Trois Ordres » sans en fixer le coût. L'Ordre débute sur *Lames
+  de Karina* ; en changer est une action coûtant 1 or, gratuite après un Messager
+  du Conseil. Réglable dans `js/rules/constants.js`.
+- **Aube** — la réserve devient or actif, les cartes se redressent, chaque joueur
+  pioche 1 carte, puis les effets d'Aube se résolvent dans l'ordre du premier
+  joueur. Le nombre de cartes piochées et l'or d'Aube sont dans les réglages.
+- **Contrôle** — recalculé en continu et non seulement au Crépuscule : un effet
+  qui change une influence peut faire basculer un lieu immédiatement, ce qui rend
+  lisibles les cartes déclenchées par une prise de contrôle.
+- **Lieux adjacents** — les emplacements forment une rangée ; seuls les voisins
+  immédiats sont adjacents, plus les deux emplacements reliés par un Réseau
+  Longmai.
+- **Deck de lieux épuisé** — les lieux déjà expirés sont remélangés. Avec neuf
+  lieux au catalogue et une fin de partie à `2 × joueurs + 2` expirations, une
+  partie à trois joueurs en consomme davantage que la réserve initiale.
+- **Guerre** — version de la feuille « À lire » : les joueurs à la plus haute
+  influence de domaine gagnent 1 or en réserve, les autres perdent 1 or actif.
+
+Les monstres et le module Jadis ne figurent pas dans la sélection du classeur
+actuel. Le moteur les gère (Seuil, expiration à la Nuit, récompenses), il suffit
+de réintroduire les lignes correspondantes dans le classeur et d'activer
+« Module Jadis » dans les réglages.
+
+## PWA
+
+`manifest.webmanifest` et `sw.js` rendent l'application installable et jouable
+hors-ligne après la première visite. Le service worker sert le réseau d'abord et
+le cache en secours : un rechargement pendant la mise au point donne toujours la
+version fraîche.

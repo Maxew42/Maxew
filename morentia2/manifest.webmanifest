@@ -1,0 +1,16 @@
+{
+  "name": "Morentia",
+  "short_name": "Morentia",
+  "description": "Table de test numérique pour Morentia — influence, lieux et marché, en solo contre l'IA ou entre amis en pair-à-pair.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#17130f",
+  "theme_color": "#17130f",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
