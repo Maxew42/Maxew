@@ -170,6 +170,95 @@ function foreground(record, rng, hue) {
   }
 }
 
+// ------------------------------------------------------------------- dos
+
+const BACK_W = 300, BACK_H = 420;
+
+/**
+ * Dos de carte : la porte de pierre des lieux, une lune qui se lève derrière
+ * elle, et les cinq phases du Jour disposées en couronne. Teinté par la couleur
+ * du paquet — un deck de faction se reconnaît à sa tranche, et le deck de marché
+ * ne se confond pas avec le vôtre.
+ *
+ * Dessiné plutôt qu'importé, comme les illustrations : rien à télécharger, et le
+ * dos suit la couleur choisie dans la feuille Design.
+ */
+export function cardBackArt(color) {
+  const hue = hueOf(color);
+  const cx = BACK_W / 2, cy = BACK_H / 2;
+  const glow = (a, dh = 40) => hsl((hue + dh) % 360, 72, 72, a);
+  const stone = hsl(hue, 32, 5, 0.95);
+  const parts = [];
+
+  parts.push(`<defs>
+    <radialGradient id="field" cx=".5" cy=".5" r=".74">
+      <stop offset="0" stop-color="${hsl(hue, 32, 19)}"/>
+      <stop offset="1" stop-color="${hsl(hue, 42, 6)}"/>
+    </radialGradient>
+    <pattern id="weave" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M 0 16 L 16 0 M 0 0 L 16 16" stroke="${glow(0.055)}" stroke-width="1" fill="none"/>
+    </pattern>
+  </defs>`);
+  parts.push(`<rect width="${BACK_W}" height="${BACK_H}" fill="url(#field)"/>`);
+  parts.push(`<rect width="${BACK_W}" height="${BACK_H}" fill="url(#weave)"/>`);
+
+  // Double filet en retrait du bord, et quatre équerres pour tenir les angles.
+  parts.push(`<rect x="11" y="11" width="${BACK_W - 22}" height="${BACK_H - 22}" rx="13"
+    fill="none" stroke="${glow(0.24)}" stroke-width="1.5"/>`);
+  parts.push(`<rect x="19" y="19" width="${BACK_W - 38}" height="${BACK_H - 38}" rx="9"
+    fill="none" stroke="${glow(0.1)}" stroke-width="1"/>`);
+  for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+    const x = sx > 0 ? 30 : BACK_W - 30;
+    const y = sy > 0 ? 30 : BACK_H - 30;
+    parts.push(`<path d="M ${x + sx * 16} ${y} L ${x} ${y} L ${x} ${y + sy * 16}"
+      fill="none" stroke="${glow(0.3)}" stroke-width="1.5"/>`);
+  }
+
+  // Médaillon.
+  const R = 100;
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="${R}" fill="${hsl(hue, 38, 11, 0.6)}"
+    stroke="${glow(0.28)}" stroke-width="1.5"/>`);
+  parts.push(`<circle cx="${cx}" cy="${cy}" r="${R - 13}" fill="none" stroke="${glow(0.12)}" stroke-width="1"/>`);
+
+  // Une porte de pierre — le motif que portent déjà les illustrations de lieux —
+  // encadrant la lune. Elle est dessinée après l'astre, dont elle rogne donc les
+  // bords : c'est ce qui fait l'encadrement.
+  const ground = cy + 62;
+  const gw = 58, gh = 112, jamb = 15, lintel = 15;
+  const moonY = ground - gh * 0.54;
+
+  parts.push(`<ellipse cx="${cx}" cy="${ground}" rx="${gw * 0.85}" ry="6" fill="${glow(0.1)}"/>`);
+  parts.push(`<circle cx="${cx}" cy="${moonY}" r="33" fill="${glow(0.11)}"/>`);
+  parts.push(`<circle cx="${cx}" cy="${moonY}" r="22" fill="${glow(0.58)}"/>`);
+  parts.push(`<path d="M ${cx - R + 24} ${ground} L ${cx + R - 24} ${ground}"
+    stroke="${glow(0.22)}" stroke-width="1"/>`);
+  parts.push(`<g fill="${stone}">
+    <rect x="${cx - gw / 2 - jamb}" y="${ground - gh}" width="${jamb}" height="${gh}"/>
+    <rect x="${cx + gw / 2}" y="${ground - gh}" width="${jamb}" height="${gh}"/>
+    <rect x="${cx - gw / 2 - jamb - 12}" y="${ground - gh - lintel}"
+      width="${gw + 2 * jamb + 24}" height="${lintel}" rx="2"/>
+    <rect x="${cx - gw / 2 - jamb - 5}" y="${ground - gh - lintel - 7}"
+      width="${gw + 2 * jamb + 10}" height="7" rx="2"/>
+  </g>`);
+
+  // Les cinq phases du Jour en couronne : Aube, Journée, Crépuscule, Guerre,
+  // Nuit. La plus claire en haut — la lumière vient du ciel.
+  const phases = [0.9, 0.52, 0.24, 0.24, 0.52];
+  for (let i = 0; i < phases.length; i++) {
+    const a = (-90 + i * 72) * Math.PI / 180;
+    const px = cx + Math.cos(a) * R;
+    const py = cy + Math.sin(a) * R;
+    // Le disque du fond interrompt le cercle du médaillon : les phases y sont
+    // sertie plutôt que posées dessus.
+    parts.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="11"
+      fill="${hsl(hue, 40, 8)}" stroke="${glow(0.26)}" stroke-width="1"/>`);
+    parts.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="5.5" fill="${glow(phases[i])}"/>`);
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${BACK_W} ${BACK_H}"`
+    + ` width="${BACK_W}" height="${BACK_H}">${parts.join('')}</svg>`;
+}
+
 const cache = new Map();
 
 /** URI de données prête pour `background-image`, mise en cache. */
@@ -178,6 +267,17 @@ export function artUrl(record, color) {
   let hit = cache.get(key);
   if (!hit) {
     hit = `url("data:image/svg+xml,${encodeURIComponent(proceduralArt(record, color))}")`;
+    cache.set(key, hit);
+  }
+  return hit;
+}
+
+/** URI de données du dos, pour une couleur de paquet donnée. */
+export function backUrl(color) {
+  const key = `dos|${color}`;
+  let hit = cache.get(key);
+  if (!hit) {
+    hit = `url("data:image/svg+xml,${encodeURIComponent(cardBackArt(color))}")`;
     cache.set(key, hit);
   }
   return hit;

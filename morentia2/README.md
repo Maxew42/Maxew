@@ -82,12 +82,35 @@ directement dans le Studio.
 
 ## Disposition des cartes
 
-Première ligne : influence à gauche, puis le nom, puis les deux prix (domaine et
-lieu) empilés verticalement pour économiser la largeur. Ensuite l'illustration,
-le type, et le texte de règles. Les lieux remplacent l'influence par la Durée et
-affichent `Durée · Survivants · PV` en clair sous leur type. Les tailles sont exprimées
-en pourcentage de la largeur de la carte, si bien qu'une carte reste lisible à
-n'importe quelle échelle du plateau.
+Première ligne : le disque d'influence contre le coin haut-gauche — serré sur son
+chiffre, car c'est le nombre qu'on lit d'un bout de la table, pas le disque —
+puis le nom, puis les deux prix (domaine et lieu) empilés contre le coin
+haut-droit pour économiser la largeur. Ensuite l'illustration, le type, le texte
+de règles, et un bandeau de pied portant le code de référence du classeur
+(`KAL-19`, `LIE-06`) — de quoi retrouver une carte dans la feuille sans la
+chercher par son nom. Les lieux remplacent l'influence par la Durée et affichent
+`Durée · Survivants · PV` en clair sous leur type. Les tailles sont exprimées en
+pourcentage de la largeur de la carte, si bien qu'une carte reste lisible à
+n'importe quelle échelle du plateau ; sur les vignettes réduites du plateau, le
+texte et le code cèdent la place à l'illustration.
+
+Les chiffres des pastilles ont leur propre police (`numeralFont` dans la feuille
+Design). Georgia, la police par défaut des cartes, a des chiffres elzéviriens :
+le 3, le 5 et le 7 descendent sous la ligne de base, le 1 et le 2 sont de hauteur
+d'x. Aucun réglage ne les centre tous dans une pastille — d'où une police à
+chiffres de hauteur capitale pour ces seuls emplacements.
+
+### Mots-clés
+
+Les mots des cartes qui portent une règle — *Guerre*, *lieu*, *Survivants*,
+*épuisée*… — sont légèrement épaissis, et la vue détaillée en affiche la règle au
+survol (au toucher sur téléphone). Le vocabulaire est décrit dans
+`js/rules/glossary.js` : une entrée par notion, avec ses formes fléchies telles
+qu'elles apparaissent sur les cartes. Quand une entrée porte un `rule`, son texte
+est celui de la feuille **À lire** du classeur, qui fait foi ; le texte du module
+ne sert alors que de repli. Seule la première occurrence d'une notion est marquée
+par carte, et une courte liste de faux amis (`au lieu de`) évite de prendre une
+tournure française pour un terme de jeu.
 
 ## Plateau
 
@@ -96,6 +119,14 @@ vers la gauche, pour tenir en hauteur tout en restant lisibles. Domaines adverse
 en haut, lieux au centre, votre domaine en bas ; la main occupe une barre fixe
 avec, à sa gauche, votre deck et votre défausse à la taille des cartes, et à sa
 droite votre or et vos points de victoire.
+
+Les **paquets** se présentent comme de vraies piles : le deck montre son dos, la
+défausse — publique — montre la carte qui la coiffe, et deux tranches décalées
+donnent l'épaisseur. Un paquet vide retombe sur un emplacement en pointillés.
+Le dos lui-même est dessiné par `cardBackArt` dans `js/ui/art.js` — une lune
+encadrée par la porte de pierre des lieux, et les cinq phases du Jour en
+couronne — et prend la couleur du paquet : votre deck, celui d'un adversaire et
+le deck de marché se distinguent sans être retournés.
 
 La **carte Base** de chaque faction est toujours visible dans le domaine de son
 joueur : c'est un pouvoir permanent, pas une carte qu'on joue.
@@ -136,6 +167,7 @@ js/
     engine.js     primitives, signaux, choix suspendus
     flow.js       mise en place, enchaînement des phases, actions
     effects/      un fichier par provenance, une entrée par carte
+    glossary.js   vocabulaire des cartes : mots-clés et règle associée
   ui/       cartes, illustrations, plateau, glisser-déposer, animation, studio
   ai/       adversaire artificiel
   net/      pair-à-pair WebRTC

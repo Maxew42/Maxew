@@ -222,7 +222,8 @@ h1.brand {
 .market-card.empty-slot {
   border: 1px dashed var(--line); border-radius: var(--card-radius); opacity: .35;
 }
-.market-card > .deck-stack {
+.market-card > .deck-stack,
+.market-card > .pile {
   position: absolute; top: 50%; left: 50%;
   width: var(--card-w); height: calc(var(--card-w) * var(--card-ratio));
   transform: translate(-50%, -50%) rotate(-90deg);
@@ -387,16 +388,46 @@ h1.brand {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Une pile est une vraie pile : le dos du paquet pour le deck, la carte qui la
+   coiffe pour la défausse, deux tranches décalées derrière pour l'épaisseur, et
+   le compte en bandeau. Vide, elle retombe sur l'emplacement en pointillés. */
 .pile {
-  width: 124px; height: calc(124px * var(--card-ratio)); border-radius: var(--card-radius);
-  border: 1px dashed var(--line); display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 2px; cursor: pointer;
-  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.2));
-  font-size: 11px; color: var(--faint); text-align: center; flex: none;
+  position: relative; flex: none; cursor: pointer;
+  width: 124px; height: calc(124px * var(--card-ratio));
+  font-size: 11px; color: var(--faint); text-align: center;
 }
-.pile:hover { border-color: var(--gold); color: var(--muted); }
-.pile b { font-size: 26px; color: var(--muted); }
-.pile span { font-size: 12px; }
+.pile::before, .pile::after {
+  content: ''; position: absolute; inset: 0; border-radius: var(--card-radius);
+  background: color-mix(in srgb, var(--pile, var(--market)) 30%, #0b0906);
+  border: 1px solid rgba(0, 0, 0, .55);
+}
+.pile::after { transform: translate(2.5px, 2.5px); }
+.pile::before { transform: translate(5px, 5px); }
+.pile.empty::before, .pile.empty::after { display: none; }
+.pile-face {
+  position: absolute; inset: 0; z-index: 1; overflow: hidden;
+  border-radius: var(--card-radius);
+  border: 1px solid color-mix(in srgb, var(--pile, var(--market)) 55%, #000);
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(0,0,0,.2));
+}
+.pile.empty .pile-face { border: 1px dashed var(--line); }
+/* La carte du dessus remplit le cadre et ne réclame rien : c'est la pile qui
+   reçoit le clic. */
+.pile-face > .card {
+  width: 100%; height: 100%; border-radius: 0; box-shadow: none; pointer-events: none;
+}
+.pile-count {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; align-items: baseline; justify-content: center; gap: 6px;
+  padding: 4px 0 5px; border-radius: 0 0 var(--card-radius) var(--card-radius);
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.85) 55%);
+}
+.pile-count b { font-size: 18px; color: var(--ink); line-height: 1; }
+.pile-count span { font-size: 11px; }
+.pile:hover .pile-face { border-color: var(--gold); }
+.pile:hover .pile-count { color: var(--muted); }
+/* Le deck de marché se montre mais ne se parcourt pas. */
+.pile.sealed { cursor: default; }
 
 /* ============================== Cartes ============================== */
 
@@ -436,29 +467,39 @@ h1.brand {
   box-shadow: 0 20px 44px rgba(0, 0, 0, .7);
 }
 
+/* Le disque d'influence et les prix touchent presque les bords : c'est ce qu'on
+   lit en premier dans une main en éventail, où seul le coin haut dépasse. */
 .card-top {
-  display: flex; align-items: flex-start; gap: 4px; padding: 5% 5% 3%;
+  display: flex; align-items: flex-start; gap: 2.5cqw; padding: 2.4cqw 2.6cqw 3cqw;
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 55%, transparent), transparent);
 }
 .card-name {
-  flex: 1; font-size: calc(var(--title-size) * 1cqw); line-height: 1.14; font-weight: 600;
+  flex: 1; font-size: calc(var(--title-size) * .94cqw); line-height: 1.14; font-weight: 600;
   letter-spacing: .01em; overflow-wrap: break-word; hyphens: auto;
-  text-shadow: 0 1px 2px rgba(0,0,0,.55);
+  padding-top: .8cqw; text-shadow: 0 1px 2px rgba(0,0,0,.55);
 }
 .card-stats { display: flex; align-items: flex-start; gap: 3px; flex: none; }
+/* Chiffres à part : voir `numeralFont` dans js/data/schema.js. Sans chiffres de
+   hauteur capitale, rien ne se centre dans une pastille. */
+.stat, .price {
+  font-family: var(--card-num); font-variant-numeric: lining-nums tabular-nums;
+}
+/* Pastille serrée sur son chiffre : c'est le nombre qu'on lit d'un bout de la
+   table, pas le disque. */
 .stat {
-  display: grid; place-items: center; min-width: 15cqw; aspect-ratio: 1;
+  display: grid; place-items: center; min-width: 17cqw; aspect-ratio: 1;
   border-radius: 50%; background: var(--card-ink); color: var(--card-paper);
-  font-size: calc(var(--title-size) * 1.05cqw); font-weight: 700; line-height: 1;
+  font-size: calc(var(--title-size) * 1.45cqw); font-weight: 700; line-height: 1;
 }
 .stat.influence.boosted { background: var(--ok); color: #0d1a0e; }
 .stat.influence.weakened { background: var(--danger); color: #fff; }
 .stat.duration { background: var(--accent); color: var(--card-ink); }
 /* Les deux prix sont empilés : la ligne de titre garde sa largeur. */
-.prices { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.prices { display: flex; flex-direction: column; gap: 1.4cqw; flex: none; }
 .price {
-  display: grid; place-items: center; min-width: 13cqw; padding: 1.6cqw 2cqw;
-  border-radius: 4px; font-size: calc(var(--text-size) * 1.1cqw); font-weight: 700;
+  display: grid; place-items: center; min-width: 13cqw; min-height: 9.6cqw;
+  padding: 0 2cqw;
+  border-radius: 4px; font-size: calc(var(--text-size) * 1.2cqw); font-weight: 700;
   background: rgba(0,0,0,.44); border: 1px solid rgba(255,255,255,.18); line-height: 1;
 }
 .card.light .price { background: rgba(255,255,255,.5); border-color: rgba(0,0,0,.2); }
@@ -482,18 +523,58 @@ h1.brand {
   color: color-mix(in srgb, var(--card-ink) 68%, transparent); font-style: italic;
 }
 .card-text {
-  flex: 1; padding: 1cqw 5cqw 4cqw; font-size: calc(var(--text-size) * 1cqw); line-height: 1.26;
+  flex: 1; padding: 1cqw 5cqw 2cqw; font-size: calc(var(--text-size) * 1cqw); line-height: 1.26;
   overflow: hidden; display: flex; flex-direction: column; gap: .35em;
 }
 .card-text p.labelled em { color: var(--accent); font-style: normal; font-weight: 700; }
+/* L'étiquette « Contrôle » est déjà en gras d'accent : pas de contour en plus. */
+.card-text p.labelled em.kw { -webkit-text-stroke: 0; }
 
-.card-back {
-  background:
-    repeating-linear-gradient(45deg, rgba(255,255,255,.045) 0 6px, transparent 6px 12px),
-    var(--accent);
-  display: grid; place-items: center;
+/* Bandeau de pied : le code de référence du classeur, discret mais lisible. Il
+   prend sur la hauteur du texte de règles, d'où une bande vraiment mince —
+   `line-height: 1` et un interlignage nul autour des capitales. */
+.card-code {
+  flex: none; padding: .9cqw 5cqw 1cqw; text-align: center; line-height: 1;
+  font-family: var(--ui); font-size: max(6px, calc(var(--text-size) * .58cqw));
+  letter-spacing: .16em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--card-ink) 45%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--card-ink) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
-.back-mark { font-family: var(--card-font); font-size: 13px; color: rgba(0,0,0,.5); }
+
+/* Mots porteurs d'une règle. Les polices de carte n'ont que Regular et Bold, et
+   le vrai gras est trop brutal dans un pavé aussi dense : le <b> revient au
+   poids normal et l'épaisseur est dessinée au contour. La couleur ne change
+   pas — le seul indice est le poids. La règle s'affiche au survol en vue
+   détaillée. Les pastilles, déjà en gras, n'y gagnent que le survol. */
+.card-text .kw, .card-type .kw, .place-stats .kw {
+  font-weight: 400; -webkit-text-stroke: .026em currentColor;
+}
+.zoom-overlay .kw { cursor: help; }
+.zoom-overlay .kw:hover, .zoom-overlay .kw:focus-visible {
+  outline: none; color: var(--accent);
+  text-decoration: underline dotted .06em; text-underline-offset: .18em;
+}
+.kw-help {
+  position: fixed; z-index: 50; width: min(300px, 76vw); cursor: default;
+  background: var(--bg-2); color: var(--muted);
+  border: 1px solid var(--line); border-left: 3px solid var(--gold);
+  border-radius: 10px; padding: 10px 12px; box-shadow: 0 16px 38px rgba(0,0,0,.6);
+  font-family: var(--ui); font-size: 12px; line-height: 1.45;
+}
+.kw-help strong { display: block; margin-bottom: 4px; font-size: 13px; color: var(--gold); }
+
+/* Le dos est dessiné par `cardBackArt` dans js/ui/art.js, teinté par la couleur
+   du paquet : un deck de faction se reconnaît sans être retourné. */
+.card-back {
+  background-size: cover; background-position: center;
+  border-color: color-mix(in srgb, var(--accent) 60%, #000);
+  display: grid; place-items: end center; padding-bottom: 5cqw;
+}
+.back-mark {
+  font-family: var(--ui); font-size: max(7px, 3.4cqw); letter-spacing: .16em;
+  text-transform: uppercase; color: rgba(255, 255, 255, .5);
+}
 
 .card.base-card { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent), var(--shadow); }
 
@@ -518,6 +599,11 @@ body[data-can-act] .card.playable:active { cursor: grabbing; }
 
 .zoom-overlay { z-index: 45; cursor: zoom-out; }
 .zoom-overlay .card { --card-w: min(360px, 78vw); box-shadow: 0 30px 70px rgba(0,0,0,.75); }
+/* Une douzaine de cartes ont un texte plus long que leur cadre. Sur le plateau
+   il est tronqué, mais la vue détaillée est l'endroit où on lit la règle : elle
+   défile plutôt que de couper. La carte agrandie seule — pas les vignettes d'une
+   pioche parcourue, qui restent des vignettes. */
+.zoom-overlay #zoom-card > .card .card-text { overflow-y: auto; cursor: auto; }
 .zoom-overlay #zoom-card.zoom-pile {
   width: min(940px, 94vw); max-height: 86vh; overflow-y: auto; cursor: default;
   background: var(--bg-2); border: 1px solid var(--line); border-radius: 16px; padding: 18px;
@@ -536,6 +622,9 @@ body[data-can-act] .card.playable:active { cursor: grabbing; }
 .card.on-place { --card-w: 108px; }
 .card.mini .card-art { height: 42%; }
 .card.mini .card-text { display: none; }
+/* Le code de référence deviendrait illisible à cette taille : il reste sur la
+   carte pleine et dans la vue détaillée. */
+.card.mini .card-code { display: none; }
 .card.mini .card-type { font-size: calc(var(--text-size) * 1.15cqw); padding-bottom: 3cqw; }
 
 /* ============================== Dialogues =========================== */

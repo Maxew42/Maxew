@@ -5,10 +5,10 @@
 // glisser de l'ancienne à la nouvelle. Un déplacement décidé par le moteur se
 // voit donc bouger, sans code d'animation par type d'événement.
 
-import { renderCard, renderPlace } from './card.js';
+import { renderCard, renderCardBack, renderPlace } from './card.js';
 import { faceOf, influenceOf, placeRecord } from '../rules/state.js';
 import { PHASE_LABELS, PHASE } from '../rules/constants.js';
-import { KIND } from '../data/schema.js';
+import { KIND, factionColor } from '../data/schema.js';
 
 const SEAT_COLORS = ['--kalassir', '--aqaba', '--algarie', '--gold', '--ok'];
 
@@ -356,10 +356,13 @@ export class BoardView {
     }
     const holder = document.createElement('div');
     holder.className = 'market-card';
-    const deck = document.createElement('div');
-    deck.className = 'deck-stack';
-    deck.innerHTML = `<b>${state.market.deck.length}</b><span>deck de marché</span>`;
-    holder.append(deck);
+    holder.append(pileNode({
+      label: 'deck de marché',
+      count: state.market.deck.length,
+      color: this.catalog.design.marketColor,
+      title: 'Deck de marché — contenu non révélé',
+      face: () => renderCardBack(this.catalog.design.marketColor),
+    }));
     host.append(holder);
     this.nodes.marketTag.textContent = state.market.boughtToday
       ? 'un achat a eu lieu ce Jour'
@@ -381,27 +384,43 @@ export class BoardView {
       host.append(empty);
     }
 
-    // Deck et défausse, à gauche de la main.
+    // Deck et défausse, à gauche de la main. Le deck montre le dos de votre
+    // paquet ; la défausse, étant publique, montre la carte qui la coiffe.
     const piles = this.nodes.piles;
     piles.innerHTML = '';
-    for (const [label, list, kind] of [['Deck', me.deck, 'deck'], ['Défausse', me.discard, 'discard']]) {
-      const pile = document.createElement('div');
-      pile.className = 'pile';
-      pile.innerHTML = `<b>${list.length}</b><span>${label}</span>`;
-      if (kind === 'discard') {
-        pile.title = 'Votre défausse — cliquez pour la parcourir';
-        pile.addEventListener('click', () => this.onZoom({ pile: 'discard', player: seat }));
-      } else {
-        pile.title = 'Votre deck — contenu visible, ordre non révélé';
-        pile.addEventListener('click', () => this.onZoom({ pile: 'deck', player: seat }));
-      }
-      piles.append(pile);
-    }
+    const color = factionColor(this.catalog.design, me.faction);
+    piles.append(pileNode({
+      label: 'Deck', count: me.deck.length, color,
+      title: 'Votre deck — contenu visible, ordre non révélé',
+      face: () => renderCardBack(color),
+      onClick: () => this.onZoom({ pile: 'deck', player: seat }),
+    }));
+    piles.append(pileNode({
+      label: 'Défausse', count: me.discard.length, color,
+      title: 'Votre défausse — cliquez pour la parcourir',
+      face: () => this._topCardNode(state, me.discard),
+      onClick: () => this.onZoom({ pile: 'discard', player: seat }),
+    }));
 
     // Or et points de victoire, au-dessus du bouton « Se coucher ».
     this.nodes.handStats.innerHTML =
       `<span class="gold">◎ <b>${me.active}</b>${me.reserve ? ` +${me.reserve}` : ''}</span>`
       + `<span>✦ <b>${me.vp}</b></span>`;
+  }
+
+  /**
+   * Carte qui coiffe une pile visible — la dernière arrivée. Elle porte son
+   * `data-inst`, si bien qu'une carte défaussée depuis le plateau se voit
+   * glisser jusque dans la pile ; l'aperçu est réduit, le texte n'y tiendrait pas.
+   */
+  _topCardNode(state, list) {
+    const inst = state.cards[list[list.length - 1]];
+    const face = inst && faceOf(this.catalog, inst);
+    if (!face) return null;
+    const node = renderCard(this.catalog, face);
+    node.classList.add('mini');
+    node.dataset.inst = inst.id;
+    return node;
   }
 
   // --------------------------------------------------------------- carte
@@ -571,6 +590,35 @@ export class BoardView {
     this.offset.y = Math.max(0, (wrap.height - size.h * this.scale) / 2);
     this._apply();
   }
+}
+
+/**
+ * Un paquet posé sur la table : `face` fournit ce qu'on voit du dessus — un dos
+ * pour une pioche, la dernière carte pour une défausse — et n'est appelé que si
+ * la pile n'est pas vide. Sans `onClick`, la pile se regarde sans s'ouvrir.
+ */
+function pileNode({ label, count, color, title, face, onClick }) {
+  const pile = document.createElement('div');
+  pile.className = 'pile' + (count ? '' : ' empty') + (onClick ? '' : ' sealed');
+  pile.style.setProperty('--pile', color);
+  if (title) pile.title = title;
+  if (onClick) pile.addEventListener('click', onClick);
+
+  const top = document.createElement('div');
+  top.className = 'pile-face';
+  const inner = count ? face() : null;
+  if (inner) top.append(inner);
+  pile.append(top);
+
+  const tag = document.createElement('div');
+  tag.className = 'pile-count';
+  const b = document.createElement('b');
+  b.textContent = String(count);
+  const span = document.createElement('span');
+  span.textContent = label;
+  tag.append(b, span);
+  pile.append(tag);
+  return pile;
 }
 
 /** Une carte affiche-t-elle une influence ? */

@@ -11,6 +11,7 @@ import { Engine } from './rules/engine.js';
 import { legalActions } from './rules/flow.js';
 import './rules/effects/index.js';
 import { applyDesign, renderCard, renderPlace } from './ui/card.js';
+import { attachKeywordHelp, markFocusable } from './ui/keyword.js';
 import { BoardView, seatColor } from './ui/board.js';
 import { Replayer } from './ui/anim.js';
 import { DragLayer } from './ui/dnd.js';
@@ -753,6 +754,7 @@ class Session {
 function showCard(target, state) {
   const overlay = $('#zoom-overlay');
   const host = $('#zoom-card');
+  hideKeywordHelp();
   host.innerHTML = '';
   host.className = '';
 
@@ -807,14 +809,23 @@ function showCard(target, state) {
   } else {
     return;
   }
+  markFocusable(host);
   overlay.classList.add('on');
 }
 
-$('#zoom-overlay').onclick = () => $('#zoom-overlay').classList.remove('on');
+// Les mots-clés ne livrent leur règle qu'ici : sur le plateau, la place manque.
+const hideKeywordHelp = attachKeywordHelp($('#zoom-card'), () => catalog);
+
+$('#zoom-overlay').onclick = () => closeZoom();
 document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape') return;
-  $('#zoom-overlay').classList.remove('on');
+  closeZoom();
 });
+
+function closeZoom() {
+  hideKeywordHelp();
+  $('#zoom-overlay').classList.remove('on');
+}
 
 // ============================================================ dialogues
 

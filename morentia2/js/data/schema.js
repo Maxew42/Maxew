@@ -181,6 +181,11 @@ export function parseVpTable(vp) {
 /** Valeurs de design par défaut, écrasées par la feuille Design du classeur. */
 export const DEFAULT_DESIGN = {
   fontFamily: "Georgia, 'Times New Roman', serif",
+  // Police des seuls chiffres des pastilles. Georgia a des chiffres elzéviriens
+  // (le 3, le 5, le 7 descendent sous la ligne de base, le 1 et le 2 sont de
+  // hauteur d'x) : dans une pastille, aucun réglage ne les centre tous. Ce
+  // repli sert des chiffres de hauteur capitale, alignés sur la ligne de base.
+  numeralFont: "'Iowan Old Style', 'Times New Roman', Times, serif",
   cardRadius: 15,
   artOpacity: 0.72,
   kalassirColor: '#a54843',
@@ -200,6 +205,7 @@ export const DEFAULT_DESIGN = {
 /** Descriptions des paramètres de design, réécrites à l'export. */
 export const DESIGN_LABELS = {
   fontFamily: 'Police des cartes',
+  numeralFont: 'Police des chiffres (pastilles d’influence et de coût)',
   cardRadius: 'Arrondi du cadre en pixels',
   artOpacity: 'Opacité de l’illustration (0–1)',
   kalassirColor: 'Couleur de faction Kalassir',
