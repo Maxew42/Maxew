@@ -154,7 +154,13 @@ h1.brand {
 
 /* ------------------------------- Table ------------------------------ */
 
-#table { background: var(--bg); }
+/* La table ne se lit pas comme un document. Sans cela, presser une carte qu'on
+   ne peut pas jouer déclenche une sélection de texte qui balaie le plateau en
+   bleu ; le journal, lui, reste hors de cette section et donc copiable. */
+#table {
+  background: var(--bg);
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
 
 /* Bandeau d'une seule pièce : chaque joueur occupe une cellule pleine hauteur,
    sans cadre ni marge intérieure qui donneraient l'impression de sous-cartes. */
@@ -504,6 +510,11 @@ h1.brand {
 }
 .card .zoom-btn:hover { background: var(--gold); color: #2a1f0c; }
 .card.zoomable { cursor: zoom-in; }
+/* Une carte qu'on peut porter l'annonce, et l'emporte sur la loupe : le clic
+   agrandit toujours, mais c'est le déplacement qui compte à ce moment-là.
+   La marque s'éteint dès que le tour passe, sans attendre un rendu. */
+body[data-can-act] .card.playable { cursor: grab; }
+body[data-can-act] .card.playable:active { cursor: grabbing; }
 
 .zoom-overlay { z-index: 45; cursor: zoom-out; }
 .zoom-overlay .card { --card-w: min(360px, 78vw); box-shadow: 0 30px 70px rgba(0,0,0,.75); }

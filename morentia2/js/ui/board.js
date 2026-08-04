@@ -57,6 +57,7 @@ export class BoardView {
     this.offset = { x: 0, y: 0 };
     this.targets = null;      // instances désignables pendant un choix
     this.chosen = new Set();
+    this.playable = null;     // instances que le joueur peut porter
     // Tant que le joueur n'a pas cadré lui-même, le plateau se réajuste seul :
     // une carte de plus sur un lieu ne doit pas pousser le marché hors écran.
     this.autoFit = true;
@@ -436,6 +437,7 @@ export class BoardView {
       if (this.targets.has(instId)) node.classList.add('targetable');
       if (this.chosen.has(instId)) node.classList.add('chosen');
     }
+    if (this.playable?.has(instId)) node.classList.add('playable');
     if (inHand) {
       // En main, le clic sert à jouer : la loupe ouvre la vue détaillée.
       const zoom = document.createElement('button');
@@ -458,6 +460,9 @@ export class BoardView {
     this.targets = ids ? new Set(ids) : null;
     this.chosen = new Set(chosen);
   }
+
+  /** Marque les cartes que le joueur peut effectivement porter. */
+  setPlayable(ids) { this.playable = ids ?? null; }
 
   // --------------------------------------------------------- zoom / pan
 

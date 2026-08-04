@@ -641,6 +641,7 @@ class Session {
     pass.disabled = true;
     pass.classList.add('waiting');
     pass.textContent = 'Résolution…';
+    document.body.removeAttribute('data-can-act');
     if (this.role === 'guest') { net?.act(action); this.refreshInteraction(); return; }
     this.step(() => this.engine.act(this.seat, action));
   }
@@ -662,6 +663,13 @@ class Session {
     orderBtn.hidden = !canOrder;
     orderBtn.disabled = !canOrder;
     this.board.setTargets(null);
+    // Les cartes réellement jouables prennent la main d'empoignade : on voit
+    // au survol ce qui bougera, sans avoir à l'essayer. L'attribut du corps
+    // éteint la marque dès qu'on ne peut plus agir, sans attendre un rendu.
+    this.board.setPlayable(can
+      ? new Set(legalActions(this.view, catalog, this.seat).map(a => a.inst))
+      : null);
+    document.body.toggleAttribute('data-can-act', can);
     this.board.render(this.view, this.seat);
   }
 
