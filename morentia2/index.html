@@ -121,27 +121,25 @@ h1.brand {
 .tab.on { background: var(--bg-3); color: var(--ink); border-color: rgba(240,230,214,.3); }
 
 /* Multijoueur : inviter d'un côté, rejoindre de l'autre. */
-.net-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-@media (max-width: 700px) { .net-split { grid-template-columns: 1fr; } }
+.net-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+@media (max-width: 700px) { .net-split { grid-template-columns: minmax(0, 1fr); } }
 .net-card {
   border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
   background: var(--bg-3); display: flex; flex-direction: column; gap: 8px;
+  min-width: 0;
 }
 .net-card > label { font-size: 12px; color: var(--muted); letter-spacing: .05em; }
 .net-card .hint { margin-top: 0; }
 .code-line { display: flex; gap: 8px; align-items: center; }
-.code-line code {
-  flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 20px; letter-spacing: .18em; color: var(--gold);
-  padding: 7px 10px; border: 1px dashed var(--line); border-radius: 8px;
-  background: rgba(0,0,0,.2); text-align: center; user-select: all;
-}
-.code-line input {
-  flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line);
-  border-radius: 8px; background: rgba(0,0,0,.2); text-align: center;
+.code-line code, .code-line input {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px;
+  background: rgba(0,0,0,.2); text-align: center; overflow: hidden;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 18px; letter-spacing: .16em; text-transform: uppercase;
+  font-size: clamp(15px, 4.6vw, 19px); letter-spacing: .16em;
 }
+.code-line code { border: 1px dashed var(--line); color: var(--gold); user-select: all; }
+.code-line input { border: 1px solid var(--line); text-transform: uppercase; }
+.code-line .btn { flex: none; }
 .net-card.on { border-color: rgba(229,182,79,.45); }
 #net-roster:empty { display: none; }
 #net-roster { margin-top: 12px; }
