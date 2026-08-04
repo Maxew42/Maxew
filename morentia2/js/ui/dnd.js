@@ -3,6 +3,13 @@
 // Une seule implémentation au pointeur couvre la souris et le tactile. Les
 // cibles licites viennent du moteur (`legalActions`) : l'interface n'a aucune
 // règle en propre, elle ne fait que montrer ce qui est permis.
+//
+// Le fantôme suit le doigt à l'image près. Trois règles s'imposent pour cela :
+//   - il ne porte aucune transition (une carte en a une, et un clone qui la
+//     garde poursuit le pointeur en s'amortissant au lieu de le suivre) ;
+//   - on n'écrit sa position qu'une fois par image, jamais par événement ;
+//   - on ne mesure aucun élément pendant le glissement, sous peine d'imposer
+//     un recalcul de mise en page à chaque image.
 
 const DRAG_THRESHOLD = 5;
 
@@ -12,6 +19,7 @@ export class DragLayer {
     this.getActions = getActions;
     this.isEnabled = isEnabled;
     this.active = null;
+    this.frame = 0;
     document.addEventListener('pointerdown', this._down.bind(this), true);
     document.addEventListener('pointermove', this._move.bind(this), true);
     document.addEventListener('pointerup', this._up.bind(this), true);
@@ -38,25 +46,57 @@ export class DragLayer {
     const dx = ev.clientX - a.start.x, dy = ev.clientY - a.start.y;
     if (!a.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
 
-    if (!a.moved) {
-      a.moved = true;
-      document.body.dataset.dragging = '1';
-      a.card.classList.add('dragging');
-      const rect = a.card.getBoundingClientRect();
-      const ghost = a.card.cloneNode(true);
-      ghost.classList.remove('dragging');
-      ghost.style.cssText = `position:fixed;left:0;top:0;width:${rect.width}px;height:${rect.height}px;
-        pointer-events:none;z-index:60;opacity:.94;transform-origin:center;box-shadow:0 20px 44px rgba(0,0,0,.7)`;
-      document.body.append(ghost);
-      a.ghost = ghost;
-      a.grab = { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
-      this._highlight(a.actions, true);
-    }
+    if (!a.moved) this._begin(a, ev);
+    a.point = { x: ev.clientX, y: ev.clientY };
+    this._schedule();
+    if (ev.cancelable) ev.preventDefault();
+  }
 
-    a.ghost.style.transform =
-      `translate(${ev.clientX - a.grab.x}px, ${ev.clientY - a.grab.y}px) rotate(2deg) scale(1.04)`;
-    this._hover(ev);
-    ev.preventDefault();
+  /** Décolle la carte : fantôme, zones licites, et mesure unique du plateau. */
+  _begin(a, ev) {
+    a.moved = true;
+    document.body.dataset.dragging = '1';
+    a.card.classList.add('dragging');
+
+    // Une carte du marché est couchée d'un quart de tour : son rectangle à
+    // l'écran a donc largeur et hauteur inversées. Le fantôme, lui, se redresse
+    // et vient se centrer sous le doigt.
+    const rect = a.card.getBoundingClientRect();
+    const tilted = !!a.card.closest('.market-card');
+    const w = tilted ? rect.height : rect.width;
+    const h = tilted ? rect.width : rect.height;
+
+    const ghost = a.card.cloneNode(true);
+    ghost.classList.remove('dragging');
+    ghost.classList.add('drag-ghost');
+    ghost.style.width = `${w}px`;
+    ghost.style.height = `${h}px`;
+    document.body.append(ghost);
+    a.ghost = ghost;
+    a.grab = tilted
+      ? { x: w / 2, y: h / 2 }
+      : { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+
+    this._highlight(a.actions, true);
+    // Le plateau ne bouge pas tant qu'une carte est en l'air : ses zones sont
+    // donc mesurées une bonne fois, et le survol devient une comparaison de
+    // nombres. La plus petite zone touchée l'emporte — c'est la plus précise.
+    a.zones = [...document.querySelectorAll('.drop-ok')]
+      .map(node => ({ node, r: node.getBoundingClientRect() }))
+      .sort((x, y) => x.r.width * x.r.height - y.r.width * y.r.height);
+  }
+
+  /** Une seule écriture de position par image, quel que soit le débit du pointeur. */
+  _schedule() {
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      const a = this.active;
+      if (!a?.moved) return;
+      a.ghost.style.transform = `translate3d(${a.point.x - a.grab.x}px, ${
+        a.point.y - a.grab.y}px, 0) rotate(2deg) scale(1.04)`;
+      this._hover(a);
+    });
   }
 
   _up(ev) {
@@ -76,11 +116,14 @@ export class DragLayer {
   _teardown() {
     const a = this.active;
     if (!a) return;
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
     a.ghost?.remove();
     a.card.classList.remove('dragging');
     delete document.body.dataset.dragging;
     this._highlight(a.actions, false);
     document.querySelectorAll('.drop-ok').forEach(n => n.classList.remove('drop-ok'));
+    document.querySelectorAll('.hovered').forEach(n => n.classList.remove('hovered'));
     this.active = null;
   }
 
@@ -95,19 +138,15 @@ export class DragLayer {
     }
   }
 
-  _hover(ev) {
-    document.querySelectorAll('.hovered').forEach(n => n.classList.remove('hovered'));
-    const node = this._nodeAt(ev.clientX, ev.clientY);
-    if (node) node.classList.add('hovered');
-  }
-
-  _nodeAt(x, y) {
-    for (const el of document.elementsFromPoint(x, y)) {
-      if (el.classList?.contains('drop-ok')) return el;
-      const zone = el.closest?.('[data-drop].drop-ok');
-      if (zone) return zone;
-    }
-    return null;
+  /** Souligne la zone survolée, à partir des rectangles mesurés au décollage. */
+  _hover(a) {
+    const { x, y } = a.point;
+    const hit = a.zones.find(({ r }) =>
+      x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
+    if (hit?.node === a.hovered) return;
+    a.hovered?.classList.remove('hovered');
+    hit?.node.classList.add('hovered');
+    a.hovered = hit?.node ?? null;
   }
 
   /** Détermine l'action correspondant au point de lâcher. */
