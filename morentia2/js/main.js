@@ -513,6 +513,9 @@ class Session {
       isEnabled: () => this.canAct(),
       getActions: instId => this.actionsFor(instId),
       onDrop: action => this.submitAction(action),
+      // Tant qu'une carte est en l'air, la main s'écarte : c'est le plateau qu'on
+      // vise, et il doit être visible en entier.
+      onCarry: on => this.board.hand.carrying(on),
     });
 
     if (role !== 'guest') {
@@ -1038,6 +1041,18 @@ $('#btn-order').onclick = async () => {
 $('#btn-fit').onclick = () => session?.board.fit();
 $('#zoom-in').onclick = () => session?.board.zoom(1.18);
 $('#zoom-out').onclick = () => session?.board.zoom(1 / 1.18);
+// Sur écran étroit, le marché est un tiroir : le bandeau l'ouvre, une touche sur
+// le plateau le referme. Ailleurs le bouton n'existe pas, l'allée est toujours là.
+const marketRail = $('#market-rail');
+$('#btn-market').onclick = () => {
+  const on = marketRail.classList.toggle('open');
+  $('#btn-market').classList.toggle('on', on);
+};
+$('#board-area').addEventListener('click', () => {
+  if (!marketRail.classList.contains('open')) return;
+  marketRail.classList.remove('open');
+  $('#btn-market').classList.remove('on');
+});
 $('#btn-log').onclick = () => $('#log-panel').classList.toggle('on');
 $('#log-close').onclick = () => $('#log-panel').classList.remove('on');
 $('#btn-quit').onclick = async () => {

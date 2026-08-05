@@ -6,6 +6,7 @@
 // voit donc bouger, sans code d'animation par type d'événement.
 
 import { renderCard, renderCardBack, renderPlace } from './card.js';
+import { HandFan } from './hand.js';
 import { faceOf, influenceOf, placeRecord } from '../rules/state.js';
 import { PHASE_LABELS, PHASE } from '../rules/constants.js';
 import { KIND, factionColor } from '../data/schema.js';
@@ -40,7 +41,9 @@ export class BoardView {
     this.onZoom = onZoom || (() => {});
     this.nodes = {
       board: root.querySelector('#board'),
-      wrap: root.querySelector('#board-wrap'),
+      // Le plateau se déplace dans l'aire qui lui reste — le marché et la main
+      // en sont exclus, c'est donc elle, et non la fenêtre, qui sert au cadrage.
+      area: root.querySelector('#board-area'),
       opponents: root.querySelector('#opponent-domains'),
       places: root.querySelector('#places'),
       placesTag: root.querySelector('#places-tag'),
@@ -48,11 +51,18 @@ export class BoardView {
       marketTag: root.querySelector('#market-tag'),
       mine: root.querySelector('#my-domain'),
       hand: root.querySelector('#hand'),
+      dock: root.querySelector('#hand-dock'),
       piles: root.querySelector('#hand-piles'),
       handStats: root.querySelector('#hand-stats'),
       hudPlayers: root.querySelector('#hud-players'),
       phaseChip: root.querySelector('#phase-chip'),
+      hud: root.querySelector('.hud'),
     };
+    this.hand = new HandFan({
+      dock: this.nodes.dock,
+      fan: this.nodes.hand,
+      rails: [this.nodes.piles, root.querySelector('.rail-side')].filter(Boolean),
+    });
     this.scale = 1;
     this.offset = { x: 0, y: 0 };
     this.targets = null;      // instances désignables pendant un choix
@@ -85,12 +95,7 @@ export class BoardView {
   _snapshotPositions() {
     const map = new Map();
     for (const node of document.querySelectorAll('[data-inst]')) {
-      map.set(node.dataset.inst, {
-        rect: node.getBoundingClientRect(),
-        // Les cartes du marché sont couchées par leur cadre : leur transformation
-        // ne doit pas être remplacée par celle de l'animation.
-        tilted: !!node.closest('.market-card'),
-      });
+      map.set(node.dataset.inst, node.getBoundingClientRect());
     }
     return map;
   }
@@ -99,17 +104,19 @@ export class BoardView {
     for (const node of document.querySelectorAll('[data-inst]')) {
       const prev = before.get(node.dataset.inst);
       if (!prev) continue;
-      const tilted = !!node.closest('.market-card');
-      // Une carte qui entre ou sort du marché change d'orientation : la faire
-      // glisser produirait un pivotement brutal. On la laisse simplement paraître.
-      if (tilted || prev.tilted) continue;
       const now = node.getBoundingClientRect();
-      const dx = prev.rect.left - now.left;
-      const dy = prev.rect.top - now.top;
+      const dx = prev.left - now.left;
+      const dy = prev.top - now.top;
       if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
+      // L'écart est mesuré à l'écran, mais appliqué dans le repère de la carte :
+      // sur le plateau, celui-ci est mis à l'échelle du zoom.
+      const k = node.closest('.board') ? (this.scale || 1) : 1;
+      // Le glissement passe par la propriété `translate`, non par `transform` :
+      // les cartes de la main portent déjà une transformation (leur place dans
+      // l'éventail), et les deux se composent au lieu de s'écraser.
       node.animate(
-        [{ transform: `translate(${dx}px, ${dy}px)`, zIndex: 20 },
-          { transform: 'none', zIndex: 20 }],
+        [{ translate: `${dx / k}px ${dy / k}px`, zIndex: 20 },
+          { translate: 'none', zIndex: 20 }],
         { duration: 320, easing: 'cubic-bezier(.22,.7,.3,1)' },
       );
     }
@@ -302,7 +309,15 @@ export class BoardView {
           (sum, c) => sum + influenceOf(state, this.catalog, c, 'control'), 0);
         const label = document.createElement('span');
         label.className = 'side-name';
-        label.textContent = `${state.players[index].name} · ${total}`;
+        // Une couronne devant le nom dit qui tient le lieu : la ligne « contrôlé
+        // par » disait la même chose en deux lignes de plus par lieu. Le
+        // contrôleur a toujours une carte présente (voir `computeController`),
+        // la couronne a donc toujours un nom sur lequel se poser.
+        if (index === holder) {
+          label.append(crownIcon());
+          label.title = 'Contrôle ce lieu';
+        }
+        label.append(document.createTextNode(`${state.players[index].name} · ${total}`));
         const strip = document.createElement('div');
         strip.className = 'side-cards';
         for (const inst of cards) strip.append(this._cardNode(state, inst.id, { onPlace: true }));
@@ -318,20 +333,7 @@ export class BoardView {
       }
     }
 
-    // L'influence de chaque camp est déjà lisible sur son intitulé de côté :
-    // cette ligne ne dit plus que qui tient le lieu.
-    const meta = document.createElement('div');
-    meta.className = 'place-meta';
-    const present = slot.cards.some(id => state.cards[id] && !state.cards[id].attachedTo);
-    if (holder !== null && holder !== undefined) {
-      meta.innerHTML = 'Contrôlé par <b></b>';
-      meta.querySelector('b').textContent = state.players[holder].name;
-      meta.style.color = seatColor(state, holder);
-    } else {
-      meta.textContent = present ? 'Personne ne contrôle' : 'Aucune présence';
-    }
-
-    mid.append(built.top, centre, built.bottom, meta);
+    mid.append(built.top, centre, built.bottom);
     ring.append(built.left, mid, built.right);
     col.append(ring);
     return col;
@@ -339,31 +341,32 @@ export class BoardView {
 
   // -------------------------------------------------------------- marché
 
+  /**
+   * L'étalage, en deux colonnes de cartes debout dans l'allée de gauche. Deux
+   * colonnes plutôt qu'une : une seule serait deux fois plus haute que l'écran,
+   * et des cartes couchées d'un quart de tour ne se lisent pas.
+   */
   _renderMarket(state, seat) {
     const host = this.nodes.market;
     host.innerHTML = '';
     // Le marché garde toujours le même nombre d'emplacements : sans cela, la
-    // colonne rétrécit puis regrandit à chaque achat et tout le plateau saute.
+    // grille rétrécit puis regrandit à chaque achat et tout saute.
     const size = Math.max(state.market.visible.length,
       state.players.length + (state.config.marketExtra ?? 1));
     for (let i = 0; i < size; i++) {
-      const holder = document.createElement('div');
-      holder.className = 'market-card';
       const id = state.market.visible[i];
-      if (id) holder.append(this._cardNode(state, id, {}));
-      else holder.classList.add('empty-slot');
-      host.append(holder);
+      if (id) { host.append(this._cardNode(state, id, {})); continue; }
+      const empty = document.createElement('div');
+      empty.className = 'empty-slot';
+      host.append(empty);
     }
-    const holder = document.createElement('div');
-    holder.className = 'market-card';
-    holder.append(pileNode({
+    host.append(pileNode({
       label: 'deck de marché',
       count: state.market.deck.length,
       color: this.catalog.design.marketColor,
       title: 'Deck de marché — contenu non révélé',
       face: () => renderCardBack(this.catalog.design.marketColor),
     }));
-    host.append(holder);
     this.nodes.marketTag.textContent = state.market.boughtToday
       ? 'un achat a eu lieu ce Jour'
       : 'aucun achat ce Jour — rotation à la fin du Jour';
@@ -374,7 +377,7 @@ export class BoardView {
   _renderHand(state, seat) {
     const host = this.nodes.hand;
     host.innerHTML = '';
-    if (seat === null || seat === undefined) return;
+    if (seat === null || seat === undefined) { this.hand.setCards([]); return; }
     const me = state.players[seat];
     for (const id of me.hand) host.append(this._cardNode(state, id, { inHand: true }));
     if (!me.hand.length) {
@@ -383,6 +386,9 @@ export class BoardView {
       empty.textContent = 'Main vide';
       host.append(empty);
     }
+    // L'éventail est replacé avant que les glissements ne soient mesurés : une
+    // carte piochée part donc de la pile et arrive à sa place dans la main.
+    this.hand.setCards(me.hand.slice());
 
     // Deck et défausse, à gauche de la main. Le deck montre le dos de votre
     // paquet ; la défausse, étant publique, montre la carte qui la coiffe.
@@ -486,7 +492,7 @@ export class BoardView {
   // --------------------------------------------------------- zoom / pan
 
   _installPanZoom() {
-    const wrap = this.nodes.wrap;
+    const wrap = this.nodes.area;
     let dragging = false, last = null, pinch = null;
 
     const apply = () => {
@@ -549,11 +555,21 @@ export class BoardView {
       pending = requestAnimationFrame(() => this.fit({ keepAuto: true }));
     });
     observer.observe(this.nodes.board);
-    observer.observe(this.nodes.wrap);
+    observer.observe(this.nodes.area);
+
+    // Sur écran large, le bandeau occupe le haut de l'allée : l'étalage doit
+    // commencer sous lui. Sa hauteur dépend du nombre de joueurs, on la publie
+    // donc plutôt que de la deviner — et on la mesure quand elle change, pas à
+    // chaque image de l'animation.
+    if (!this.nodes.hud) return;
+    const hud = this.nodes.hud;
+    new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--hud-h', `${hud.offsetHeight}px`);
+    }).observe(hud);
   }
 
   zoomAt(clientX, clientY, factor) {
-    const rect = this.nodes.wrap.getBoundingClientRect();
+    const rect = this.nodes.area.getBoundingClientRect();
     const x = clientX - rect.left, y = clientY - rect.top;
     this.autoFit = false;
     const next = Math.max(0.25, Math.min(2.4, this.scale * factor));
@@ -565,14 +581,14 @@ export class BoardView {
   }
 
   zoom(factor) {
-    const rect = this.nodes.wrap.getBoundingClientRect();
+    const rect = this.nodes.area.getBoundingClientRect();
     this.zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
   }
 
-  /** Cadre le plateau entier dans la fenêtre. */
+  /** Cadre le plateau entier dans l'aire qui lui est laissée. */
   fit({ keepAuto = false } = {}) {
     if (!keepAuto) this.autoFit = true;
-    const wrap = this.nodes.wrap.getBoundingClientRect();
+    const wrap = this.nodes.area.getBoundingClientRect();
     const board = this.nodes.board;
     const prev = board.style.transform;
     board.style.transform = 'none';
@@ -619,6 +635,19 @@ function pileNode({ label, count, color, title, face, onClick }) {
   tag.append(b, span);
   pile.append(tag);
   return pile;
+}
+
+/** Couronne du camp qui tient le lieu. Elle prend la couleur du siège. */
+function crownIcon() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'crown');
+  svg.setAttribute('viewBox', '0 0 16 12');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', 'M1.4 9.4V1.6l4 3.5L8 .8l2.6 4.3 4-3.5v7.8zM1.4 10.4h13.2v1.4H1.4z');
+  svg.append(path);
+  return svg;
 }
 
 /** Une carte affiche-t-elle une influence ? */

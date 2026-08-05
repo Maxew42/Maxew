@@ -14,10 +14,11 @@
 const DRAG_THRESHOLD = 5;
 
 export class DragLayer {
-  constructor({ onDrop, getActions, isEnabled }) {
+  constructor({ onDrop, getActions, isEnabled, onCarry }) {
     this.onDrop = onDrop;
     this.getActions = getActions;
     this.isEnabled = isEnabled;
+    this.onCarry = onCarry || (() => {});
     this.active = null;
     this.frame = 0;
     document.addEventListener('pointerdown', this._down.bind(this), true);
@@ -36,6 +37,10 @@ export class DragLayer {
     this.active = {
       inst: card.dataset.inst, card, actions,
       start: { x: ev.clientX, y: ev.clientY },
+      // Dans la main, le doigt qui va de côté change de carte au lieu d'en sortir
+      // une : le glissement n'est retenu que si le geste part vers le haut.
+      fanned: !!card.closest('.hand-fan'),
+      touch: ev.pointerType === 'touch',
       moved: false, ghost: null, pointerId: ev.pointerId,
     };
   }
@@ -46,6 +51,10 @@ export class DragLayer {
     const dx = ev.clientX - a.start.x, dy = ev.clientY - a.start.y;
     if (!a.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
 
+    if (!a.moved && a.fanned && a.touch && Math.abs(dx) > Math.abs(dy)) {
+      this.active = null;      // balayage de la main : ce n'est pas un tirage
+      return;
+    }
     if (!a.moved) this._begin(a, ev);
     a.point = { x: ev.clientX, y: ev.clientY };
     this._schedule();
@@ -58,26 +67,31 @@ export class DragLayer {
     document.body.dataset.dragging = '1';
     a.card.classList.add('dragging');
 
-    // Une carte du marché est couchée d'un quart de tour : son rectangle à
-    // l'écran a donc largeur et hauteur inversées. Le fantôme, lui, se redresse
-    // et vient se centrer sous le doigt.
+    // Une carte de la main est inclinée dans l'éventail : son rectangle à l'écran
+    // est celui de la carte penchée, plus grand qu'elle. Le fantôme reprend la
+    // taille propre de la carte et vient se pendre sous le doigt.
     const rect = a.card.getBoundingClientRect();
-    const tilted = !!a.card.closest('.market-card');
-    const w = tilted ? rect.height : rect.width;
-    const h = tilted ? rect.width : rect.height;
+    const w = a.fanned ? a.card.offsetWidth : rect.width;
+    const h = a.fanned ? a.card.offsetHeight : rect.height;
 
     const ghost = a.card.cloneNode(true);
-    ghost.classList.remove('dragging');
+    ghost.classList.remove('dragging', 'focused');
     ghost.classList.add('drag-ghost');
     ghost.style.width = `${w}px`;
     ghost.style.height = `${h}px`;
+    // Le clone hérite de la place de la carte dans l'éventail : sans cela il
+    // paraîtrait un instant penché dans le coin de l'écran.
+    ghost.style.zIndex = '';
+    a.grab = a.fanned
+      ? { x: w / 2, y: h * 0.3 }
+      : { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+    ghost.style.transform = `translate3d(${ev.clientX - a.grab.x}px, ${
+      ev.clientY - a.grab.y}px, 0) rotate(2deg) scale(1.04)`;
     document.body.append(ghost);
     a.ghost = ghost;
-    a.grab = tilted
-      ? { x: w / 2, y: h / 2 }
-      : { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
 
     this._highlight(a.actions, true);
+    this.onCarry(true);
     // Le plateau ne bouge pas tant qu'une carte est en l'air : ses zones sont
     // donc mesurées une bonne fois, et le survol devient une comparaison de
     // nombres. La plus petite zone touchée l'emporte — c'est la plus précise.
@@ -121,6 +135,7 @@ export class DragLayer {
     a.ghost?.remove();
     a.card.classList.remove('dragging');
     delete document.body.dataset.dragging;
+    this.onCarry(false);
     this._highlight(a.actions, false);
     document.querySelectorAll('.drop-ok').forEach(n => n.classList.remove('drop-ok'));
     document.querySelectorAll('.hovered').forEach(n => n.classList.remove('hovered'));

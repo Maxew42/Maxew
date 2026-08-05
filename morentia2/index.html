@@ -42,6 +42,20 @@
   --card-w: 116px;
   --card-ratio: 1.4;      /* hauteur / largeur */
   --shadow: 0 8px 26px rgba(0, 0, 0, .55);
+
+  /* Allée du marché, à gauche : deux colonnes de cartes debout, hors du zoom du
+     plateau, et le bandeau de partie au-dessus d'elles. Sa largeur est ce qui
+     reste au plateau en moins — mais le plateau est borné par sa hauteur, si
+     bien qu'une allée large ne lui coûte rien et rend l'étalage lisible. */
+  --market-card-w: clamp(88px, min(10vw, 18vh), 144px);
+  --rail-pad: 12px;
+  --hud-h: 46px;          /* hauteur mesurée du bandeau, voir js/ui/board.js */
+  --rail-w: calc(var(--market-card-w) * 2 + 10px + var(--rail-pad) * 2);
+  /* Bande basse : hauteur de la main repliée, et donc des piles qui la bordent. */
+  --dock-h: clamp(72px, 10.5vh, 108px);
+  --pile-w: calc(var(--dock-h) / var(--card-ratio));
+  --side-w: clamp(124px, 15vw, 190px);
+  --hand-card-w: clamp(104px, min(12.5vw, 26vh), 172px);
 }
 
 html, body {
@@ -193,40 +207,92 @@ h1.brand {
   background: none; padding: 0 14px;
 }
 
-.board-wrap { position: relative; flex: 1; overflow: hidden; touch-action: none; }
+
+.board-wrap { position: relative; flex: 1; overflow: hidden; }
+/*
+ * Le plateau ne se déplace que dans l'aire qui lui reste : l'allée du marché à
+ * gauche, la bande de la main en bas. Le cadrage automatique mesure cette aire,
+ * si bien que le marché et la main ne rognent jamais la table.
+ */
+.board-area {
+  position: absolute; top: 0; right: 0; bottom: var(--dock-h); left: var(--rail-w);
+  overflow: hidden; touch-action: none;
+}
 .board {
   position: absolute; top: 0; left: 0; transform-origin: 0 0;
   padding: 16px; display: flex; align-items: flex-start; gap: 14px;
 }
 .board-main { display: flex; flex-direction: column; gap: 14px; }
 
-/* Le marché tient sur le côté, cartes empilées verticalement. */
-.market-zone { flex: none; }
-.market-col { display: flex; flex-direction: column; gap: 10px; align-items: center; }
 /*
- * Les cartes du marché sont couchées d'un quart de tour, sommet vers la gauche :
- * une colonne verticale de cartes debout serait démesurément haute. Le cadre
- * échange largeur et hauteur, la carte tourne à l'intérieur.
+ * Le marché n'appartient plus au plateau : il tient dans une allée fixe le long
+ * du bord gauche, en deux colonnes de cartes debout. Il échappe ainsi au zoom de
+ * la table — c'est l'étalage qu'on consulte le plus souvent, il doit rester
+ * lisible quelle que soit l'échelle du plateau.
  */
-.market-card {
-  --card-w: 168px;
-  position: relative; flex: none;
-  width: calc(var(--card-w) * var(--card-ratio));
-  height: var(--card-w);
+.market-rail {
+  position: absolute; left: 0; top: 0; bottom: 0; width: var(--rail-w); z-index: 4;
+  padding: 10px var(--rail-pad); overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: none; border-right: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(255, 255, 255, .035), transparent);
 }
-.market-card > .card {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%) rotate(-90deg);
+.market-rail::-webkit-scrollbar { display: none; }
+/* Centré tant que l'étalage tient dans la hauteur, défilant au-delà : un
+   `justify-content: center` sur le conteneur défilant rognerait le haut. */
+.market-inner {
+  min-height: 100%; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; gap: 9px;
 }
-.market-card > .card.selectable:hover { transform: translate(-50%, -50%) rotate(-90deg) scale(1.04); }
-.market-card.empty-slot {
+.market-grid {
+  display: grid; grid-template-columns: repeat(2, var(--market-card-w));
+  gap: 10px; justify-content: center; --pile-w: var(--market-card-w);
+}
+.market-grid .card { --card-w: var(--market-card-w); }
+.market-grid .empty-slot {
+  width: var(--market-card-w); height: calc(var(--market-card-w) * var(--card-ratio));
   border: 1px dashed var(--line); border-radius: var(--card-radius); opacity: .35;
 }
-.market-card > .deck-stack,
-.market-card > .pile {
-  position: absolute; top: 50%; left: 50%;
-  width: var(--card-w); height: calc(var(--card-w) * var(--card-ratio));
-  transform: translate(-50%, -50%) rotate(-90deg);
+.rail-head {
+  display: flex; flex-direction: column; gap: 2px; text-align: center;
+  font-size: 12px; letter-spacing: .11em; text-transform: uppercase; color: var(--muted);
+}
+.rail-head .tag {
+  color: var(--faint); letter-spacing: .03em; text-transform: none; font-size: 11.5px;
+  line-height: 1.35;
+}
+.only-narrow { display: none; }
+
+/*
+ * Écran large : le bandeau de partie descend dans l'allée de gauche et s'y range
+ * en colonne. La table n'a plus de barre au-dessus d'elle et gagne cette hauteur
+ * — c'est là qu'elle manque. Le bandeau sort du flux, l'aire du plateau prend
+ * donc toute la fenêtre, et l'allée commence sous lui : sa hauteur dépend du
+ * nombre de joueurs, elle est donc mesurée et publiée dans `--hud-h` par
+ * js/ui/board.js. Sur écran étroit, où l'allée n'est qu'un tiroir, le bandeau
+ * reste en haut, inchangé.
+ *
+ * Ce bloc vient après les règles qu'il redresse — bandeau comme allée — parce
+ * qu'elles ont la même force et que la dernière écrite l'emporte.
+ */
+@media (min-width: 901px) {
+  .hud {
+    position: absolute; top: 0; left: 0; width: var(--rail-w); height: auto;
+    flex-direction: column; align-items: stretch;
+    border-bottom: 0; border-right: 1px solid var(--line);
+    background: linear-gradient(90deg, rgba(255, 255, 255, .035), transparent), var(--bg);
+    backdrop-filter: none;
+  }
+  .phase-chip {
+    justify-content: center; text-align: center; white-space: normal;
+    padding: 9px 12px; border-right: 0; border-bottom: 1px solid var(--line);
+  }
+  .hud-players { flex-direction: column; overflow-x: hidden; }
+  .hud-player {
+    justify-content: space-between; padding: 6px 12px;
+    border-right: 0; border-bottom: 1px solid var(--line);
+  }
+  .hud-actions .btn { flex: 1; padding: 8px 10px; text-align: center; }
+  .market-rail { top: var(--hud-h); }
 }
 
 .zone {
@@ -291,11 +357,6 @@ h1.brand {
 }
 .place-col.controlled .place-card { box-shadow: 0 0 0 3px var(--seat, var(--gold)), var(--shadow); }
 .place-col.drop-ok { outline: 2px dashed var(--gold); outline-offset: 3px; }
-.ring-mid .place-meta {
-  font-size: 11.5px; color: var(--muted); text-align: center; line-height: 1.45;
-  max-width: calc(var(--card-w) * 1.5);
-}
-.place-col .place-meta b { color: var(--ink); }
 
 /*
  * Chaque camp occupe un côté du lieu : le joueur au bas, ses adversaires
@@ -332,11 +393,15 @@ h1.brand {
 .side-cards { display: flex; gap: 5px; }
 .side.h .side-cards { flex-direction: row; flex-wrap: wrap; justify-content: center; max-width: calc(var(--card-w) * 3.6); }
 .side.v .side-cards { flex-direction: column; flex-wrap: wrap; max-height: 312px; }
-/* Le nom du camp est toujours écrit à l'horizontale, au-dessus de ses cartes. */
+/* Le nom du camp est toujours écrit à l'horizontale, au-dessus de ses cartes. La
+   couronne y remplace l'ancienne ligne « contrôlé par », qui coûtait deux lignes
+   de hauteur à chaque rangée de lieux. */
 .side .side-name {
+  display: flex; align-items: center; gap: 4px;
   font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
   color: var(--seat); white-space: nowrap; font-weight: 600;
 }
+.side-name .crown { width: 13px; height: 10px; flex: none; fill: currentColor; }
 
 
 .deck-stack {
@@ -349,32 +414,88 @@ h1.brand {
 
 /* -------------------------- Main du joueur -------------------------- */
 
-.hand-bar {
-  border-top: 1px solid var(--line); background: rgba(23,19,15,.96);
-  backdrop-filter: blur(8px); padding: 8px 10px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
-  display: flex; align-items: flex-end; gap: 12px; z-index: 5;
+/*
+ * La main est un vrai jeu de cartes tenu en éventail, posé par-dessus le plateau
+ * plutôt qu'à côté : repliée elle n'en montre que la tranche haute et rend toute
+ * la hauteur à la table, déployée elle passe devant. Une seule carte est au point
+ * à la fois — celle qu'on survole à la souris, celle qu'on amène du doigt en
+ * balayant. Voir js/ui/hand.js pour la géométrie de l'éventail.
+ */
+.hand-dock {
+  position: absolute; left: var(--rail-w); right: 0; bottom: 0; z-index: 6;
+  display: flex; justify-content: center; align-items: flex-end;
+  /* Cette marge ne se voit que main déployée : la tranche visible se mesure
+     depuis le haut des cartes, elle ne s'en trouve pas réduite. */
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  /* Repliée, la main laisse voir la hauteur de la bande basse — mesurée depuis le
+     haut des cartes, non depuis celui du dock : la réserve que l'éventail garde
+     au-dessus de lui pour la carte au point ne compte pas comme du visible. */
+  transform: translateY(calc(100% - var(--dock-h) - var(--fan-lift, 0px)));
+  transition: transform .24s cubic-bezier(.22, .7, .3, 1);
+  /* Le fond du dock ne prend pas le pointeur : on continue de faire glisser le
+     plateau à travers, seul l'éventail répond. */
+  pointer-events: none;
 }
-/* La main est centrée : les piles à gauche et les commandes à droite ont la
-   même largeur réservée, quel que soit le nombre de cartes. */
-.hand-piles, .hand-side { flex: 0 0 268px; }
-.hand-piles { display: flex; gap: 8px; align-items: flex-end; }
-.hand-scroll {
-  display: flex; gap: 7px; overflow-x: auto; overflow-y: hidden;
-  padding: 2px; flex: 1; justify-content: center;
+.hand-dock.open { transform: none; }
+/* Pendant qu'une carte est en l'air, la main s'efface : c'est le plateau qu'on
+   vise. Elle ne disparaît pas — la carte portée en fait toujours partie. */
+.hand-dock.carrying {
+  transform: translateY(calc(100% - var(--dock-h) * .45 - var(--fan-lift, 0px)));
 }
-/* Le doigt qui part vers le haut sort une carte ; le doigt qui va de côté fait
-   défiler la main. Sans cette ligne le navigateur s'approprie le geste et la
-   carte portée se met à lutter contre le défilement. */
-.hand-scroll .card { flex: none; --card-w: 124px; touch-action: pan-x; }
-.hand-side { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.hand-fan { position: relative; pointer-events: auto; }
+/* La place de chaque carte est écrite en style en ligne par js/ui/hand.js : rien
+   dans cette feuille ne peut la contredire, et c'est voulu. */
+.hand-fan .card {
+  position: absolute; left: 0; bottom: 0; --card-w: var(--hand-card-w);
+  transition: transform .22s cubic-bezier(.22, .7, .3, 1), box-shadow .16s, opacity .16s;
+  /* Le doigt qui part vers le haut sort une carte, celui qui va de côté change
+     la carte au point. Sans cette ligne le navigateur s'approprie le geste. */
+  touch-action: none;
+}
+.hand-fan .card.focused { box-shadow: 0 22px 44px rgba(0, 0, 0, .72); }
+/* Main vide : l'écriteau tient dans la tranche visible, sans hauteur de carte. */
+.hand-fan .deck-stack {
+  position: static; width: auto; height: var(--dock-h); padding: 0 26px;
+}
+/* Repli et jetons flottants : les piles à gauche, les compteurs et les commandes
+   à droite, dans la bande que la main occupe une fois repliée. */
+.rail-piles, .rail-side {
+  position: absolute; bottom: max(6px, env(safe-area-inset-bottom)); z-index: 7;
+  display: flex;
+}
+.rail-piles { left: calc(var(--rail-w) + 10px); gap: 8px; align-items: flex-end; }
+.rail-side {
+  right: 10px; width: var(--side-w); flex-direction: column; gap: 6px; align-items: stretch;
+}
 .hand-stats {
   display: flex; gap: 6px; justify-content: center; font-size: 13px;
-  padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2);
+  padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(34, 27, 21, .92); backdrop-filter: blur(6px);
 }
 .hand-stats span { white-space: nowrap; color: var(--muted); }
 .hand-stats b { color: var(--ink); }
 .hand-stats .gold b { color: var(--gold); }
+
+/*
+ * Sur un écran de téléphone, une allée permanente prendrait le quart de la
+ * table : l'étalage devient un tiroir, ouvert par le bandeau et refermé d'une
+ * touche sur le plateau. Ses cartes gardent leur taille — c'est tout le point.
+ * Ce bloc vient après les règles qu'il redresse : elles ont la même force.
+ */
+@media (max-width: 900px) {
+  :root { --market-card-w: clamp(96px, 27vw, 132px); }
+  .board-area, .hand-dock { left: 0; }
+  .rail-piles { left: 10px; }
+  .market-rail {
+    z-index: 8; transform: translateX(-100%);
+    transition: transform .24s cubic-bezier(.22, .7, .3, 1);
+    background: rgba(23, 19, 15, .97); backdrop-filter: blur(8px);
+    box-shadow: 14px 0 40px rgba(0, 0, 0, .55);
+  }
+  .market-rail.open { transform: none; }
+  .hud-actions .only-narrow { display: block; }
+  .hud-actions .only-narrow.on { color: var(--gold); }
+}
 
 /* Pendant que la partie se résout, le bouton dit ce qui se passe. */
 .btn.waiting {
@@ -393,7 +514,7 @@ h1.brand {
    le compte en bandeau. Vide, elle retombe sur l'emplacement en pointillés. */
 .pile {
   position: relative; flex: none; cursor: pointer;
-  width: 124px; height: calc(124px * var(--card-ratio));
+  width: var(--pile-w, 124px); height: calc(var(--pile-w, 124px) * var(--card-ratio));
   font-size: 11px; color: var(--faint); text-align: center;
 }
 .pile::before, .pile::after {
@@ -424,6 +545,11 @@ h1.brand {
 }
 .pile-count b { font-size: 18px; color: var(--ink); line-height: 1; }
 .pile-count span { font-size: 11px; }
+/* Les piles flottantes sont réduites à la hauteur de la bande basse : leur
+   bandeau de compte doit rétrécir d'autant pour rester dans le cadre. */
+.rail-piles .pile-count { gap: 4px; padding: 3px 0 4px; }
+.rail-piles .pile-count b { font-size: 14px; }
+.rail-piles .pile-count span { font-size: 9.5px; }
 .pile:hover .pile-face { border-color: var(--gold); }
 .pile:hover .pile-count { color: var(--muted); }
 /* Le deck de marché se montre mais ne se parcourt pas. */
@@ -687,11 +813,14 @@ body[data-can-act] .card.playable:active { cursor: grabbing; }
 .log-list .entry.error { color: var(--danger); border-left-color: var(--danger); }
 .log-list .entry.war { color: #d8b6ff; border-left-color: #7d5aa8; }
 
-/* Zoom / déplacement. */
+/* Zoom / déplacement : en haut à droite, là où la main déployée ne passe pas. */
 .zoom-tools {
-  position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 6px; z-index: 4;
+  position: absolute; right: 10px; top: 10px; display: flex; gap: 6px; z-index: 7;
 }
-.zoom-tools .btn { width: 38px; height: 38px; display: grid; place-items: center; padding: 0; font-size: 17px; }
+.zoom-tools .btn {
+  width: 34px; height: 34px; display: grid; place-items: center; padding: 0; font-size: 16px;
+  background: rgba(34, 27, 21, .92); backdrop-filter: blur(6px);
+}
 .zoom-tools .btn#btn-fit { font-size: 15px; }
 
 /* ============================== Studio ============================== */
@@ -733,7 +862,7 @@ body[data-can-act] .card.playable:active { cursor: grabbing; }
 .top-bar h2 { font-size: 16px; flex: 1; }
 
 .toast {
-  position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
+  position: fixed; left: 50%; bottom: calc(var(--dock-h) + 20px); transform: translateX(-50%);
   padding: 10px 18px; border-radius: 999px; background: var(--bg-3);
   border: 1px solid var(--line); z-index: 50; font-size: 13.5px;
   opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; text-align: center;
@@ -840,27 +969,32 @@ body[data-can-act] .card.playable:active { cursor: grabbing; }
     <div class="phase-chip" id="phase-chip">Jour <b>1</b> · Aube</div>
     <div class="hud-players" id="hud-players"></div>
     <div class="hud-actions">
+      <button class="btn small only-narrow" id="btn-market">Marché</button>
       <button class="btn small" id="btn-log">Journal</button>
       <button class="btn small ghost" id="btn-quit">Quitter</button>
     </div>
   </div>
 
   <div class="board-wrap" id="board-wrap">
-    <div class="board" id="board">
-      <aside class="zone market-zone">
-        <div class="zone-head">Marché <span class="tag" id="market-tag"></span></div>
-        <div class="market-col" id="market"></div>
-      </aside>
+    <aside class="market-rail" id="market-rail">
+      <div class="market-inner">
+        <div class="rail-head">Marché <span class="tag" id="market-tag"></span></div>
+        <div class="market-grid" id="market"></div>
+      </div>
+    </aside>
 
-      <div class="board-main">
-        <div class="domains" id="opponent-domains"></div>
+    <div class="board-area" id="board-area">
+      <div class="board" id="board">
+        <div class="board-main">
+          <div class="domains" id="opponent-domains"></div>
 
-        <div class="zone places-zone">
-          <div class="zone-head">Lieux <span class="tag" id="places-tag"></span></div>
-          <div class="places" id="places"></div>
+          <div class="zone places-zone">
+            <div class="zone-head">Lieux <span class="tag" id="places-tag"></span></div>
+            <div class="places" id="places"></div>
+          </div>
+
+          <div class="domains" id="my-domain"></div>
         </div>
-
-        <div class="domains" id="my-domain"></div>
       </div>
     </div>
 
@@ -869,15 +1003,16 @@ body[data-can-act] .card.playable:active { cursor: grabbing; }
       <button class="btn" id="zoom-out" title="Réduire">−</button>
       <button class="btn" id="btn-fit" title="Ajuster à l’écran" aria-label="Ajuster à l’écran">⛶</button>
     </div>
-  </div>
 
-  <div class="hand-bar">
-    <div class="hand-piles" id="hand-piles"></div>
-    <div class="hand-scroll" id="hand"></div>
-    <div class="hand-side">
+    <div class="rail-piles" id="hand-piles"></div>
+    <div class="rail-side">
       <div class="hand-stats" id="hand-stats"></div>
       <button class="btn primary small" id="btn-pass" disabled>Se coucher</button>
       <button class="btn small" id="btn-order" hidden>Ordre</button>
+    </div>
+
+    <div class="hand-dock" id="hand-dock">
+      <div class="hand-fan" id="hand"></div>
     </div>
   </div>
 </section>

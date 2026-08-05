@@ -114,11 +114,31 @@ tournure française pour un terme de jeu.
 
 ## Plateau
 
-Marché à gauche en colonne — ses cartes sont couchées d'un quart de tour, sommet
-vers la gauche, pour tenir en hauteur tout en restant lisibles. Domaines adverses
-en haut, lieux au centre, votre domaine en bas ; la main occupe une barre fixe
-avec, à sa gauche, votre deck et votre défausse à la taille des cartes, et à sa
-droite votre or et vos points de victoire.
+Tout ce qui n'est pas la table tient dans une **allée à gauche** : le bandeau de
+partie en haut — Jour et phase, un joueur par ligne avec son or, ses PV et sa
+main, puis Journal et Quitter — et sous lui le marché, en **deux colonnes de
+cartes debout**. L'allée n'appartient pas au plateau et échappe donc à son zoom :
+l'étalage reste lisible quelle que soit l'échelle de la table, et le plateau, qui
+est borné par sa hauteur, ne perd rien à ce que l'allée soit large.
+
+Sur un écran de téléphone (moins de 900 px) il n'y a pas de place pour une allée
+permanente : le bandeau revient en barre au-dessus de la table et le marché
+devient un tiroir, ouvert par le bouton **Marché** du bandeau et refermé d'une
+touche sur le plateau.
+
+Domaines adverses en haut, lieux au centre, votre domaine en bas. Le plateau
+occupe toute la hauteur de la fenêtre : rien ne le pousse plus, ni barre au
+dessus, ni rangée de main au-dessous.
+
+La **main** est un jeu de cartes tenu en éventail, posé par-dessus le plateau.
+Repliée, elle n'en montre que la tranche haute — nom, influence et prix, ce qui
+sert à choisir. Elle se déploie au survol, au contact du doigt, et se replie
+d'elle-même. Une carte est *au point* à la fois : celle qu'on survole, celle
+qu'on amène du doigt en balayant l'éventail, ou celle qu'on désigne aux flèches
+du clavier ; elle se redresse, monte et grandit pour être vraiment lisible.
+Pendant qu'une carte est portée, la main s'écarte pour dégager la table. Votre
+deck et votre défausse flottent à gauche de cette bande, votre or, vos points de
+victoire et vos commandes à droite.
 
 Les **paquets** se présentent comme de vraies piles : le deck montre son dos, la
 défausse — publique — montre la carte qui la coiffe, et deux tranches décalées
@@ -134,7 +154,10 @@ joueur : c'est un pouvoir permanent, pas une carte qu'on joue.
 Autour de chaque lieu, **chaque camp occupe un côté** : vous en bas, vos
 adversaires à gauche, à droite et en face selon leur nombre. On voit donc à qui
 appartient chaque carte sans avoir à suivre une pastille de couleur. Il y a
-autant de lieux actifs que de joueurs.
+autant de lieux actifs que de joueurs. L'intitulé d'un camp porte son nom et son
+influence sur le lieu, et une **couronne** devant le nom de celui qui le tient —
+la carte-lieu est en outre cernée de sa couleur. Aucune ligne de texte ne le
+répète : deux lignes par rangée de lieux valent mieux à la table.
 
 Le plateau se recadre seul tant que vous ne l'avez pas déplacé vous-même ;
 molette, pincement et les boutons `+` / `−` / `⛶` permettent de cadrer.
